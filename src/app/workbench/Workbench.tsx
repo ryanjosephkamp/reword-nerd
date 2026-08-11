@@ -1,0 +1,219 @@
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { assessContext, type RewriteSettings } from "../../domain";
+import type { MobileTab, WorkbenchServices } from "./contracts";
+import { createInitialWorkbenchState, workbenchReducer } from "./reducer";
+import {
+  selectContextAssessment,
+  selectCounts,
+  selectDirty,
+  selectSelectedDocument,
+} from "./selectors";
+import { defaultWorkbenchServices } from "./services";
+import { useBeforeUnloadWarning } from "./useBeforeUnloadWarning";
+import { useExportPackage } from "./useExportPackage";
+import { useFileIntake } from "./useFileIntake";
+import { useReviewEditor } from "./useReviewEditor";
+import { ContextMeter } from "./components/ContextMeter";
+import { ExportPanel } from "./components/ExportPanel";
+import { ExtractedTextEditor } from "./components/ExtractedTextEditor";
+import { FileQueue } from "./components/FileQueue";
+import { Header } from "./components/Header";
+import { HelpDialog } from "./components/HelpDialog";
+import { MobileTabs } from "./components/MobileTabs";
+import { SettingsDrawer } from "./components/SettingsDrawer";
+import { SettingsInspector } from "./components/SettingsInspector";
+import { StatusSummary } from "./components/StatusSummary";
+import { UploadDropZone } from "./components/UploadDropZone";
+
+type ResponsiveMode = "desktop" | "tablet" | "mobile";
+
+function panelAccessibility(
+  mode: ResponsiveMode,
+  active: MobileTab,
+  panel: MobileTab,
+  desktopLabel: string,
+) {
+  return mode === "mobile" ? {
+    role: "tabpanel" as const,
+    "aria-labelledby": `tab-${panel}`,
+    hidden: active !== panel,
+  } : {
+    role: "region" as const,
+    "aria-label": desktopLabel,
+  };
+}
+
+function currentMode(): ResponsiveMode {
+  if (typeof window.matchMedia !== "function") return "desktop";
+  if (window.matchMedia("(max-width: 767px)").matches) return "mobile";
+  if (window.matchMedia("(max-width: 1279px)").matches) return "tablet";
+  return "desktop";
+}
+
+function useResponsiveMode(): ResponsiveMode {
+  const [mode, setMode] = useState<ResponsiveMode>(currentMode);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const mobile = window.matchMedia("(max-width: 767px)");
+    const tablet = window.matchMedia("(max-width: 1279px)");
+    const update = () => setMode(mobile.matches ? "mobile" : tablet.matches ? "tablet" : "desktop");
+    mobile.addEventListener("change", update);
+    tablet.addEventListener("change", update);
+    return () => {
+      mobile.removeEventListener("change", update);
+      tablet.removeEventListener("change", update);
+    };
+  }, []);
+  return mode;
+}
+
+export function Workbench({ services = defaultWorkbenchServices }: { services?: WorkbenchServices }) {
+  const [state, dispatch] = useReducer(workbenchReducer, undefined, createInitialWorkbenchState);
+  const mode = useResponsiveMode();
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const helpReturnFocusRef = useRef<HTMLButtonElement>(null);
+  const parametersHeadingRef = useRef<HTMLHeadingElement>(null);
+  const previousMobileTabRef = useRef(state.mobileTab);
+  const intake = useFileIntake(state, dispatch, services);
+  const editor = useReviewEditor(state, dispatch, services);
+  const exporter = useExportPackage(state, dispatch, services);
+  const selected = selectSelectedDocument(state);
+  const counts = selectCounts(state);
+  const dirty = selectDirty(state);
+  useBeforeUnloadWarning(dirty || state.export.status === "busy");
+  useEffect(() => {
+    if (state.focusTarget !== "upload") return;
+    intake.addButtonRef.current?.focus();
+    dispatch({ type: "focus/consumed" });
+  }, [intake.addButtonRef, state.focusTarget]);
+  useEffect(() => {
+    const changed = previousMobileTabRef.current !== state.mobileTab;
+    previousMobileTabRef.current = state.mobileTab;
+    if (mode === "mobile" && changed && !state.focusTarget) {
+      document.getElementById(`tab-${state.mobileTab}`)?.focus();
+    }
+  }, [mode, state.focusTarget, state.mobileTab]);
+
+  const context = useMemo(() => {
+    if (!selected || selected.status === "blocked" || selected.status === "error") return null;
+    try {
+      return selectContextAssessment(state, selected.id);
+    } catch {
+      return assessContext(selected.extractedText, null);
+    }
+  }, [selected, state]);
+
+  const exportPanel = <ExportPanel
+    disabled={Boolean(exporter.blocker) || state.export.status === "busy"}
+    status={state.export.status}
+    message={state.export.safeMessage}
+    onBuild={() => void exporter.build()}
+  />;
+
+  const settingsProps = {
+    state,
+    onGlobalChange: (field: keyof RewriteSettings, value: RewriteSettings[keyof RewriteSettings]) => dispatch({ type: "settings/global-changed", field, value }),
+    onOverrideEnabled: (enabled: boolean) => { if (selected) dispatch({ type: "settings/override-enabled", documentId: selected.id, enabled }); },
+    onOverrideChange: (field: keyof RewriteSettings, value: RewriteSettings[keyof RewriteSettings]) => { if (selected) dispatch({ type: "settings/override-changed", documentId: selected.id, field, value }); },
+    onProfileSelected: (profileId: string) => dispatch({ type: "profile/selected", profileId }),
+    onProfileLabel: (value: string) => dispatch({ type: "profile/custom-label-changed", value }),
+    onContextDraft: (value: string, parsed: number | null) => dispatch({ type: "profile/custom-context-draft-changed", value, parsed }),
+  };
+  const settings = <SettingsInspector {...settingsProps} exportPanel={mode === "desktop" ? exportPanel : undefined} />;
+
+  const openSettings = () => {
+    if (mode === "mobile") dispatch({ type: "mobile/tab-changed", tab: "settings" });
+    else if (mode === "tablet") dispatch({ type: "drawer/changed", open: true });
+    else parametersHeadingRef.current?.focus();
+  };
+  const removeSelectedFromPreview = () => {
+    if (!selected) return;
+    if (mode === "mobile") dispatch({ type: "mobile/tab-changed", tab: "files" });
+    dispatch({ type: "document/removed", documentId: selected.id });
+  };
+
+  return <main className="workbench" aria-label="reword_nerd workbench">
+    <Header
+      onOpenFiles={intake.openFilePicker}
+      onOpenSettings={openSettings}
+      onOpenHelp={(returnFocus) => {
+        helpReturnFocusRef.current = returnFocus;
+        dispatch({ type: "help/changed", open: true });
+      }}
+      settingsButtonRef={settingsButtonRef}
+    />
+    <MobileTabs active={state.mobileTab} onChange={(tab) => dispatch({ type: "mobile/tab-changed", tab })} />
+    <div className="workbench-grid">
+      <aside
+        id="panel-files"
+        {...panelAccessibility(mode, state.mobileTab, "files", "Files")}
+        className={`files-panel mobile-panel${state.documents.length > 0 ? " has-documents" : ""}${state.mobileTab === "files" ? " is-mobile-active" : ""}`}
+        onDragEnter={intake.onDragEnter}
+        onDragLeave={intake.onDragLeave}
+        onDragOver={intake.onDragOver}
+        onDrop={intake.onDrop}
+      >
+        <div className="panel-heading"><h2>FILES [{state.documents.length}]</h2></div>
+        <UploadDropZone
+          inputRef={intake.inputRef}
+          addButtonRef={intake.addButtonRef}
+          dragging={state.intake.dragging}
+          hasDocuments={state.documents.length > 0}
+          onOpen={intake.openFilePicker}
+          onChange={intake.onInputChange}
+        />
+        <FileQueue
+          documents={state.documents}
+          selectedId={state.selectedDocumentId}
+          focusTarget={state.focusTarget}
+          onSelect={(documentId) => dispatch({ type: "selection/changed", documentId })}
+          onRemove={(documentId) => dispatch({ type: "document/removed", documentId })}
+          onFocusConsumed={() => dispatch({ type: "focus/consumed" })}
+        />
+        {state.intake.issues.length > 0 ? <ul className="intake-issues">{state.intake.issues.map((issue, index) => <li key={`${issue.filename}-${index}`}>{issue.filename}: {issue.message}</li>)}</ul> : null}
+      </aside>
+      <section
+        id="panel-preview"
+        {...panelAccessibility(mode, state.mobileTab, "preview", "Extracted text preview")}
+        className={`preview-panel mobile-panel${state.mobileTab === "preview" ? " is-mobile-active" : ""}`}
+      >
+        <div className="panel-heading preview-heading"><h2>EXTRACTED_TEXT</h2></div>
+        <div className="preview-content">
+          <ExtractedTextEditor
+            document={selected}
+            hashPending={selected ? state.editor[selected.id]?.hashPending ?? false : false}
+            onEdit={(text) => { if (selected) editor.edit(selected.id, text); }}
+            onConfirm={() => { if (selected) editor.confirm(selected.id); }}
+            onRemove={removeSelectedFromPreview}
+            onRetry={() => { if (selected) intake.retry(selected.id); }}
+            onRevealFiles={() => dispatch({ type: "mobile/tab-changed", tab: "files" })}
+          />
+        </div>
+        {context && selected ? <ContextMeter
+          assessment={context}
+          acknowledged={selected.contextWarningAcknowledged}
+          onAcknowledge={(acknowledged) => dispatch({ type: "context/acknowledged", documentId: selected.id, acknowledged })}
+        /> : null}
+        {mode === "mobile" ? exportPanel : null}
+        {mode === "mobile" ? <StatusSummary {...counts} compact /> : null}
+      </section>
+      <aside
+        id="panel-settings"
+        {...panelAccessibility(mode, state.mobileTab, "settings", "Parameters")}
+        className={`parameters-panel mobile-panel${state.mobileTab === "settings" ? " is-mobile-active" : ""}`}
+      >
+        <div className="panel-heading"><h2 ref={parametersHeadingRef} tabIndex={-1}>PARAMETERS</h2></div>
+        {settings}
+      </aside>
+    </div>
+    <footer className="workbench-footer">
+      <StatusSummary {...counts} />
+      <div className="saved-state" aria-label="Changes are held only for this browser session.">ALL CHANGES SAVED <span /> v0.1.0</div>
+    </footer>
+    <SettingsDrawer open={state.settingsDrawerOpen} onClose={() => dispatch({ type: "drawer/changed", open: false })} returnFocusRef={settingsButtonRef}>
+      <SettingsInspector {...settingsProps} exportPanel={exportPanel} />
+    </SettingsDrawer>
+    <HelpDialog open={state.helpDialogOpen} onClose={() => dispatch({ type: "help/changed", open: false })} returnFocusRef={helpReturnFocusRef} />
+    <div className="visually-hidden" aria-live="polite" aria-atomic="true">{state.liveMessage}</div>
+  </main>;
+}

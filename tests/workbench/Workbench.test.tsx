@@ -1,0 +1,686 @@
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { App } from "../../src/app/App";
+import type { WorkbenchServices } from "../../src/app/workbench/contracts";
+
+const defaultMatchMedia = window.matchMedia;
+afterEach(() => { window.matchMedia = defaultMatchMedia; });
+
+function services(overrides: Partial<WorkbenchServices> = {}): WorkbenchServices {
+  let nextId = 0;
+  return {
+    createDocumentId: () => `document-${nextId++}`,
+    preflight: async (files) => files.map((file) => ({
+      accepted: true as const,
+      file,
+      format: "markdown" as const,
+      originalBytes: new TextEncoder().encode("Source text").buffer,
+    })),
+    extract: async (accepted) => ({
+      format: accepted.format,
+      extractedText: "Source text",
+      warnings: [],
+      originalHash: "original-hash",
+      extractedTextHash: "text-hash",
+      requiresReview: true,
+    }),
+    hashText: async (text) => `hash:${text}`,
+    buildPackage: async () => ({
+      ok: true,
+      blob: new Blob(["zip"]),
+      filename: "reword-nerd-prompt-package.zip",
+      manifest: {} as never,
+    }),
+    download: () => ({ ok: true }),
+    ...overrides,
+  };
+}
+
+async function uploadReviewedFile(testServices: WorkbenchServices) {
+  render(<App services={testServices} />);
+  const input = screen.getByLabelText("Add supported files");
+  const file = new File(["Source text"], "notes.md", { type: "text/markdown" });
+  fireEvent.change(input, { target: { files: [file] } });
+  await screen.findByDisplayValue("Source text");
+  fireEvent.click(screen.getByRole("button", { name: "Confirm review" }));
+  expect((await screen.findAllByText("Review complete")).length).toBeGreaterThanOrEqual(1);
+}
+
+describe("Night Terminal workbench", () => {
+  it("mounts the complete accessible workbench shell and upload affordances", () => {
+    render(<App services={services()} />);
+
+    expect(screen.getByRole("main", { name: "reword_nerd workbench" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "reword_nerd/" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Files" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Extracted text preview" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Parameters" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Add supported files")).toHaveAttribute(
+      "accept",
+      ".txt,.md,.markdown,.docx,.pdf",
+    );
+    expect(screen.getByRole("button", { name: "Add files" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start with files" })).not.toHaveAttribute("hidden");
+  });
+
+  it("binds each mobile tab to one tabpanel and hides every inactive panel", () => {
+    window.matchMedia = vi.fn((query: string) => ({
+      matches: query.includes("767px"),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    render(<App services={services()} />);
+
+    for (const name of ["files", "preview", "settings"] as const) {
+      const tab = screen.getByRole("tab", { name: name.toUpperCase() });
+      const panel = document.getElementById(`panel-${name}`);
+      expect(tab).toHaveAttribute("aria-controls", `panel-${name}`);
+      expect(panel).toHaveAttribute("role", "tabpanel");
+      expect(panel).toHaveAttribute("aria-labelledby", `tab-${name}`);
+      expect(panel).not.toHaveAttribute("aria-label");
+      if (name === "files") expect(panel).not.toHaveAttribute("hidden");
+      else expect(panel).toHaveAttribute("hidden");
+    }
+    expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("id", "panel-files");
+
+    fireEvent.click(screen.getByRole("tab", { name: "PREVIEW" }));
+    expect(document.getElementById("panel-files")).toHaveAttribute("hidden");
+    expect(document.getElementById("panel-preview")).not.toHaveAttribute("hidden");
+    expect(document.getElementById("panel-settings")).toHaveAttribute("hidden");
+    expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("id", "panel-preview");
+  });
+
+  it("retains labeled region semantics for every panel at tablet width", () => {
+    window.matchMedia = vi.fn((query: string) => ({
+      matches: query.includes("1279px") && !query.includes("767px"),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    render(<App services={services()} />);
+
+    const expected = [
+      ["panel-files", "Files"],
+      ["panel-preview", "Extracted text preview"],
+      ["panel-settings", "Parameters"],
+    ] as const;
+    for (const [id, label] of expected) {
+      const panel = document.getElementById(id);
+      expect(panel).toHaveAttribute("role", "region");
+      expect(panel).toHaveAttribute("aria-label", label);
+      expect(panel).not.toHaveAttribute("aria-labelledby");
+      expect(panel).not.toHaveAttribute("hidden");
+    }
+  });
+
+  it("hides the empty upload call to action only after a document is admitted", async () => {
+    render(<App services={services()} />);
+    const filesPanel = screen.getByRole("region", { name: "Files" });
+    const emptyUpload = screen.getByRole("button", { name: "Start with files" });
+    expect(filesPanel).not.toHaveClass("has-documents");
+    expect(emptyUpload).not.toHaveAttribute("hidden");
+
+    fireEvent.change(screen.getByLabelText("Add supported files"), {
+      target: { files: [new File(["Source text"], "notes.md")] },
+    });
+    await screen.findByDisplayValue("Source text");
+    expect(filesPanel).toHaveClass("has-documents");
+    expect(emptyUpload).toHaveAttribute("hidden");
+  });
+
+  it("serializes overlapping admissions so each preflight sees reserved capacity", async () => {
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const capacities: number[] = [];
+    let calls = 0;
+    const testServices = services({
+      preflight: async (files, capacity) => {
+        const acceptedCount = capacity.acceptedCount ?? 0;
+        capacities.push(acceptedCount);
+        calls += 1;
+        if (calls === 1) await firstGate;
+        return files.map((file, index) => acceptedCount + index < 20 ? {
+          accepted: true as const,
+          file,
+          format: "markdown" as const,
+          originalBytes: new TextEncoder().encode(file.name).buffer,
+        } : {
+          accepted: false as const,
+          file,
+          issue: { code: "MAX_FILE_COUNT" as const, message: "The 20-file session limit has been reached." },
+        });
+      },
+      extract: async (accepted) => ({
+        format: accepted.format,
+        extractedText: accepted.file.name,
+        warnings: [],
+        originalHash: `original:${accepted.file.name}`,
+        extractedTextHash: `text:${accepted.file.name}`,
+        requiresReview: true,
+      }),
+    });
+    render(<App services={testServices} />);
+    const input = screen.getByLabelText("Add supported files");
+    const first = Array.from({ length: 15 }, (_, index) => new File(["a"], `first-${index}.md`));
+    const second = Array.from({ length: 10 }, (_, index) => new File(["b"], `second-${index}.md`));
+    fireEvent.change(input, { target: { files: first } });
+    await waitFor(() => expect(capacities).toEqual([0]));
+    fireEvent.change(input, { target: { files: second } });
+    expect(capacities).toEqual([0]);
+
+    await act(async () => { releaseFirst(); });
+    await waitFor(() => expect(capacities).toEqual([0, 15]));
+    await waitFor(() => expect(within(screen.getByRole("listbox", { name: "Uploaded files" })).getAllByRole("option")).toHaveLength(20));
+    expect(await screen.findAllByText(/20-file session limit/)).toHaveLength(5);
+  });
+
+  it("admits a bubbling drop through exactly one intake boundary", async () => {
+    const preflight = vi.fn(services().preflight);
+    const { container } = render(<App services={services({ preflight })} />);
+    const dropZone = container.querySelector<HTMLElement>(".upload-drop-zone");
+    expect(dropZone).not.toBeNull();
+
+    fireEvent.drop(dropZone!, {
+      dataTransfer: { files: [new File(["Source text"], "dropped.md")] },
+    });
+
+    await screen.findByDisplayValue("Source text");
+    expect(preflight).toHaveBeenCalledTimes(1);
+    expect(within(screen.getByRole("listbox", { name: "Uploaded files" })).getAllByRole("option")).toHaveLength(1);
+  });
+
+  it("runs upload, extraction, exact-review confirmation, package build, and download", async () => {
+    const buildPackage = vi.fn(services().buildPackage);
+    const download = vi.fn(() => ({ ok: true as const }));
+    const testServices = services({ buildPackage, download });
+
+    await uploadReviewedFile(testServices);
+    const buildButton = screen.getByRole("button", { name: "BUILD PACKAGE" });
+    expect(buildButton).toBeEnabled();
+    fireEvent.click(buildButton);
+
+    expect((await screen.findAllByText("Package downloaded.")).length).toBeGreaterThanOrEqual(1);
+    expect(buildPackage).toHaveBeenCalledTimes(1);
+    expect(download).toHaveBeenCalledTimes(1);
+    expect(screen.getByDisplayValue("Source text")).toBeInTheDocument();
+  });
+
+  it("retains reviewed session state on safe export failure", async () => {
+    const testServices = services({
+      buildPackage: async () => ({
+        ok: false,
+        error: { code: "ARCHIVE_GENERATION_FAILED", message: "internal detail" },
+      }),
+    });
+    await uploadReviewedFile(testServices);
+
+    fireEvent.click(screen.getByRole("button", { name: "BUILD PACKAGE" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Package could not be generated. Your session is still available.",
+    );
+    expect(screen.getByDisplayValue("Source text")).toBeInTheDocument();
+  });
+
+  it("retries a retained package download only from a later explicit activation", async () => {
+    const buildPackage = vi.fn(services().buildPackage);
+    const download = vi
+      .fn()
+      .mockReturnValueOnce({
+        ok: false as const,
+        error: { code: "ARCHIVE_GENERATION_FAILED" as const, message: "download detail" },
+      })
+      .mockReturnValueOnce({ ok: true as const });
+    await uploadReviewedFile(services({ buildPackage, download }));
+
+    const buildButton = screen.getByRole("button", { name: "BUILD PACKAGE" });
+    fireEvent.click(buildButton);
+    await screen.findByRole("alert");
+    fireEvent.click(buildButton);
+
+    expect((await screen.findAllByText("Package downloaded.")).length).toBeGreaterThanOrEqual(1);
+    expect(buildPackage).toHaveBeenCalledTimes(1);
+    expect(download).toHaveBeenCalledTimes(2);
+  });
+
+  it("supports tab arrow navigation and an Escape-dismissable help dialog", () => {
+    render(<App services={services()} />);
+    const filesTab = screen.getByRole("tab", { name: "FILES" });
+    filesTab.focus();
+    fireEvent.keyDown(filesTab, { key: "ArrowRight" });
+    expect(screen.getByRole("tab", { name: "PREVIEW" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "PREVIEW" })).toHaveFocus();
+
+    const helpButton = screen.getByRole("button", { name: "Help" });
+    fireEvent.click(helpButton);
+    expect(screen.getByRole("dialog", { name: "Four-stage package" })).toHaveTextContent(
+      "Four-stage package: run the prompts in order and carry each response forward.",
+    );
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(helpButton).toHaveFocus();
+  });
+
+  it("contains keyboard focus inside modal help and settings surfaces", () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn((query: string) => ({
+      matches: query.includes("1279px") && !query.includes("767px"),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    render(<App services={services()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Help" }));
+    const help = screen.getByRole("dialog", { name: "Four-stage package" });
+    fireEvent.keyDown(help, { key: "Tab" });
+    const closeHelp = screen.getByRole("button", { name: "Close help" });
+    expect(closeHelp).toHaveFocus();
+    fireEvent.keyDown(closeHelp, { key: "Tab", shiftKey: true });
+    expect(closeHelp).toHaveFocus();
+    fireEvent.click(closeHelp);
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    const settings = screen.getByRole("dialog", { name: "Parameters" });
+    const closeSettings = screen.getByRole("button", { name: "Close settings" });
+    const lastSettingsControl = within(settings).getByLabelText("Custom requirements");
+    expect(closeSettings).toHaveFocus();
+    fireEvent.keyDown(closeSettings, { key: "Tab", shiftKey: true });
+    expect(lastSettingsControl).toHaveFocus();
+    fireEvent.keyDown(lastSettingsControl, { key: "Tab" });
+    expect(closeSettings).toHaveFocus();
+    window.matchMedia = originalMatchMedia;
+  });
+
+  it("keeps both Settings and Help reachable from the mobile menu", () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn((query: string) => ({
+      matches: query.includes("767px"),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    render(<App services={services()} />);
+    const menu = screen.getByRole("button", { name: "Menu" });
+    fireEvent.click(menu);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Help" }));
+    expect(screen.getByRole("dialog", { name: "Four-stage package" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close help" }));
+    expect(menu).toHaveFocus();
+
+    fireEvent.click(menu);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Settings" }));
+    expect(screen.getByRole("tab", { name: "SETTINGS" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "SETTINGS" })).toHaveFocus();
+    window.matchMedia = originalMatchMedia;
+  });
+
+  it("announces rejection issues in input order and never stores browser state", async () => {
+    const storageSpies = [
+      vi.spyOn(Storage.prototype, "setItem"),
+      vi.spyOn(Storage.prototype, "getItem"),
+      vi.spyOn(Storage.prototype, "removeItem"),
+    ];
+    render(<App services={services({
+      preflight: async (files) => files.map((file) => ({
+        accepted: false as const,
+        file,
+        issue: { code: "UNSUPPORTED_EXTENSION" as const, message: "This file type is not supported." },
+      })),
+    })} />);
+    const input = screen.getByLabelText("Add supported files");
+    fireEvent.change(input, {
+      target: { files: [new File(["a"], "one.exe"), new File(["b"], "two.exe")] },
+    });
+
+    const issues = await screen.findAllByText(/This file type is not supported\./);
+    expect(issues.map((item) => item.textContent)).toEqual([
+      "one.exe: This file type is not supported.",
+      "two.exe: This file type is not supported.",
+    ]);
+    storageSpies.forEach((spy) => expect(spy).not.toHaveBeenCalled());
+  });
+
+  it("registers beforeunload only while the session is dirty", async () => {
+    const add = vi.spyOn(window, "addEventListener");
+    const remove = vi.spyOn(window, "removeEventListener");
+    const { unmount } = render(<App services={services()} />);
+
+    expect(add.mock.calls.some(([type]) => type === "beforeunload")).toBe(false);
+    fireEvent.change(screen.getByLabelText("Add supported files"), {
+      target: { files: [new File(["Source text"], "notes.md")] },
+    });
+    await waitFor(() => {
+      expect(add.mock.calls.some(([type]) => type === "beforeunload")).toBe(true);
+    });
+    unmount();
+    expect(remove.mock.calls.some(([type]) => type === "beforeunload")).toBe(true);
+  });
+
+  it("marks duplicates discovered within the same concurrent intake batch", async () => {
+    const buildPackage = vi.fn(services().buildPackage);
+    render(<App services={services({
+      extract: async (accepted) => ({
+        format: accepted.format,
+        extractedText: accepted.file.name,
+        warnings: [],
+        originalHash: "same-original-hash",
+        extractedTextHash: `hash-${accepted.file.name}`,
+        requiresReview: true,
+      }),
+      buildPackage,
+    })} />);
+    fireEvent.change(screen.getByLabelText("Add supported files"), {
+      target: { files: [new File(["a"], "one.md"), new File(["b"], "two.md")] },
+    });
+    await screen.findByDisplayValue("one.md");
+    fireEvent.click(screen.getByRole("button", { name: "Confirm review" }));
+    fireEvent.click(await screen.findByRole("option", { name: /two\.md/ }));
+    await screen.findByDisplayValue("two.md");
+    fireEvent.click(screen.getByRole("button", { name: "Confirm review" }));
+    fireEvent.click(screen.getByRole("button", { name: "BUILD PACKAGE" }));
+    await waitFor(() => expect(buildPackage).toHaveBeenCalledTimes(1));
+
+    const exported = buildPackage.mock.calls[0][0];
+    expect(exported[1].warnings).toContain("This file duplicates an existing document and needs review.");
+  });
+
+  it("reserves ordinals and duplicate hashes across immediately queued intake batches", async () => {
+    const buildPackage = vi.fn(services().buildPackage);
+    render(<App services={services({
+      extract: async (accepted) => ({
+        format: accepted.format,
+        extractedText: accepted.file.name,
+        warnings: [],
+        originalHash: "cross-batch-hash",
+        extractedTextHash: `text:${accepted.file.name}`,
+        requiresReview: true,
+      }),
+      buildPackage,
+    })} />);
+    const input = screen.getByLabelText("Add supported files");
+    fireEvent.change(input, { target: { files: [new File(["a"], "first.md")] } });
+    fireEvent.change(input, { target: { files: [new File(["b"], "second.md")] } });
+
+    fireEvent.click(await screen.findByRole("option", { name: /first\.md/ }));
+    await screen.findByDisplayValue("first.md");
+    fireEvent.click(screen.getByRole("button", { name: "Confirm review" }));
+    fireEvent.click(await screen.findByRole("option", { name: /second\.md/ }));
+    await screen.findByDisplayValue("second.md");
+    fireEvent.click(screen.getByRole("button", { name: "Confirm review" }));
+    fireEvent.click(screen.getByRole("button", { name: "BUILD PACKAGE" }));
+    await waitFor(() => expect(buildPackage).toHaveBeenCalledTimes(1));
+
+    const exported = buildPackage.mock.calls[0][0];
+    expect(exported.map((document) => document.uploadOrdinal)).toEqual([0, 1]);
+    expect(exported[1].warnings).toContain("This file duplicates an existing document and needs review.");
+  });
+
+  it("retries one transient edited-text hash failure before review can be confirmed", async () => {
+    const hashText = vi.fn()
+      .mockRejectedValueOnce(new Error("transient-1"))
+      .mockRejectedValueOnce(new Error("transient-2"))
+      .mockResolvedValueOnce("recovered-hash");
+    render(<App services={services({ hashText })} />);
+    fireEvent.change(screen.getByLabelText("Add supported files"), {
+      target: { files: [new File(["Source text"], "notes.md")] },
+    });
+    const editor = await screen.findByDisplayValue("Source text");
+    fireEvent.change(editor, { target: { value: "Edited text" } });
+
+    await waitFor(() => expect(hashText).toHaveBeenCalledTimes(2));
+    const confirm = screen.getByRole("button", { name: "Confirm review" });
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+    expect((await screen.findAllByText("Review complete")).length).toBeGreaterThanOrEqual(1);
+    expect(hashText).toHaveBeenCalledTimes(3);
+  });
+
+  it("opens an explicit file-actions menu before removal", async () => {
+    render(<App services={services()} />);
+    fireEvent.change(screen.getByLabelText("Add supported files"), {
+      target: { files: [new File(["Source text"], "notes.md")] },
+    });
+    await screen.findByDisplayValue("Source text");
+    expect(screen.queryByRole("menuitem", { name: "Remove file" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "File actions for notes.md" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove file" }));
+    expect(screen.queryByRole("option", { name: /notes\.md/ })).not.toBeInTheDocument();
+  });
+
+  it("uses the mobile selected-file disclosure to return to Files", async () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn((query: string) => ({
+      matches: query.includes("767px"),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    render(<App services={services()} />);
+    fireEvent.change(screen.getByLabelText("Add supported files"), {
+      target: { files: [new File(["Source text"], "notes.md")] },
+    });
+    await screen.findByDisplayValue("Source text");
+    expect(screen.getByRole("tab", { name: "PREVIEW" })).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Selected file notes.md" }));
+    expect(screen.getByRole("tab", { name: "FILES" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "FILES" })).toHaveFocus();
+    fireEvent.click(screen.getByRole("option", { name: /notes\.md/ }));
+    expect(screen.getByRole("tab", { name: "PREVIEW" })).toHaveFocus();
+    window.matchMedia = originalMatchMedia;
+  });
+
+  it("shows exact editor metrics and focuses Add files after the last removal", async () => {
+    render(<App services={services()} />);
+    fireEvent.change(screen.getByLabelText("Add supported files"), {
+      target: { files: [new File(["Source text"], "notes.md")] },
+    });
+    await screen.findByDisplayValue("Source text");
+    expect(screen.getByText("WORDS: 2")).toBeInTheDocument();
+    expect(screen.getByText("CHARS: 11")).toBeInTheDocument();
+    expect(screen.getByText("LINES: 1")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "File actions for notes.md" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove file" }));
+    expect(screen.getByRole("button", { name: "Add files" })).toHaveFocus();
+  });
+
+  it("shows actionable validation and disables review for blank edited extraction", async () => {
+    render(<App services={services()} />);
+    fireEvent.change(screen.getByLabelText("Add supported files"), {
+      target: { files: [new File(["Source text"], "notes.md")] },
+    });
+    const editor = await screen.findByDisplayValue("Source text");
+    fireEvent.change(editor, { target: { value: " \n\t " } });
+
+    expect(editor).toHaveAttribute("aria-invalid", "true");
+    expect(editor).toHaveAttribute("aria-describedby", "extracted-text-error-document-1");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Extracted text cannot be blank. Add text or remove the file.",
+    );
+    expect(screen.getByRole("button", { name: "Confirm review" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "BUILD PACKAGE" })).toBeDisabled();
+  });
+
+  it("keeps queued and extracting documents non-editable until extraction succeeds", async () => {
+    let finishExtraction!: (result: Awaited<ReturnType<WorkbenchServices["extract"]>>) => void;
+    const extraction = new Promise<Awaited<ReturnType<WorkbenchServices["extract"]>>>((resolve) => {
+      finishExtraction = resolve;
+    });
+    render(<App services={services({ extract: () => extraction })} />);
+    fireEvent.change(screen.getByLabelText("Add supported files"), {
+      target: { files: [new File(["Source text"], "slow.md")] },
+    });
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Extracting text from slow.md…");
+    expect(screen.queryByRole("textbox", { name: "Extracted text for slow.md" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Confirm review" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "BUILD PACKAGE" })).toBeDisabled();
+
+    await act(async () => {
+      finishExtraction({
+        format: "markdown",
+        extractedText: "Extracted text",
+        warnings: [],
+        originalHash: "slow-original",
+        extractedTextHash: "slow-text",
+        requiresReview: true,
+      });
+    });
+    expect(await screen.findByDisplayValue("Extracted text")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirm review" })).toBeEnabled();
+  });
+
+  it("shows every safe extraction warning before review without rewriting it", async () => {
+    const warnings = [
+      "An embedded image was omitted from DOCX extraction.",
+      "Pages 2 do not contain selectable text.",
+      "This file duplicates an existing document and needs review.",
+    ];
+    render(<App services={services({
+      extract: async (accepted) => ({
+        format: accepted.format,
+        extractedText: "Source text",
+        warnings,
+        originalHash: "warning-original",
+        extractedTextHash: "warning-text",
+        requiresReview: true,
+      }),
+    })} />);
+    fireEvent.change(screen.getByLabelText("Add supported files"), {
+      target: { files: [new File(["Source text"], "warnings.docx")] },
+    });
+
+    await screen.findByDisplayValue("Source text");
+    const warningRegion = screen.getByRole("region", { name: "Extraction warnings for warnings.docx" });
+    expect(within(warningRegion).getAllByRole("listitem").map((item) => item.textContent)).toEqual(warnings);
+    expect(screen.getByRole("button", { name: "Confirm review" })).toBeEnabled();
+  });
+
+  it("routes mobile Preview removal to Files and focuses the adjacent document", async () => {
+    window.matchMedia = vi.fn((query: string) => ({
+      matches: query.includes("767px"), media: query, onchange: null,
+      addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(),
+      removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
+    }));
+    render(<App services={services({
+      extract: async (accepted) => ({
+        format: accepted.format,
+        extractedText: accepted.file.name,
+        warnings: [],
+        originalHash: `original:${accepted.file.name}`,
+        extractedTextHash: `text:${accepted.file.name}`,
+        requiresReview: true,
+      }),
+    })} />);
+    fireEvent.change(screen.getByLabelText("Add supported files"), {
+      target: { files: [new File(["one"], "one.md"), new File(["two"], "two.md")] },
+    });
+    await screen.findByDisplayValue("one.md");
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove one.md" }));
+
+    expect(screen.getByRole("tab", { name: "FILES" })).toHaveAttribute("aria-selected", "true");
+    expect(document.getElementById("panel-files")).not.toHaveAttribute("hidden");
+    await waitFor(() => expect(screen.getByRole("option", { name: /two\.md/ })).toHaveFocus());
+  });
+
+  it("routes removal of the last blocked mobile document to Files and Add files", async () => {
+    window.matchMedia = vi.fn((query: string) => ({
+      matches: query.includes("767px"), media: query, onchange: null,
+      addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(),
+      removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
+    }));
+    render(<App services={services({ extract: async () => { throw new Error("unsafe"); } })} />);
+    fireEvent.change(screen.getByLabelText("Add supported files"), {
+      target: { files: [new File(["one"], "blocked.md")] },
+    });
+    await screen.findByText("This file could not be extracted safely.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove file" }));
+
+    expect(screen.getByRole("tab", { name: "FILES" })).toHaveAttribute("aria-selected", "true");
+    expect(document.getElementById("panel-files")).not.toHaveAttribute("hidden");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Add files" })).toHaveFocus());
+  });
+
+  it("retries a blocked extraction without discarding the original", async () => {
+    const extract = vi.fn()
+      .mockRejectedValueOnce(new Error("unsafe detail"))
+      .mockResolvedValueOnce({
+        format: "markdown" as const,
+        extractedText: "Recovered text",
+        warnings: [],
+        originalHash: "original-hash",
+        extractedTextHash: "text-hash",
+        requiresReview: true,
+      });
+    render(<App services={services({ extract })} />);
+    fireEvent.change(screen.getByLabelText("Add supported files"), {
+      target: { files: [new File(["Source text"], "notes.md")] },
+    });
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: "Retry extraction" }));
+    expect(await screen.findByDisplayValue("Recovered text")).toBeInTheDocument();
+    expect(extract).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves ready, review, and blocked counts in the summary", async () => {
+    window.matchMedia = vi.fn((query: string) => ({
+      matches: query.includes("767px"),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    const { container } = render(<App services={services({
+      extract: async (accepted) => {
+        if (accepted.file.name === "blocked.md") throw new Error("blocked");
+        return {
+          format: accepted.format,
+          extractedText: accepted.file.name,
+          warnings: [],
+          originalHash: accepted.file.name,
+          extractedTextHash: `hash-${accepted.file.name}`,
+          requiresReview: true,
+        };
+      },
+    })} />);
+    fireEvent.change(screen.getByLabelText("Add supported files"), {
+      target: { files: [new File(["a"], "review.md"), new File(["b"], "blocked.md")] },
+    });
+    await waitFor(() => expect(screen.getAllByText("1 review").length).toBeGreaterThanOrEqual(1));
+    expect(screen.getAllByText("1 blocked").length).toBeGreaterThanOrEqual(1);
+    const compact = container.querySelector<HTMLElement>(".status-summary.compact");
+    expect(compact).not.toBeNull();
+    expect(within(compact!).getByText("2 files")).toBeInTheDocument();
+    expect(within(compact!).getByText("0 ready")).toBeInTheDocument();
+    expect(within(compact!).getByText("1 review")).toBeInTheDocument();
+    expect(within(compact!).getByText("1 blocked")).toBeInTheDocument();
+    expect(within(compact!).queryByText("•")).not.toBeInTheDocument();
+  });
+});

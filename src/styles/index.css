@@ -1,0 +1,40 @@
+@import "./workbench.css";
+
+:root {
+  --color-canvas: #090b10;
+  --color-surface: #11151d;
+  --color-surface-raised: #171c25;
+  --color-border: #303746;
+  --color-text: #d7dde8;
+  --color-muted: #7f8a9d;
+  --color-ready: #42e8b4;
+  --color-review: #f2b84b;
+  --color-blocked: #ff667a;
+
+  color: var(--color-text);
+  background: var(--color-canvas);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--color-canvas);
+}
+
+main {
+  display: block;
+  min-height: 100vh;
+}
