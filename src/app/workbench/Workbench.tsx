@@ -20,6 +20,7 @@ import { FileQueue } from "./components/FileQueue";
 import { Header } from "./components/Header";
 import { HelpDialog } from "./components/HelpDialog";
 import { MobileTabs } from "./components/MobileTabs";
+import { PackagePreview } from "./components/PackagePreview";
 import { SettingsDrawer } from "./components/SettingsDrawer";
 import { SettingsInspector } from "./components/SettingsInspector";
 import { StatusSummary } from "./components/StatusSummary";
@@ -73,6 +74,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const helpReturnFocusRef = useRef<HTMLButtonElement>(null);
   const parametersHeadingRef = useRef<HTMLHeadingElement>(null);
+  const packageHeadingRef = useRef<HTMLHeadingElement>(null);
   const previousMobileTabRef = useRef(state.mobileTab);
   const intake = useFileIntake(state, dispatch, services);
   const editor = useReviewEditor(state, dispatch, services);
@@ -80,12 +82,17 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
   const selected = selectSelectedDocument(state);
   const counts = selectCounts(state);
   const dirty = selectDirty(state);
-  useBeforeUnloadWarning(dirty || state.export.status === "busy");
+  useBeforeUnloadWarning(dirty || state.export.status === "building" || state.export.status === "downloading");
   useEffect(() => {
     if (state.focusTarget !== "upload") return;
     intake.addButtonRef.current?.focus();
     dispatch({ type: "focus/consumed" });
   }, [intake.addButtonRef, state.focusTarget]);
+  useEffect(() => {
+    if (state.focusTarget !== "package-preview") return;
+    packageHeadingRef.current?.focus();
+    dispatch({ type: "focus/consumed" });
+  }, [state.focusTarget]);
   useEffect(() => {
     const changed = previousMobileTabRef.current !== state.mobileTab;
     previousMobileTabRef.current = state.mobileTab;
@@ -104,10 +111,18 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
   }, [selected, state]);
 
   const exportPanel = <ExportPanel
-    disabled={Boolean(exporter.blocker) || state.export.status === "busy"}
+    buildDisabled={Boolean(exporter.blocker)
+      || state.export.status === "building"
+      || state.export.status === "downloading"
+      || Boolean(state.export.builtPackage)}
+    downloadDisabled={!state.export.builtPackage
+      || state.export.builtRevision !== state.revision
+      || state.export.status === "building"
+      || state.export.status === "downloading"}
     status={state.export.status}
     message={state.export.safeMessage}
     onBuild={() => void exporter.build()}
+    onDownload={exporter.download}
   />;
 
   const settingsProps = {
@@ -177,9 +192,28 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
         {...panelAccessibility(mode, state.mobileTab, "preview", "Extracted text preview")}
         className={`preview-panel mobile-panel${state.mobileTab === "preview" ? " is-mobile-active" : ""}`}
       >
-        <div className="panel-heading preview-heading"><h2>EXTRACTED_TEXT</h2></div>
+        <div className="panel-heading preview-heading">
+          <h2 ref={packageHeadingRef} tabIndex={-1}>{state.previewMode === "package" ? "PACKAGE PREVIEW" : "EXTRACTED_TEXT"}</h2>
+          <div className="preview-mode-switch" aria-label="Preview view">
+            <button
+              type="button"
+              aria-pressed={state.previewMode === "source"}
+              onClick={() => dispatch({ type: "preview/mode-changed", mode: "source" })}
+            >SOURCE</button>
+            <button
+              type="button"
+              aria-pressed={state.previewMode === "package"}
+              disabled={!state.export.builtPackage}
+              onClick={() => dispatch({ type: "preview/mode-changed", mode: "package" })}
+            >PACKAGE</button>
+          </div>
+        </div>
         <div className="preview-content">
-          <ExtractedTextEditor
+          {state.previewMode === "package" && state.export.builtPackage ? <PackagePreview
+            artifacts={state.export.builtPackage.artifacts}
+            selectedDocumentKey={state.previewArtifactKey}
+            onSelect={(documentKey) => dispatch({ type: "preview/artifact-selected", documentKey })}
+          /> : <ExtractedTextEditor
             document={selected}
             hashPending={selected ? state.editor[selected.id]?.hashPending ?? false : false}
             onEdit={(text) => { if (selected) editor.edit(selected.id, text); }}
@@ -187,9 +221,9 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
             onRemove={removeSelectedFromPreview}
             onRetry={() => { if (selected) intake.retry(selected.id); }}
             onRevealFiles={() => dispatch({ type: "mobile/tab-changed", tab: "files" })}
-          />
+          />}
         </div>
-        {context && selected ? <ContextMeter
+        {state.previewMode === "source" && context && selected ? <ContextMeter
           assessment={context}
           acknowledged={selected.contextWarningAcknowledged}
           onAcknowledge={(acknowledged) => dispatch({ type: "context/acknowledged", documentId: selected.id, acknowledged })}
@@ -208,7 +242,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     </div>
     <footer className="workbench-footer">
       <StatusSummary {...counts} />
-      <div className="saved-state" aria-label="Changes are held only for this browser session.">ALL CHANGES SAVED <span /> v0.1.0</div>
+      <div className="saved-state" aria-label="Changes are held only for this browser session.">ALL CHANGES SAVED <span /> v0.2.0</div>
     </footer>
     <SettingsDrawer open={state.settingsDrawerOpen} onClose={() => dispatch({ type: "drawer/changed", open: false })} returnFocusRef={settingsButtonRef}>
       <SettingsInspector {...settingsProps} exportPanel={exportPanel} />

@@ -1,9 +1,27 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "../../src/app/App";
 import type { WorkbenchServices } from "../../src/app/workbench/contracts";
+import type { CombinedPromptArtifact } from "../../src/export";
 
 const defaultMatchMedia = window.matchMedia;
 afterEach(() => { window.matchMedia = defaultMatchMedia; });
+
+function combinedArtifact(documentKey = "notes", name = "notes.md"): CombinedPromptArtifact {
+  return {
+    documentKey,
+    originalDisplayName: name,
+    runbook: {} as never,
+    runbookMarkdown: "# reword-nerd prompt package\n\nRun each stage in order.",
+    promptBlocks: [
+      { stage: "decompose", title: "Decompose", content: "DECOMPOSE PROMPT\nSource text" },
+      { stage: "rewrite", title: "Rewrite", content: "REWRITE PROMPT\nUse decomposition" },
+      { stage: "verify", title: "Verify", content: "VERIFY PROMPT\nCheck the rewrite" },
+      { stage: "final", title: "Final", content: "FINAL PROMPT\nProduce the final document" },
+    ],
+    markdown: "combined markdown",
+    html: "<!doctype html><title>combined prompts</title>",
+  };
+}
 
 function services(overrides: Partial<WorkbenchServices> = {}): WorkbenchServices {
   let nextId = 0;
@@ -29,6 +47,7 @@ function services(overrides: Partial<WorkbenchServices> = {}): WorkbenchServices
       blob: new Blob(["zip"]),
       filename: "reword-nerd-prompt-package.zip",
       manifest: {} as never,
+      artifacts: [combinedArtifact()],
     }),
     download: () => ({ ok: true }),
     ...overrides,
@@ -46,6 +65,31 @@ async function uploadReviewedFile(testServices: WorkbenchServices) {
 }
 
 describe("Night Terminal workbench", () => {
+  it("preserves spaces and returns while editing global and per-file requirements", async () => {
+    // This catches binding a controlled textarea to normalized settings, which erases trailing input on every render.
+    await uploadReviewedFile(services());
+    const requirements = screen.getByLabelText("Custom requirements");
+    const outputLanguage = screen.getByLabelText("Output language");
+
+    fireEvent.change(requirements, { target: { value: "  Preserve citations.  \n\nKeep this paragraph.  " } });
+    fireEvent.change(outputLanguage, { target: { value: " English " } });
+
+    expect(requirements).toHaveValue("  Preserve citations.  \n\nKeep this paragraph.  ");
+    expect(outputLanguage).toHaveValue(" English ");
+
+    fireEvent.click(screen.getByRole("switch", { name: "PER-FILE OVERRIDE" }));
+    fireEvent.change(requirements, { target: { value: "  File rule.\n\n  Second line.  " } });
+
+    expect(requirements).toHaveValue("  File rule.\n\n  Second line.  ");
+  });
+
+  it("explains that Custom model includes local and self-hosted runtimes", () => {
+    render(<App services={services()} />);
+    fireEvent.change(screen.getByLabelText("Model profile"), { target: { value: "custom" } });
+
+    expect(screen.getByText(/local, self-hosted, fine-tuned, or otherwise unlisted/i)).toBeInTheDocument();
+  });
+
   it("mounts the complete accessible workbench shell and upload affordances", () => {
     render(<App services={services()} />);
 
@@ -199,7 +243,7 @@ describe("Night Terminal workbench", () => {
     expect(within(screen.getByRole("listbox", { name: "Uploaded files" })).getAllByRole("option")).toHaveLength(1);
   });
 
-  it("runs upload, extraction, exact-review confirmation, package build, and download", async () => {
+  it("builds an in-memory package, previews it, and downloads only on explicit activation", async () => {
     const buildPackage = vi.fn(services().buildPackage);
     const download = vi.fn(() => ({ ok: true as const }));
     const testServices = services({ buildPackage, download });
@@ -209,10 +253,76 @@ describe("Night Terminal workbench", () => {
     expect(buildButton).toBeEnabled();
     fireEvent.click(buildButton);
 
-    expect((await screen.findAllByText("Package downloaded.")).length).toBeGreaterThanOrEqual(1);
+    expect((await screen.findAllByText("Package ready.")).length).toBeGreaterThanOrEqual(1);
     expect(buildPackage).toHaveBeenCalledTimes(1);
+    expect(download).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "PACKAGE PREVIEW" })).toHaveFocus();
+    expect(screen.getByText(/Run each stage in order\./)).toBeInTheDocument();
+    expect(screen.getByText((_, element) => element?.tagName === "CODE"
+      && element.textContent === "DECOMPOSE PROMPT\nSource text")).toBeInTheDocument();
+
+    let copiedText = "";
+    const previousExecCommand = document.execCommand;
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: vi.fn(() => {
+        copiedText = document.querySelector<HTMLTextAreaElement>('textarea[aria-hidden="true"]')?.value ?? "";
+        return true;
+      }),
+    });
+    fireEvent.click(screen.getByRole("button", { name: "COPY DECOMPOSE" }));
+    expect(await screen.findByText("Decompose prompt copied.")).toBeInTheDocument();
+    expect(copiedText).toBe("DECOMPOSE PROMPT\nSource text");
+    Object.defineProperty(document, "execCommand", { configurable: true, value: previousExecCommand });
+
+    fireEvent.click(screen.getByRole("button", { name: "DOWNLOAD ZIP" }));
+
+    expect((await screen.findAllByText("Package downloaded.")).length).toBeGreaterThanOrEqual(1);
     expect(download).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "SOURCE" }));
     expect(screen.getByDisplayValue("Source text")).toBeInTheDocument();
+  });
+
+  it("invalidates the built preview and download when settings change", async () => {
+    await uploadReviewedFile(services());
+    fireEvent.click(screen.getByRole("button", { name: "BUILD PACKAGE" }));
+    await screen.findByRole("heading", { name: "PACKAGE PREVIEW" });
+    expect(screen.getByRole("button", { name: "DOWNLOAD ZIP" })).toBeEnabled();
+
+    fireEvent.change(screen.getByLabelText("Custom requirements"), {
+      target: { value: "A new package requirement" },
+    });
+
+    expect(screen.getByRole("heading", { name: "EXTRACTED_TEXT" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "PACKAGE" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "DOWNLOAD ZIP" })).toBeDisabled();
+  });
+
+  it("switches among per-document combined artifacts in package preview", async () => {
+    const testServices = services({
+      buildPackage: async () => ({
+        ok: true,
+        blob: new Blob(["zip"]),
+        filename: "reword-nerd-prompt-package.zip",
+        manifest: {} as never,
+        artifacts: [combinedArtifact("one", "one.md"), combinedArtifact("two", "two.md")],
+      }),
+    });
+    render(<App services={testServices} />);
+    fireEvent.change(screen.getByLabelText("Add supported files"), {
+      target: { files: [new File(["one"], "one.md"), new File(["two"], "two.md")] },
+    });
+    await screen.findByDisplayValue("Source text");
+    fireEvent.click(screen.getByRole("button", { name: "Confirm review" }));
+    fireEvent.click(screen.getByRole("option", { name: /two\.md/ }));
+    await screen.findByDisplayValue("Source text");
+    fireEvent.click(screen.getByRole("button", { name: "Confirm review" }));
+    fireEvent.click(screen.getByRole("button", { name: "BUILD PACKAGE" }));
+
+    const artifactSelect = await screen.findByRole("combobox", { name: "Package document" });
+    expect(screen.getByRole("heading", { name: "one.md" })).toBeInTheDocument();
+    fireEvent.change(artifactSelect, { target: { value: "two" } });
+    expect(screen.getByRole("heading", { name: "two.md" })).toBeInTheDocument();
   });
 
   it("retains reviewed session state on safe export failure", async () => {
@@ -245,8 +355,10 @@ describe("Night Terminal workbench", () => {
 
     const buildButton = screen.getByRole("button", { name: "BUILD PACKAGE" });
     fireEvent.click(buildButton);
+    await screen.findAllByText("Package ready.");
+    fireEvent.click(screen.getByRole("button", { name: "DOWNLOAD ZIP" }));
     await screen.findByRole("alert");
-    fireEvent.click(buildButton);
+    fireEvent.click(screen.getByRole("button", { name: "DOWNLOAD ZIP" }));
 
     expect((await screen.findAllByText("Package downloaded.")).length).toBeGreaterThanOrEqual(1);
     expect(buildPackage).toHaveBeenCalledTimes(1);

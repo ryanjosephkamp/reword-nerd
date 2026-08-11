@@ -160,6 +160,9 @@ are not replaced by this inventory.
 - `Custom requirements`
 - `Focus on clarity and actionable insights. Preserve key data points and structure.`
 - `BUILD PACKAGE`
+- `DOWNLOAD ZIP`
+- `SOURCE`, `PACKAGE`
+- `PACKAGE PREVIEW`
 - `Package will be generated in-browser.`
 - `No files leave your device.`
 - `WORDS: 1250`, `CHARS: 8420`, `LINES: 220`
@@ -168,7 +171,7 @@ are not replaced by this inventory.
 - `ALL CHANGES SAVED`, `v1.0.0`
 
 The version string in the visual reference is compositional sample copy. The
-current implementation renders its package version (`v0.1.0`) in that footer
+current implementation renders its package version (`v0.2.0`) in that footer
 position while preserving the same hierarchy and session-only meaning.
 
 ### Editor sample content
@@ -207,8 +210,13 @@ position while preserving the same hierarchy and session-only meaning.
   controls without changing the global settings source of truth.
 - The context meter warns when estimated context is oversized; acknowledgement,
   rather than a hard block, permits export.
-- `BUILD PACKAGE` creates the in-browser archive. Failure retains in-memory
-  state and displays a safe error; no files leave the device.
+- `BUILD PACKAGE` creates the revision-bound archive and structured preview in
+  memory, switches Preview to Package, and moves focus to its heading. It never
+  downloads automatically.
+- `SOURCE` and `PACKAGE` switch the Preview pane without adding a top-level
+  mobile tab. Each package prompt has an accessible Copy control.
+- `DOWNLOAD ZIP` exports the accepted Blob explicitly. A download failure keeps
+  that Blob available for retry; a content or settings mutation invalidates it.
 - Mobile tabs preserve the same session state while changing the visible pane.
 
 ## Implementation guardrails

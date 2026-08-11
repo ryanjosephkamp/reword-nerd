@@ -20,7 +20,7 @@ export function useExportPackage(
   const blocker = selectFirstExportBlocker(state);
   const nextOperationIdRef = useRef(0);
   const activeOperationRef = useRef<{ operationId: number; revision: number } | null>(null);
-  const handledDownloadOperationRef = useRef<number | null>(null);
+  const activeDownloadRef = useRef(false);
 
   useEffect(() => {
     const active = activeOperationRef.current;
@@ -33,34 +33,18 @@ export function useExportPackage(
     }
   }, [state.export.operationId, state.export.operationRevision]);
 
-  useEffect(() => {
-    const blob = state.export.pendingDownloadBlob;
-    const operationId = state.export.operationId;
-    const revision = state.export.operationRevision;
-    if (!blob || operationId === undefined || revision === undefined) return;
-    if (handledDownloadOperationRef.current === operationId) return;
-    handledDownloadOperationRef.current = operationId;
-    const download = services.download(blob);
-    dispatch(download.ok
-      ? { type: "export/succeeded", blob, operationId, revision }
-      : { type: "export/failed", message: safeFailure, retryBlob: blob, operationId, revision });
-  }, [dispatch, services, state.export.operationId, state.export.operationRevision, state.export.pendingDownloadBlob]);
-
   const build = useCallback(async () => {
     const active = activeOperationRef.current;
-    if (active?.revision === state.revision || state.export.status === "busy") return;
+    if (active?.revision === state.revision
+      || state.export.status === "building"
+      || state.export.status === "downloading") return;
     const revision = state.revision;
     const operationId = nextOperationIdRef.current + 1;
     nextOperationIdRef.current = operationId;
     activeOperationRef.current = { operationId, revision };
-    const retryBlob = state.export.retryRevision === revision ? state.export.retryBlob : undefined;
     dispatch({ type: "export/started", operationId, revision });
-    if (retryBlob) {
-      dispatch({ type: "export/package-built", blob: retryBlob, operationId, revision });
-      return;
-    }
     if (blocker) {
-      dispatch({ type: "export/failed", message: blocker, operationId, revision });
+      dispatch({ type: "export/build-failed", message: blocker, operationId, revision });
       return;
     }
     try {
@@ -85,14 +69,35 @@ export function useExportPackage(
       });
       const result = await services.buildPackage(snapshot);
       if (!result.ok) {
-        dispatch({ type: "export/failed", message: safeFailure, operationId, revision });
+        dispatch({ type: "export/build-failed", message: safeFailure, operationId, revision });
         return;
       }
-      dispatch({ type: "export/package-built", blob: result.blob, operationId, revision });
+      dispatch({ type: "export/package-built", builtPackage: result, operationId, revision });
     } catch {
-      dispatch({ type: "export/failed", message: safeFailure, operationId, revision });
+      dispatch({ type: "export/build-failed", message: safeFailure, operationId, revision });
     }
   }, [blocker, dispatch, services, state]);
 
-  return { blocker, build };
+  const download = useCallback(() => {
+    const builtPackage = state.export.builtPackage;
+    const revision = state.export.builtRevision;
+    if (!builtPackage
+      || revision === undefined
+      || revision !== state.revision
+      || activeDownloadRef.current) return;
+    activeDownloadRef.current = true;
+    dispatch({ type: "export/download-started", revision });
+    try {
+      const result = services.download(builtPackage.blob);
+      dispatch(result.ok
+        ? { type: "export/download-succeeded", revision }
+        : { type: "export/download-failed", revision, message: safeFailure });
+    } catch {
+      dispatch({ type: "export/download-failed", revision, message: safeFailure });
+    } finally {
+      activeDownloadRef.current = false;
+    }
+  }, [dispatch, services, state.export.builtPackage, state.export.builtRevision, state.revision]);
+
+  return { blocker, build, download };
 }

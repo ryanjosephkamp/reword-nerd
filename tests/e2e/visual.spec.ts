@@ -45,6 +45,8 @@ test("captures the approved representative workbench at all native QA viewports"
     ["tablet-1024x768.png", 1024, 768],
     ["mobile-412x915.png", 412, 915],
     ["mobile-390x844.png", 390, 844],
+    ["mobile-360x800.png", 360, 800],
+    ["mobile-320x720.png", 320, 720],
   ] as const) {
     await page.setViewportSize({ width, height });
     if (width < 768) {
@@ -53,5 +55,36 @@ test("captures the approved representative workbench at all native QA viewports"
     }
     await assertViewportContained(page);
     await page.screenshot({ path: `${screenshotDirectory}/${name}`, fullPage: false, animations: "disabled" });
+  }
+});
+
+test("captures the built package preview without responsive clipping", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Add supported files").setInputFiles([asPayload(textFixture)]);
+  await expect(page.getByLabel(`Extracted text for ${textFixture.name}`)).toHaveValue(/launch code is 314/);
+  await page.getByRole("button", { name: "Confirm review" }).click();
+  await page.getByRole("button", { name: "BUILD PACKAGE" }).click();
+  await expect(page.getByRole("heading", { name: "PACKAGE PREVIEW" })).toBeFocused();
+
+  for (const [name, width, height] of [
+    ["package-desktop-1586x992.png", 1586, 992],
+    ["package-mobile-320x720.png", 320, 720],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    if (width < 768) await page.getByRole("tab", { name: "PREVIEW" }).click();
+    await assertViewportContained(page);
+    const copyDecompose = page.getByRole("button", { name: /COPY.*DECOMPOSE/ });
+    const download = page.getByRole("button", { name: "DOWNLOAD ZIP" });
+    await expect(copyDecompose).toHaveCount(1);
+    await expect(download).toHaveCount(1);
+    await page.screenshot({ path: `${screenshotDirectory}/${name}`, fullPage: false, animations: "disabled" });
+    await copyDecompose.scrollIntoViewIfNeeded();
+    await expect(copyDecompose).toBeVisible();
+    await assertViewportContained(page);
+    await page.screenshot({ path: `${screenshotDirectory}/${name.replace("package-", "package-copy-")}`, fullPage: false, animations: "disabled" });
+    if (width < 768) {
+      await download.scrollIntoViewIfNeeded();
+      await expect(download).toBeVisible();
+    }
   }
 });

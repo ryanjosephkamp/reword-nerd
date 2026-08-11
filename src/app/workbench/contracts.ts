@@ -11,6 +11,8 @@ import type { ModelProfile } from "../../domain/profiles";
 import type { RewriteSettings } from "../../domain/settings";
 
 export type MobileTab = "files" | "preview" | "settings";
+export type PreviewMode = "source" | "package";
+export type BuiltPromptPackage = Extract<PromptPackageResult, { ok: true }>;
 
 export interface WorkbenchDocument extends WorkspaceDocument {
   batchId: string;
@@ -38,6 +40,8 @@ export interface WorkbenchState {
   customContextDraft: string;
   overrideEnabled: Record<string, boolean>;
   mobileTab: MobileTab;
+  previewMode: PreviewMode;
+  previewArtifactKey: string | null;
   settingsDrawerOpen: boolean;
   helpDialogOpen: boolean;
   intake: {
@@ -47,13 +51,12 @@ export interface WorkbenchState {
   };
   editor: Record<string, EditorRevisionState>;
   export: {
-    status: "idle" | "busy" | "success" | "failure";
+    status: "idle" | "building" | "ready" | "downloading" | "success" | "failure";
     safeMessage: string;
-    retryBlob?: Blob;
-    retryRevision?: number;
+    builtPackage?: BuiltPromptPackage;
+    builtRevision?: number;
     operationId?: number;
     operationRevision?: number;
-    pendingDownloadBlob?: Blob;
   };
   liveMessage: string;
   revision: number;
