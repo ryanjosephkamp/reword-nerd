@@ -1,8 +1,8 @@
 # Privacy and local-processing boundary
 
 `reword-nerd` processes the files you select in the current browser session.
-Validation, text extraction, hashing, review edits, prompt generation, and ZIP
-creation run locally in the browser.
+Validation, text extraction, hashing, review edits, prompt generation, package
+preview, clipboard handling, and ZIP creation run locally in the browser.
 
 ## What the application does not do
 
@@ -27,9 +27,16 @@ current workbench state changed; it does not save the session.
 ## Download boundary
 
 When you choose **BUILD PACKAGE**, the browser creates a local ZIP Blob and
-begins a normal browser download. After that point, the file is handled by your
+structured preview artifacts in memory; it does not download them. Choosing
+**DOWNLOAD ZIP** explicitly begins a normal browser download of that same Blob.
+After that point, the file is handled by your
 browser, its configured download destination, and your operating system. The
 application does not retain a copy after the session ends.
+
+The standalone HTML companion contains inline CSS and a small inline copy
+script. It has no external fonts, images, libraries, analytics, storage, or
+network requests. Copy uses the browser Clipboard API where available and a
+local selection fallback otherwise.
 
 ## Your manual model workflow
 

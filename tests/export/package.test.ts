@@ -1,5 +1,6 @@
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
+import { CURATED_MODEL_PROFILES } from "../../src/domain";
 import type { ExportDocumentInput } from "../../src/export";
 
 const encoder = new TextEncoder();
@@ -33,11 +34,7 @@ function documentInput(): ExportDocumentInput {
       customRequirements: "Keep citations.",
     },
     chosenProfile: {
-      id: "openai-general",
-      family: "openai",
-      label: "OpenAI / ChatGPT",
-      contextWindowTokens: 128_000,
-      lastReviewed: "2026-08-11",
+      ...CURATED_MODEL_PROFILES.find((profile) => profile.id === "openai-general")!,
       workflowNote: "Use the stages in order.",
     },
     promptSet: {
@@ -51,8 +48,8 @@ function documentInput(): ExportDocumentInput {
       estimateLabel: "Estimated tokens",
       sourceTokens: 3,
       workflowTokens: 3_012,
-      contextWindowTokens: 128_000,
-      ratio: 3_012 / 128_000,
+      contextWindowTokens: 1_050_000,
+      ratio: 3_012 / 1_050_000,
       oversized: false,
       acknowledgmentRequired: false,
     },
@@ -63,7 +60,22 @@ function documentInput(): ExportDocumentInput {
 }
 
 describe("prompt-package export", () => {
-  it("archives a confirmed document as a schema-v1 package with byte-preserved original", async () => {
+  it.each(CURATED_MODEL_PROFILES)("accepts the $label profile family at the package boundary", async (profile) => {
+    const { buildPromptPackage } = await import("../../src/export");
+    const source = documentInput();
+    source.chosenProfile = { ...profile };
+    source.contextAssessment = {
+      ...source.contextAssessment,
+      contextWindowTokens: profile.contextWindowTokens,
+      ratio: profile.contextWindowTokens === null ? null : 3_012 / profile.contextWindowTokens,
+    };
+
+    const result = await buildPromptPackage([source]);
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("archives a confirmed document as a schema-v2 package with byte-preserved original", async () => {
     // This catches omissions or transformations of the immutable original and reviewed extraction export contract.
     const { buildPromptPackage } = await import("../../src/export");
     const source = documentInput();
@@ -73,7 +85,8 @@ describe("prompt-package export", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("fixture should export");
     expect(result.filename).toBe("reword-nerd-prompt-package.zip");
-    expect(result.manifest.schemaVersion).toBe(1);
+    expect(result.manifest.schemaVersion).toBe(2);
+    expect(result.manifest.package.version).toBe("0.2.0");
     expect(result.manifest.documents).toHaveLength(1);
     expect(result.manifest.documents[0]).toMatchObject({
       key: "resume-notes--ea27ac66cf6a",
@@ -87,6 +100,10 @@ describe("prompt-package export", () => {
         unicodeCodePointCount: 11,
         sha256: "411ed191751617cc2382ef551395aa32216bdc628dba78643372e96760f91f74",
       },
+      combined: {
+        markdown: { path: "documents/resume-notes--ea27ac66cf6a/combined-prompts.md" },
+        html: { path: "documents/resume-notes--ea27ac66cf6a/combined-prompts.html" },
+      },
     });
 
     const archive = await JSZip.loadAsync(result.blob, { checkCRC32: true });
@@ -95,6 +112,63 @@ describe("prompt-package export", () => {
     await expect(
       archive.file("documents/resume-notes--ea27ac66cf6a/reviewed-extraction.md")?.async("string"),
     ).resolves.toBe("Reviewed 😀\n");
+  });
+
+  it("creates self-contained Markdown and HTML companions from the canonical prompt bytes", async () => {
+    // This catches combined files omitting the runbook, changing prompt text, or introducing remote resources.
+    const { buildPromptPackage } = await import("../../src/export");
+    const source = documentInput();
+    source.promptSet.decompose = "stage one\n````\nembedded fence";
+    source.promptSet.rewrite = "stage two </script><img src=x onerror=alert(1)>";
+
+    const result = await buildPromptPackage([source]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("fixture should export");
+    expect(result.artifacts).toHaveLength(1);
+    const artifact = result.artifacts[0];
+    expect(artifact.documentKey).toBe(result.manifest.documents[0].key);
+    expect(artifact.runbook).toMatchObject({
+      documentKey: result.manifest.documents[0].key,
+      originalDisplayName: source.documentName,
+      package: { version: "0.2.0" },
+      model: {
+        id: "openai-general",
+        promptStrategy: { id: "openai-chatgpt-v1", version: "2026-08-11-v1" },
+      },
+      settings: source.resolvedSettings,
+      responseMarkers: markerValues,
+    });
+    expect(Object.isFrozen(artifact.runbook)).toBe(true);
+    expect(Object.isFrozen(artifact.runbook.model)).toBe(true);
+    expect(Object.isFrozen(artifact.runbook.settings)).toBe(true);
+    expect(artifact.promptBlocks.map((block) => [block.stage, block.content])).toEqual([
+      ["decompose", source.promptSet.decompose],
+      ["rewrite", source.promptSet.rewrite],
+      ["verify", source.promptSet.verify],
+      ["final", source.promptSet.final],
+    ]);
+    expect(artifact.markdown.startsWith(artifact.runbookMarkdown)).toBe(true);
+    expect(artifact.markdown).toContain("`````text\nstage one\n````\nembedded fence\n`````");
+
+    const parsed = new DOMParser().parseFromString(artifact.html, "text/html");
+    expect(parsed.querySelectorAll(".prompt-section pre > code")).toHaveLength(4);
+    expect(Array.from(parsed.querySelectorAll(".prompt-section pre > code"), (node) => node.textContent)).toEqual([
+      source.promptSet.decompose,
+      source.promptSet.rewrite,
+      source.promptSet.verify,
+      source.promptSet.final,
+    ]);
+    expect(parsed.querySelectorAll("button[data-copy-target]")).toHaveLength(4);
+    expect(parsed.querySelectorAll("script")).toHaveLength(1);
+    expect(parsed.querySelector("img")).toBeNull();
+    expect(parsed.querySelector("script[src], link[href], img[src], iframe[src]")).toBeNull();
+
+    const archive = await JSZip.loadAsync(result.blob, { checkCRC32: true });
+    const record = result.manifest.documents[0];
+    await expect(archive.file(record.combined.markdown.path)?.async("string")).resolves.toBe(artifact.markdown);
+    await expect(archive.file(record.combined.html.path)?.async("string")).resolves.toBe(artifact.html);
+    await expect(archive.file("README.md")?.async("string")).resolves.toBe(artifact.runbookMarkdown);
   });
 
   it("returns a safe hash error when generated prompt hashing fails after input validation", async () => {
@@ -303,10 +377,23 @@ describe("prompt-package export", () => {
     const document = result.manifest.documents[0];
     expect(Object.keys(document)).toEqual([
       "key", "exportOrdinal", "originalDisplayName", "format", "original", "reviewedExtraction",
-      "settings", "model", "contextAssessment", "contextWarningAcknowledged", "prompts",
+      "settings", "model", "contextAssessment", "contextWarningAcknowledged", "prompts", "combined",
     ]);
     expect(document.settings).toEqual(documentInput().resolvedSettings);
-    expect(document.model).toEqual(documentInput().chosenProfile);
+    expect(document.model).toEqual({
+      id: documentInput().chosenProfile.id,
+      family: documentInput().chosenProfile.family,
+      label: documentInput().chosenProfile.label,
+      contextWindowTokens: documentInput().chosenProfile.contextWindowTokens,
+      lastReviewed: documentInput().chosenProfile.lastReviewed,
+      workflowNote: documentInput().chosenProfile.workflowNote,
+      promptStrategy: {
+        id: documentInput().chosenProfile.promptStrategy.id,
+        version: documentInput().chosenProfile.promptStrategy.version,
+        referenceModel: documentInput().chosenProfile.promptStrategy.referenceModel,
+        reviewedAt: documentInput().chosenProfile.promptStrategy.reviewedAt,
+      },
+    });
     expect(document.reviewedExtraction.warnings).toEqual(["Converted safely."]);
     expect(document.contextAssessment).toEqual(documentInput().contextAssessment);
 
@@ -317,14 +404,20 @@ describe("prompt-package export", () => {
       document.original.path,
       document.reviewedExtraction.path,
       ...(["decompose", "rewrite", "verify", "final"] as const).map((stage) => document.prompts[stage].path),
+      document.combined.markdown.path,
+      document.combined.html.path,
     ];
     const hashes = [
       document.original.sha256,
       document.reviewedExtraction.sha256,
       ...(["decompose", "rewrite", "verify", "final"] as const).map((stage) => document.prompts[stage].sha256),
+      document.combined.markdown.sha256,
+      document.combined.html.sha256,
     ];
     expect(Object.keys(archive.files)).toEqual([
       "README.md",
+      document.combined.html.path,
+      document.combined.markdown.path,
       document.original.path,
       document.prompts.decompose.path,
       document.prompts.rewrite.path,
@@ -340,7 +433,9 @@ describe("prompt-package export", () => {
     }
     const runbook = await archive.file("README.md")?.async("string");
     expect(runbook).toContain(`Selected model: ${document.model.label}`);
-    expect(runbook).toContain("Context estimate: 3012; known limit: 128000; required warning acknowledged: not required.");
+    expect(runbook).toContain("Context estimate: 3012; known limit: 1050000; required warning acknowledged: not required.");
+    expect(runbook).toContain("Reference model: GPT-5.6 Sol");
+    expect(runbook).toContain("Guidance version: 2026-08-11-v1");
     expect(runbook).toContain(JSON.stringify(document.settings));
     expect(runbook).toContain(document.model.workflowNote);
     expect(runbook).toContain(document.original.path);
@@ -360,7 +455,7 @@ describe("prompt-package export", () => {
     const nonBinaryRead = { ...documentInput(), original: { arrayBuffer: async () => "not binary" } as unknown as File };
     await expect(buildPromptPackage([nonBinaryRead])).resolves.toMatchObject({ ok: false, error: { code: "FILE_READ_FAILED" } });
 
-    for (const failingCall of [1, 2, 3, 4, 5, 6]) {
+    for (const failingCall of [1, 2, 3, 4, 5, 6, 7, 8]) {
       let calls = 0;
       let archiveCalls = 0;
       const result = await buildPromptPackage([documentInput()], {

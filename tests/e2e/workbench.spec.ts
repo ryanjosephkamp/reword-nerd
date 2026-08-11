@@ -62,8 +62,10 @@ async function confirmSelected(page: Page) {
 }
 
 async function captureDownload(page: Page): Promise<Download> {
-  const pending = page.waitForEvent("download");
   await page.getByRole("button", { name: "BUILD PACKAGE" }).click();
+  await expect(page.getByRole("heading", { name: "PACKAGE PREVIEW" })).toBeFocused();
+  const pending = page.waitForEvent("download");
+  await page.getByRole("button", { name: "DOWNLOAD ZIP" }).click();
   return pending;
 }
 
@@ -79,7 +81,7 @@ function expectedKey(fixture: BrowserFixture): string {
   return `${base}--${sha256(fixture.buffer).slice(0, 12)}`;
 }
 
-test("mixed real formats produce a complete, byte-preserving schema-v1 prompt package", async ({ page }) => {
+test("mixed real formats produce a complete, previewed, byte-preserving schema-v2 prompt package", async ({ page }) => {
   // This catches browser extraction/export drift that unit-level parser and archive adapters cannot see.
   const runtimeErrors = monitorRuntime(page);
   const docx = await createDocxFixture();
@@ -102,6 +104,7 @@ test("mixed real formats produce a complete, byte-preserving schema-v1 prompt pa
   await confirmSelected(page);
 
   await page.getByLabel("Tone").selectOption("academic");
+  await page.getByLabel("Custom requirements").fill("  Preserve  exact spacing.\n\nKeep the blank line.  ");
   await selectDocument(page, pdf.name);
   await page.getByRole("switch", { name: /PER-FILE OVERRIDE/i }).check();
   await page.getByLabel("Length").selectOption("concise");
@@ -127,10 +130,12 @@ test("mixed real formats produce a complete, byte-preserving schema-v1 prompt pa
       original: { path: string; sha256: string; byteCount: number };
       reviewedExtraction: { path: string; sha256: string };
       settings: { tone: string; length: string };
+      model: { promptStrategy: { id: string; version: string; referenceModel: string; reviewedAt: string } };
       prompts: Record<string, { path: string; sha256: string }>;
+      combined: { markdown: { path: string; sha256: string }; html: { path: string; sha256: string } };
     }>;
   };
-  expect(manifest.schemaVersion).toBe(1);
+  expect(manifest.schemaVersion).toBe(2);
   expect(manifest.workflow.stages).toEqual(["decompose", "rewrite", "verify", "final"]);
   expect(Object.values(manifest.workflow.responseMarkers)).toEqual(markers);
   expect(manifest.documents).toHaveLength(4);
@@ -149,6 +154,8 @@ test("mixed real formats produce a complete, byte-preserving schema-v1 prompt pa
       `documents/${key}/prompts/02-rewrite.md`,
       `documents/${key}/prompts/03-verify.md`,
       `documents/${key}/prompts/04-final.md`,
+      `documents/${key}/combined-prompts.md`,
+      `documents/${key}/combined-prompts.html`,
     ];
     expectedPaths.push(...documentPaths);
     const original = await archive.file(record!.original.path)?.async("nodebuffer");
@@ -160,6 +167,12 @@ test("mixed real formats produce a complete, byte-preserving schema-v1 prompt pa
     expect(record!.reviewedExtraction.sha256).toBe(sha256(reviewed!));
     expect(record!.settings.tone).toBe("academic");
     expect(record!.settings.length).toBe(fixture.name === pdf.name ? "concise" : "preserve");
+    expect(record!.model.promptStrategy).toEqual({
+      id: "openai-chatgpt-v1",
+      version: "2026-08-11-v1",
+      referenceModel: "GPT-5.6 Sol",
+      reviewedAt: "2026-08-11",
+    });
     for (const [stage, promptRecord] of Object.entries(record!.prompts)) {
       const prompt = await archive.file(promptRecord.path)?.async("string");
       expect(prompt).toContain("===== BEGIN SOURCE DOCUMENT =====");
@@ -169,9 +182,43 @@ test("mixed real formats produce a complete, byte-preserving schema-v1 prompt pa
       if (stage === "verify" || stage === "final") expect(prompt).toContain(markers[1]);
       if (stage === "final") expect(prompt).toContain(markers[2]);
     }
+    const combinedMarkdown = await archive.file(record!.combined.markdown.path)?.async("string");
+    const combinedHtml = await archive.file(record!.combined.html.path)?.async("string");
+    const runbook = await archive.file("README.md")?.async("string");
+    expect(combinedMarkdown?.startsWith(runbook!)).toBe(true);
+    expect(record!.combined.markdown.sha256).toBe(sha256(combinedMarkdown!));
+    expect(record!.combined.html.sha256).toBe(sha256(combinedHtml!));
+    expect(combinedHtml).not.toMatch(/<(?:img|link|iframe|script)\b[^>]+(?:src|href)\s*=\s*["']https?:/iu);
   }
   expect(Object.keys(archive.files).sort()).toEqual(expectedPaths.sort());
   expect(Object.values(archive.files).every((entry) => !entry.dir)).toBe(true);
+
+  const firstRecord = manifest.documents[0];
+  const firstPrompt = await archive.file(firstRecord.prompts.decompose.path)!.async("string");
+  const standaloneHtml = await archive.file(firstRecord.combined.html.path)!.async("string");
+  await page.setContent(standaloneHtml);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: (text: string) => { (window as unknown as { capturedCopy: string }).capturedCopy = text; } },
+    });
+  });
+  const firstCode = page.locator(".prompt-section pre code").first();
+  expect(await firstCode.textContent()).toBe(firstPrompt);
+  await page.getByRole("button", { name: "Copy Decompose" }).click();
+  await expect(page.getByRole("status")).toHaveText("Decompose copied.");
+  expect(await page.evaluate(() => (window as unknown as { capturedCopy: string }).capturedCopy)).toBe(firstPrompt);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+    Object.defineProperty(document, "execCommand", { configurable: true, value: () => true });
+  });
+  await page.getByRole("button", { name: "Copy Rewrite" }).click();
+  await expect(page.getByRole("status")).toHaveText("Rewrite copied.");
+  await page.evaluate(() => {
+    Object.defineProperty(document, "execCommand", { configurable: true, value: () => false });
+  });
+  await page.getByRole("button", { name: "Copy Verify" }).click();
+  await expect(page.getByRole("status")).toContainText("Select the Verify prompt manually");
   expect(runtimeErrors).toEqual([]);
 });
 
@@ -356,8 +403,12 @@ test("keyboard navigation, modal focus, live state, removal focus, and reduced m
   await expect(page.locator("[aria-live='polite']")).toHaveText("Review complete");
   const build = page.getByRole("button", { name: "BUILD PACKAGE" });
   await expect(build).toBeEnabled();
-  const download = page.waitForEvent("download");
   await build.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "PACKAGE PREVIEW" })).toBeFocused();
+  const download = page.waitForEvent("download");
+  const downloadButton = page.getByRole("button", { name: "DOWNLOAD ZIP" });
+  await downloadButton.focus();
   await page.keyboard.press("Enter");
   expect((await download).suggestedFilename()).toBe("reword-nerd-prompt-package.zip");
   expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(true);

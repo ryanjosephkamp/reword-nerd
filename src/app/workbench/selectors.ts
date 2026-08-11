@@ -20,6 +20,12 @@ export function selectResolvedSettings(state: WorkbenchState, documentId: string
   );
 }
 
+export function selectEditableSettings(state: WorkbenchState, documentId: string): RewriteSettings {
+  const document = state.documents.find((item) => item.id === documentId);
+  if (!document || !state.overrideEnabled[documentId]) return state.globalSettings;
+  return { ...state.globalSettings, ...document.settingsOverride };
+}
+
 export function selectWorkingProfile(state: WorkbenchState): ModelProfile {
   if (state.customContextDraft.trim() && (!/^\d+$/.test(state.customContextDraft) || Number(state.customContextDraft) <= 0)) {
     throw new Error("Context limit must be a positive whole number or unknown.");
@@ -82,7 +88,8 @@ export function selectFirstExportBlocker(state: WorkbenchState): string | null {
   } catch (error) {
     return error instanceof Error ? error.message : "One or more settings need attention.";
   }
-  if (state.export.status === "busy") return "Exporting package…";
+  if (state.export.status === "building") return "Building package…";
+  if (state.export.status === "downloading") return "Downloading package…";
   return null;
 }
 

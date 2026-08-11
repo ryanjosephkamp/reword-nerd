@@ -12,9 +12,10 @@ File API / drop event
   -> format-specific extraction
   -> editable, explicit review
   -> settings and context assessment
-  -> four prompt renderings
-  -> manifest + ZIP Blob
-  -> browser download
+  -> provider-guided four-prompt rendering
+  -> manifest + combined Markdown/HTML + ZIP Blob
+  -> in-site package preview
+  -> optional browser download
 ```
 
 ### Admission and extraction
@@ -40,28 +41,35 @@ package is enabled.
 
 Global writing settings resolve to a per-document setting object. A file may
 enable a local override without changing the global defaults. The selected
-model-family profile is descriptive metadata for the manual workflow. The
+model-family profile is descriptive metadata plus a versioned prompt-layout
+strategy for the manual workflow; it never connects to a provider. The
 context estimate uses the extracted source plus the expected four-stage
 exchange; an oversized estimate requires a document-specific acknowledgement.
 
 ### Prompt rendering
 
 `src/prompting/renderPromptSet.ts` imports the four root Markdown templates as
-raw assets and adds the document, resolved settings, selected profile, and
-prior-stage response markers. The templates remain the source of truth for the
-manual Decompose, Rewrite, Verify, and Final workflow.
+raw assets and adds the document, resolved settings, selected profile strategy,
+and prior-stage response markers. The templates remain the source of truth for
+the manual Decompose, Rewrite, Verify, and Final workflow. Strategy metadata can
+select task-first or source-first/task-last ordering and Markdown or XML
+delimiters without changing canonical stage semantics or markers.
 
 ### Package generation
 
 `src/export/` snapshots valid, reviewed inputs before asynchronous file reads.
 It creates a document key from a normalized name and source digest, builds all
-required per-document files, and records their SHA-256 hashes in schema v1.
+required per-document files, builds both combined companions from one immutable
+structured artifact, and records their SHA-256 hashes and strategy provenance
+in schema v2.
 The archive uses deterministic entry ordering, a fixed timestamp, and fixed
 metadata so equivalent inputs create equivalent archive contents.
 
-Original uploads are stored without compression; generated Markdown and JSON
-entries use DEFLATE level 9. JSZip produces a browser `Blob`, and the download
-helper uses an object URL only long enough to trigger the browser download.
+Original uploads are stored without compression; generated Markdown, HTML, and
+JSON entries use DEFLATE level 9. JSZip produces a browser `Blob`. The accepted
+Blob and structured artifacts remain revision-bound in memory for preview. An
+explicit download uses an object URL only long enough to trigger the browser
+download; any content, review, profile, or settings mutation invalidates it.
 
 ## Main modules
 
@@ -71,10 +79,10 @@ helper uses an object URL only long enough to trigger the browser download.
 | `src/app/workbench/` | Reducer, selectors, browser services, hooks, and UI components. |
 | `src/domain/` | Format admission, extraction, SHA-256 hashing, profiles, settings, and context assessment. |
 | `src/prompting/` | Prompt-template loading and per-document rendering. |
-| `src/export/` | ZIP construction, manifest contract, safe archive paths, and browser download. |
+| `src/export/` | Combined artifacts, ZIP construction, manifest contract, safe archive paths, and browser download. |
 | `prompts/` | Canonical four-stage Markdown prompt templates. |
 | `tests/` | Unit, component, archive, and Playwright browser coverage. |
 
-See [privacy](privacy.md), [extraction limitations](extraction-limitations.md),
-and [manifest v1](manifest-v1.md) for the corresponding boundaries and data
-contract.
+See [privacy](privacy.md), [model guidance](model-guidance/README.md),
+[extraction limitations](extraction-limitations.md), and [manifest v2](manifest-v2.md)
+for the corresponding boundaries and current data contract.

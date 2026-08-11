@@ -21,6 +21,8 @@ reword-nerd/
 │   ├── privacy.md
 │   ├── extraction-limitations.md
 │   ├── manifest-v1.md
+│   ├── manifest-v2.md
+│   ├── model-guidance/             # dated provider research + runtime parity
 │   ├── design-principles.md
 │   ├── design-system.md
 │   └── design/references/          # approved visual references
@@ -29,7 +31,7 @@ reword-nerd/
 │   │   ├── App.tsx                 # composition root
 │   │   └── workbench/              # state, hooks, services, components
 │   ├── domain/                     # admission, extraction, settings, profiles
-│   ├── export/                     # package contract, ZIP and download helpers
+│   ├── export/                     # combined artifacts, manifest, ZIP, download
 │   ├── prompting/                  # template renderer
 │   ├── styles/                     # terminal tokens and responsive workbench CSS
 │   ├── types/                      # third-party type declarations

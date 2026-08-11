@@ -26,6 +26,7 @@ function packageResult(blob: Blob): PromptPackageResult {
     blob,
     filename: "reword-nerd-prompt-package.zip",
     manifest: {} as never,
+    artifacts: [],
   };
 }
 
@@ -62,6 +63,7 @@ function ExportHarness({ services }: { services: WorkbenchServices }) {
 
   return <>
     <button type="button" onClick={() => void exporter.build()}>Build</button>
+    <button type="button" onClick={() => exporter.download()}>Download</button>
     <button
       type="button"
       onClick={() => {
@@ -117,6 +119,7 @@ function ExportHarness({ services }: { services: WorkbenchServices }) {
     <output data-testid="dirty">{String(selectDirty(state))}</output>
     <output data-testid="revision">{state.revision}</output>
     <output data-testid="last-exported-revision">{state.lastExportedRevision}</output>
+    <output data-testid="artifact-count">{state.export.builtPackage?.artifacts.length ?? 0}</output>
   </>;
 }
 
@@ -192,11 +195,16 @@ describe("useExportPackage operation guards", () => {
       );
 
       fireEvent.click(screen.getByRole("button", { name: "Build" }));
-      await waitFor(() => expect(download).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(screen.getByTestId("export-status")).toHaveTextContent("ready"));
 
-      expect(download.mock.calls[0][0]).toBe(currentBlob);
+      expect(download).not.toHaveBeenCalled();
       expect(buildPackage).toHaveBeenCalledTimes(2);
       assertCurrent(buildPackage.mock.calls[1][0][0]);
+      expect(screen.getByTestId("dirty")).toHaveTextContent("true");
+
+      fireEvent.click(screen.getByRole("button", { name: "Download" }));
+
+      expect(download.mock.calls[0][0]).toBe(currentBlob);
       expect(screen.getByTestId("dirty")).toHaveTextContent("false");
     },
   );
@@ -211,8 +219,10 @@ describe("useExportPackage operation guards", () => {
     fireEvent.click(screen.getByRole("button", { name: "Build twice concurrently" }));
     await waitFor(() => expect(buildPackage).toHaveBeenCalledTimes(1));
     await act(async () => build.resolve(packageResult(blob)));
-    await waitFor(() => expect(download).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId("export-status")).toHaveTextContent("ready"));
 
+    expect(download).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Download" }));
     expect(download.mock.calls[0][0]).toBe(blob);
   });
 
@@ -234,14 +244,16 @@ describe("useExportPackage operation guards", () => {
     await waitFor(() => expect(buildPackage).toHaveBeenCalledTimes(2));
 
     await act(async () => currentBuild.resolve(packageResult(currentBlob)));
-    await waitFor(() => expect(download).toHaveBeenCalledTimes(1));
-    expect(download.mock.calls[0][0]).toBe(currentBlob);
-    expect(screen.getByTestId("dirty")).toHaveTextContent("false");
+    await waitFor(() => expect(screen.getByTestId("export-status")).toHaveTextContent("ready"));
+    expect(download).not.toHaveBeenCalled();
+    expect(screen.getByTestId("dirty")).toHaveTextContent("true");
 
     await act(async () => staleBuild.resolve(packageResult(staleBlob)));
 
+    expect(download).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Download" }));
     expect(download).toHaveBeenCalledTimes(1);
-    expect(download.mock.calls[0][0]).not.toBe(staleBlob);
+    expect(download.mock.calls[0][0]).toBe(currentBlob);
     expect(screen.getByTestId("dirty")).toHaveTextContent("false");
     expect(screen.getByTestId("last-exported-revision").textContent).toBe(
       screen.getByTestId("revision").textContent,
@@ -261,10 +273,14 @@ describe("useExportPackage operation guards", () => {
     render(<ExportHarness services={testServices(buildPackage, download)} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Build" }));
+    await waitFor(() => expect(screen.getByTestId("export-status")).toHaveTextContent("ready"));
+    expect(download).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Download" }));
     await waitFor(() => expect(screen.getByTestId("export-status")).toHaveTextContent("failure"));
     expect(screen.getByTestId("dirty")).toHaveTextContent("true");
 
-    fireEvent.click(screen.getByRole("button", { name: "Build" }));
+    fireEvent.click(screen.getByRole("button", { name: "Download" }));
     await waitFor(() => expect(screen.getByTestId("export-status")).toHaveTextContent("success"));
 
     expect(buildPackage).toHaveBeenCalledTimes(1);

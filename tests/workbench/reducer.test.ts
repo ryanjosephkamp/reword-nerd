@@ -1,4 +1,5 @@
 import { DEFAULT_SETTINGS, type WorkspaceDocument } from "../../src/domain";
+import type { BuiltPromptPackage } from "../../src/app/workbench/contracts";
 import {
   createInitialWorkbenchState,
   workbenchReducer,
@@ -28,6 +29,16 @@ function document(
     requiresReview: status !== "ready",
     settingsOverride: {},
     contextWarningAcknowledged: true,
+  };
+}
+
+function builtPackage(): BuiltPromptPackage {
+  return {
+    ok: true,
+    blob: new Blob(["zip"]),
+    filename: "reword-nerd-prompt-package.zip",
+    manifest: {} as never,
+    artifacts: [],
   };
 }
 
@@ -187,7 +198,7 @@ describe("workbench reducer", () => {
     expect(state.documents.map((item) => item.id)).toEqual(["gamma"]);
   });
 
-  it("orders export blockers and makes a successful export clean until mutation", () => {
+  it("orders export blockers and makes only an explicit download clean until mutation", () => {
     let state = createInitialWorkbenchState();
     expect(selectFirstExportBlocker(state)).toBe("Add at least one reviewed document before exporting.");
 
@@ -216,14 +227,21 @@ describe("workbench reducer", () => {
       revision: exportedRevision,
     });
     state = workbenchReducer(state, {
-      type: "export/succeeded",
-      blob: new Blob(["zip"]),
+      type: "export/package-built",
+      builtPackage: builtPackage(),
       operationId: 1,
       revision: exportedRevision,
     });
 
+    expect(state.export.status).toBe("ready");
+    expect(selectDirty(state)).toBe(true);
+    expect(state.export.builtPackage?.blob).toBeInstanceOf(Blob);
+
+    state = workbenchReducer(state, { type: "export/download-started", revision: exportedRevision });
+    state = workbenchReducer(state, { type: "export/download-succeeded", revision: exportedRevision });
+
     expect(selectDirty(state)).toBe(false);
-    expect(state.export.retryBlob).toBeInstanceOf(Blob);
+    expect(state.export.builtPackage?.blob).toBeInstanceOf(Blob);
 
     state = workbenchReducer(state, {
       type: "settings/global-changed",
@@ -231,7 +249,7 @@ describe("workbench reducer", () => {
       value: "expanded",
     });
     expect(selectDirty(state)).toBe(true);
-    expect(state.export.retryBlob).toBeUndefined();
+    expect(state.export.builtPackage).toBeUndefined();
   });
 
   it("starts with the Task 2 defaults without sharing mutable settings", () => {
@@ -240,6 +258,8 @@ describe("workbench reducer", () => {
 
     expect(left.globalSettings).toEqual(DEFAULT_SETTINGS);
     expect(left.globalSettings).not.toBe(right.globalSettings);
+    expect(left.selectedProfileId).toBe("openai-general");
+    expect(left.workingProfile.label).toBe("OpenAI / ChatGPT");
   });
 
   it("makes a current hash failure recoverable without accepting an unhashed review", () => {

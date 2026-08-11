@@ -1,7 +1,7 @@
 import type { RewriteSettings, Tone, Formality, LengthPreference } from "../../../domain";
 import { CURATED_MODEL_PROFILES, MAX_CUSTOM_REQUIREMENTS_LENGTH } from "../../../domain";
 import type { WorkbenchState } from "../contracts";
-import { selectResolvedSettings } from "../selectors";
+import { selectEditableSettings } from "../selectors";
 
 interface SettingsInspectorProps {
   state: WorkbenchState;
@@ -25,7 +25,7 @@ function title(value: string): string {
 export function SettingsInspector(props: SettingsInspectorProps) {
   const selected = props.state.documents.find((document) => document.id === props.state.selectedDocumentId);
   const override = selected ? props.state.overrideEnabled[selected.id] : false;
-  const settings = selected ? selectResolvedSettings(props.state, selected.id) : props.state.globalSettings;
+  const settings = selected ? selectEditableSettings(props.state, selected.id) : props.state.globalSettings;
   const change = (field: keyof RewriteSettings, value: RewriteSettings[keyof RewriteSettings]) => {
     if (selected && override) props.onOverrideChange(field, value);
     else props.onGlobalChange(field, value);
@@ -45,6 +45,9 @@ export function SettingsInspector(props: SettingsInspectorProps) {
     {props.state.selectedProfileId === "custom" ? <label>Model label
       <input required value={props.state.customProfileLabel} onChange={(event) => props.onProfileLabel(event.currentTarget.value)} />
     </label> : null}
+    {props.state.selectedProfileId === "custom" ? <p className="custom-profile-help">
+      Use Custom model for local, self-hosted, fine-tuned, or otherwise unlisted models.
+    </p> : null}
     <label>Context limit
       <input
         inputMode="numeric"

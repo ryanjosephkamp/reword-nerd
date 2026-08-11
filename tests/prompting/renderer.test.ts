@@ -24,7 +24,8 @@ describe("four-stage prompt rendering", () => {
       customRequirements: "Keep citation style.",
     });
 
-    const promptSet = prompting.renderPromptSet(source, resolved, profiles.CURATED_MODEL_PROFILES[0]);
+    const profile = profiles.CURATED_MODEL_PROFILES.find((item) => item.id === "openai-general")!;
+    const promptSet = prompting.renderPromptSet(source, resolved, profile);
     const stageTemplates = [
       ["decompose", "01_decompose.md"],
       ["rewrite", "02_rewrite.md"],
@@ -44,9 +45,44 @@ describe("four-stage prompt rendering", () => {
       expect(rendered).toContain("Formality: Formal");
       expect(rendered).toContain("Length: Concise");
       expect(rendered).toContain("Output language: English");
-      expect(rendered).toContain("Custom requirements: Keep citation style.");
+      expect(rendered).toContain("===== BEGIN CUSTOM REQUIREMENTS =====\nKeep citation style.\n===== END CUSTOM REQUIREMENTS =====");
       expect(rendered).toContain(`===== BEGIN SOURCE DOCUMENT =====\n${source}===== END SOURCE DOCUMENT =====`);
     }
+  });
+
+  it("uses the selected provider strategy without changing canonical stage text", async () => {
+    // This catches a generic one-layout renderer that ignores long-context and delimiter guidance.
+    const prompting = await import("../../src/prompting/renderPromptSet");
+    const settings = await import("../../src/domain/settings");
+    const profiles = await import("../../src/domain/profiles");
+    const canonical = readFileSync("prompts/01_decompose.md", "utf8");
+    const profile = profiles.CURATED_MODEL_PROFILES.find((item) => item.id === "anthropic-general")!;
+
+    const prompt = prompting.renderPromptSet("Long source", settings.DEFAULT_SETTINGS, profile).decompose;
+
+    expect(prompt).toContain("## Model-Specific Execution Guidance");
+    expect(prompt).toContain("Reference model: Claude Opus 5");
+    expect(prompt).toContain("<source_document>\nLong source\n</source_document>");
+    expect(prompt.indexOf("<source_document>")).toBeLessThan(prompt.indexOf(canonical));
+    expect(prompt.endsWith(canonical)).toBe(true);
+  });
+
+  it("preserves multiline custom requirements inside a named artifact", async () => {
+    // This catches flattening or trimming of meaningful internal spaces and blank lines.
+    const prompting = await import("../../src/prompting/renderPromptSet");
+    const settings = await import("../../src/domain/settings");
+    const profiles = await import("../../src/domain/profiles");
+    const profile = profiles.CURATED_MODEL_PROFILES.find((item) => item.id === "custom")!;
+    const resolved = settings.resolveSettings(settings.DEFAULT_SETTINGS, {
+      customRequirements: "  Keep  this spacing.\n\nRetain the blank line.  ",
+    });
+
+    const prompt = prompting.renderPromptSet("Source", resolved, profile).rewrite;
+
+    expect(prompt).toContain(
+      "===== BEGIN CUSTOM REQUIREMENTS =====\nKeep  this spacing.\n\nRetain the blank line.\n===== END CUSTOM REQUIREMENTS =====",
+    );
+    expect(prompt).toContain("Use a conservative provider-neutral prompt structure");
   });
 
   it("uses only the intended response markers in the intended stage order", async () => {
@@ -54,7 +90,8 @@ describe("four-stage prompt rendering", () => {
     const prompting = await import("../../src/prompting/renderPromptSet");
     const settings = await import("../../src/domain/settings");
     const profiles = await import("../../src/domain/profiles");
-    const promptSet = prompting.renderPromptSet("Source", settings.DEFAULT_SETTINGS, profiles.CURATED_MODEL_PROFILES[4]);
+    const profile = profiles.CURATED_MODEL_PROFILES.find((item) => item.id === "custom")!;
+    const promptSet = prompting.renderPromptSet("Source", settings.DEFAULT_SETTINGS, profile);
 
     expect(markers.filter((marker) => promptSet.decompose.includes(marker))).toEqual([]);
     expect(markers.filter((marker) => promptSet.rewrite.includes(marker))).toEqual([markers[0]]);
@@ -93,9 +130,10 @@ describe("four-stage prompt rendering", () => {
     const settings = await import("../../src/domain/settings");
     const profiles = await import("../../src/domain/profiles");
 
-    const promptSet = prompting.renderPromptSet("Source", settings.DEFAULT_SETTINGS, profiles.CURATED_MODEL_PROFILES[5]);
+    const profile = profiles.CURATED_MODEL_PROFILES.find((item) => item.id === "custom")!;
+    const promptSet = prompting.renderPromptSet("Source", settings.DEFAULT_SETTINGS, profile);
 
-    expect(promptSet.decompose).toContain("Custom requirements: None.");
+    expect(promptSet.decompose).toContain("===== BEGIN CUSTOM REQUIREMENTS =====\nNone.\n===== END CUSTOM REQUIREMENTS =====");
     expect(promptSet.final).toContain("Selected model: Custom model");
   });
 });

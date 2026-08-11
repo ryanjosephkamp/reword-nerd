@@ -1,7 +1,7 @@
 import type { ContextAssessment } from "../domain/context";
 import type { DocumentFormat, ManifestDocumentInput, PromptSet } from "../domain/contracts";
 import type { HashAdapter } from "../domain/extraction";
-import type { ModelProfile } from "../domain/profiles";
+import type { ModelProfile, PromptStage } from "../domain/profiles";
 import type { RewriteSettings } from "../domain/settings";
 
 export interface ExportDocumentInput extends ManifestDocumentInput {
@@ -39,15 +39,18 @@ export interface ManifestDocumentRecord {
   original: { path: string; byteCount: number; sha256: string };
   reviewedExtraction: { path: string; unicodeCodePointCount: number; sha256: string; warnings: string[] };
   settings: RewriteSettings;
-  model: Pick<ModelProfile, "id" | "family" | "label" | "contextWindowTokens" | "lastReviewed" | "workflowNote">;
+  model: Pick<ModelProfile, "id" | "family" | "label" | "contextWindowTokens" | "lastReviewed" | "workflowNote"> & {
+    promptStrategy: Pick<ModelProfile["promptStrategy"], "id" | "version" | "referenceModel" | "reviewedAt">;
+  };
   contextAssessment: ContextAssessment;
   contextWarningAcknowledged: boolean;
   prompts: Record<keyof PromptSet, ManifestPromptRecord>;
+  combined: { markdown: ManifestPromptRecord; html: ManifestPromptRecord };
 }
 
 export interface PromptPackageManifest {
-  schemaVersion: 1;
-  package: { name: "reword-nerd"; version: "0.1.0"; format: "manual-four-stage-prompt-package" };
+  schemaVersion: 2;
+  package: { name: "reword-nerd"; version: "0.2.0"; format: "manual-four-stage-prompt-package" };
   archive: {
     entryOrder: "lexicographic-code-unit-ascending";
     timestamp: "1980-01-01T00:00:00.000Z";
@@ -62,8 +65,35 @@ export interface PromptPackageManifest {
   documents: ManifestDocumentRecord[];
 }
 
+export interface CombinedPromptBlock {
+  stage: PromptStage;
+  title: string;
+  content: string;
+}
+
+export interface CombinedPromptRunbook {
+  package: PromptPackageManifest["package"];
+  documentKey: string;
+  originalDisplayName: string;
+  model: ManifestDocumentRecord["model"];
+  settings: RewriteSettings;
+  contextAssessment: ContextAssessment;
+  contextWarningAcknowledged: boolean;
+  responseMarkers: PromptPackageManifest["workflow"]["responseMarkers"];
+}
+
+export interface CombinedPromptArtifact {
+  documentKey: string;
+  originalDisplayName: string;
+  runbook: Readonly<CombinedPromptRunbook>;
+  runbookMarkdown: string;
+  promptBlocks: readonly Readonly<CombinedPromptBlock>[];
+  markdown: string;
+  html: string;
+}
+
 export type PromptPackageResult =
-  | { ok: true; blob: Blob; filename: "reword-nerd-prompt-package.zip"; manifest: PromptPackageManifest }
+  | { ok: true; blob: Blob; filename: "reword-nerd-prompt-package.zip"; manifest: PromptPackageManifest; artifacts: readonly CombinedPromptArtifact[] }
   | { ok: false; error: ExportFailure };
 
 export interface ExportDependencies {

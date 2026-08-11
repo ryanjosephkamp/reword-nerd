@@ -1,11 +1,12 @@
 import {
   CURATED_MODEL_PROFILES,
+  DEFAULT_MODEL_PROFILE_ID,
   DEFAULT_SETTINGS,
   type ExtractionResult,
   type RewriteSettings,
   type WorkspaceDocument,
 } from "../../domain";
-import type { MobileTab, WorkbenchDocument, WorkbenchState } from "./contracts";
+import type { BuiltPromptPackage, MobileTab, PreviewMode, WorkbenchDocument, WorkbenchState } from "./contracts";
 
 type IntakeDocument = { document: WorkspaceDocument; uploadOrdinal: number };
 
@@ -32,16 +33,21 @@ export type WorkbenchAction =
   | { type: "profile/custom-context-draft-changed"; value: string; parsed: number | null }
   | { type: "context/acknowledged"; documentId: string; acknowledged: boolean }
   | { type: "mobile/tab-changed"; tab: MobileTab }
+  | { type: "preview/mode-changed"; mode: PreviewMode }
+  | { type: "preview/artifact-selected"; documentKey: string }
   | { type: "drawer/changed"; open: boolean }
   | { type: "help/changed"; open: boolean }
   | { type: "focus/consumed" }
   | { type: "export/started"; operationId: number; revision: number }
-  | { type: "export/package-built"; operationId: number; revision: number; blob: Blob }
-  | { type: "export/succeeded"; operationId: number; revision: number; blob: Blob }
-  | { type: "export/failed"; operationId: number; revision: number; message: string; retryBlob?: Blob }
+  | { type: "export/package-built"; operationId: number; revision: number; builtPackage: BuiltPromptPackage }
+  | { type: "export/build-failed"; operationId: number; revision: number; message: string }
+  | { type: "export/download-started"; revision: number }
+  | { type: "export/download-succeeded"; revision: number }
+  | { type: "export/download-failed"; revision: number; message: string }
   | { type: "live/announced"; message: string };
 
-const firstProfile = CURATED_MODEL_PROFILES[0];
+const firstProfile = CURATED_MODEL_PROFILES.find((profile) => profile.id === DEFAULT_MODEL_PROFILE_ID)
+  ?? CURATED_MODEL_PROFILES[0];
 
 export function createInitialWorkbenchState(): WorkbenchState {
   return {
@@ -54,6 +60,8 @@ export function createInitialWorkbenchState(): WorkbenchState {
     customContextDraft: "",
     overrideEnabled: {},
     mobileTab: "files",
+    previewMode: "source",
+    previewArtifactKey: null,
     settingsDrawerOpen: false,
     helpDialogOpen: false,
     intake: { dragging: false, activeBatchId: null, issues: [] },
@@ -72,6 +80,8 @@ function changed(state: WorkbenchState, patch: Partial<WorkbenchState>): Workben
     ...patch,
     revision: state.revision + 1,
     export: { status: "idle", safeMessage: "" },
+    previewMode: "source",
+    previewArtifactKey: null,
   };
 }
 
@@ -327,6 +337,12 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
       });
     case "mobile/tab-changed":
       return { ...state, mobileTab: action.tab };
+    case "preview/mode-changed":
+      if (action.mode === "package" && !state.export.builtPackage) return state;
+      return { ...state, previewMode: action.mode };
+    case "preview/artifact-selected":
+      if (!state.export.builtPackage?.artifacts.some((artifact) => artifact.documentKey === action.documentKey)) return state;
+      return { ...state, previewArtifactKey: action.documentKey };
     case "drawer/changed":
       return { ...state, settingsDrawerOpen: action.open };
     case "help/changed":
@@ -334,12 +350,12 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
     case "focus/consumed":
       return { ...state, focusTarget: null };
     case "export/started":
-      if (state.export.status === "busy" || action.revision !== state.revision) return state;
+      if (state.export.status === "building" || action.revision !== state.revision) return state;
       return {
         ...state,
         export: {
-          status: "busy",
-          safeMessage: "Exporting package…",
+          status: "building",
+          safeMessage: "Building package…",
           operationId: action.operationId,
           operationRevision: action.revision,
         },
@@ -349,37 +365,57 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
       return {
         ...state,
         export: {
-          ...state.export,
-          status: "busy",
-          safeMessage: "Exporting package…",
-          pendingDownloadBlob: action.blob,
+          status: "ready",
+          safeMessage: "Package ready.",
+          builtPackage: action.builtPackage,
+          builtRevision: action.revision,
         },
+        mobileTab: "preview",
+        previewMode: "package",
+        previewArtifactKey: action.builtPackage.artifacts[0]?.documentKey ?? null,
+        focusTarget: "package-preview",
+        liveMessage: "Package ready.",
       };
-    case "export/succeeded":
-      if (!isCurrentExportOperation(state, action.operationId, action.revision)) return state;
-      return {
-        ...state,
-        export: {
-          status: "success",
-          safeMessage: "Package downloaded.",
-          retryBlob: action.blob,
-          retryRevision: action.revision,
-        },
-        lastExportedRevision: action.revision,
-        liveMessage: "Package downloaded.",
-      };
-    case "export/failed":
+    case "export/build-failed":
       if (!isCurrentExportOperation(state, action.operationId, action.revision)) return state;
       return {
         ...state,
         export: {
           status: "failure",
           safeMessage: action.message,
-          ...(action.retryBlob ? {
-            retryBlob: action.retryBlob,
-            retryRevision: action.revision,
-          } : {}),
         },
+        liveMessage: action.message,
+      };
+    case "export/download-started":
+      if (state.revision !== action.revision
+        || state.export.builtRevision !== action.revision
+        || !state.export.builtPackage
+        || state.export.status === "downloading") return state;
+      return {
+        ...state,
+        export: {
+          ...state.export,
+          status: "downloading",
+          safeMessage: "Downloading package…",
+        },
+      };
+    case "export/download-succeeded":
+      if (state.revision !== action.revision
+        || state.export.builtRevision !== action.revision
+        || !state.export.builtPackage) return state;
+      return {
+        ...state,
+        export: { ...state.export, status: "success", safeMessage: "Package downloaded." },
+        lastExportedRevision: action.revision,
+        liveMessage: "Package downloaded.",
+      };
+    case "export/download-failed":
+      if (state.revision !== action.revision
+        || state.export.builtRevision !== action.revision
+        || !state.export.builtPackage) return state;
+      return {
+        ...state,
+        export: { ...state.export, status: "failure", safeMessage: action.message },
         liveMessage: action.message,
       };
     case "live/announced":
