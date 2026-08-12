@@ -2,6 +2,7 @@
 
 - Runtime strategy ID: `mistral-large-3-v1`
 - Runtime strategy version: `2026-08-11-v1`
+- One-shot guidance version: `2026-08-11-v1`
 - Reference model: Mistral Large 3
 - Default context: 256,000 tokens
 - Reviewed: 2026-08-11
@@ -35,10 +36,17 @@ JSON mode, function calling, and API token limits are not injected. The packageâ
 
 > Start with a precise purpose, organize instructions hierarchically, use measurable requirements, and avoid subjective or contradictory wording.
 
+## One-shot guidance injected
+
+Inference from Mistral's first-party completeness and measurable-output guidance above; Mistral does not benchmark this exact rewrite workflow.
+
+> Use the explicit four-stage procedure as an internal checklist and return only the measurable two-part output contract without intermediate prose.
+
 ## Evidence gaps
 
 The reviewed guide is general to Mistral models rather than a Large-3-specific rewriting evaluation. No provider recommendation established XML or source-last as superior, so runtime remains task-first Markdown.
 
 ## Change log
 
+- **2026-08-11:** Added versioned One-shot guidance from the current first-party prompt guidance.
 - **2026-08-11:** Initial Mistral Large 3 review and 256K context default.

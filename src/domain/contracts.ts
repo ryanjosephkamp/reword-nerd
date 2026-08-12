@@ -19,6 +19,11 @@ export interface PromptSet {
   final: string;
 }
 
+export interface PromptBundle {
+  oneShot: string;
+  manual: PromptSet;
+}
+
 export interface WorkspaceDocument {
   id: string;
   original: File;

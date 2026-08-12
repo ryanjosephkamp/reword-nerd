@@ -86,7 +86,15 @@ export interface ManifestDocumentRecord {
   model: Pick<ModelProfile, "id" | "family" | "label" | "contextWindowTokens" | "lastReviewed" | "workflowNote"> & {
     promptStrategy: Pick<ModelProfile["promptStrategy"], "id" | "version" | "referenceModel" | "reviewedAt">;
   };
-  contextAssessment: ContextAssessment;
+  contextAssessment: Pick<ContextAssessment,
+    | "estimateLabel"
+    | "sourceTokens"
+    | "workflowTokens"
+    | "contextWindowTokens"
+    | "ratio"
+    | "oversized"
+    | "acknowledgmentRequired"
+  >;
   contextWarningAcknowledged: boolean;
   prompts: Record<keyof PromptSet, ManifestPromptRecord>;
   processing: { pageCount: number | null; options: ExtractionOptions };
@@ -133,7 +141,7 @@ export interface CombinedPromptRunbook {
   originalDisplayName: string;
   model: ManifestDocumentRecord["model"];
   settings: RewriteSettings;
-  contextAssessment: ContextAssessment;
+  contextAssessment: ManifestDocumentRecord["contextAssessment"];
   contextWarningAcknowledged: boolean;
   responseMarkers: PromptPackageManifest["workflow"]["responseMarkers"];
 }

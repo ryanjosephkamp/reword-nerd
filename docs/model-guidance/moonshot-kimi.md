@@ -2,6 +2,7 @@
 
 - Runtime strategy ID: `moonshot-kimi-v1`
 - Runtime strategy version: `2026-08-11-v1`
+- One-shot guidance version: `2026-08-11-v1`
 - Reference model: Kimi K3
 - Default context: 1,000,000 tokens
 - Reviewed: 2026-08-11
@@ -36,10 +37,17 @@ Kimi’s API, caching, thinking behavior, and any product-specific long-context 
 
 > Give clear instructions, delimit reference text, define the steps and output length, and ground each stage in the supplied document artifacts.
 
+## One-shot guidance injected
+
+Inference from Moonshot's first-party step, delimiter, reference-text, and output-length guidance above; Moonshot does not benchmark this exact rewrite workflow.
+
+> Complete the four defined steps internally from the delimited artifacts, then return only the marked final document and brief fidelity audit.
+
 ## Evidence gaps
 
 The prompt guide predates K3 and is not a K3-specific controlled study. The current task-first Markdown layout follows the documented general practices but should be reevaluated when K3-specific prompting documentation appears.
 
 ## Change log
 
+- **2026-08-11:** Added versioned One-shot guidance from the current first-party prompt guidance.
 - **2026-08-11:** Initial Kimi K3 model review with Moonshot’s general prompt guidance.

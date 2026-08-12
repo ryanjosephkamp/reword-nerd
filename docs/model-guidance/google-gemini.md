@@ -2,6 +2,7 @@
 
 - Runtime strategy ID: `google-gemini-v1`
 - Runtime strategy version: `2026-08-11-v1`
+- One-shot guidance version: `2026-08-11-v1`
 - Reference model: Gemini 3.1 Pro Preview
 - Default context: 1,048,576 tokens
 - Reviewed: 2026-08-11
@@ -36,10 +37,17 @@ The prompts do not request Gemini API structured-output schemas, thinking budget
 
 > Use consistent structured sections, define ambiguous terms and output verbosity, and place the specific task after long source context.
 
+## One-shot guidance injected
+
+Inference from Google's first-party structured-prompt and long-context ordering guidance above; Google does not benchmark this exact rewrite workflow.
+
+> Place long source context before the one-shot task, complete all stages internally, and return the final document plus a compact marked audit.
+
 ## Evidence gaps
 
 Gemini 3.1 Pro is a preview model and may change or be replaced. The 1,048,576-token figure is an API limit, not a promise for every consumer product or account.
 
 ## Change log
 
+- **2026-08-11:** Added versioned One-shot guidance from the current first-party prompt guidance.
 - **2026-08-11:** Initial Gemini 3.1 Pro Preview review; selected source-first XML layout.

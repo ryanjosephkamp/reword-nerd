@@ -2,6 +2,7 @@
 
 - Runtime strategy ID: `xai-grok-v1`
 - Runtime strategy version: `2026-08-11-v1`
+- One-shot guidance version: `2026-08-11-v1`
 - Reference model: Grok 4.5
 - Default context: 500,000 tokens
 - Reviewed: 2026-08-11
@@ -35,10 +36,17 @@ For verification, users with an exposed reasoning control can consider stronger 
 
 > Use a minimal direct task with explicit source boundaries and result format. Use stronger reasoning settings for the verification stage when the interface offers them.
 
+## One-shot guidance injected
+
+Inference from xAI's first-party model and reasoning-control material above; xAI does not publish prompt-design evidence for this exact rewrite workflow.
+
+> Follow the four-stage fidelity procedure internally and return only the two marked deliverables, keeping the audit short and evidence-bound.
+
 ## Evidence gaps
 
 No reviewed first-party prompt guide establishes a preferred delimiter/layout for long-form semantic rewriting. The runtime strategy is a cautious inference from official examples and capability documentation.
 
 ## Change log
 
+- **2026-08-11:** Added versioned One-shot guidance from the current first-party model material.
 - **2026-08-11:** Initial Grok 4.5 review; separated caching/reasoning API advice from manual prompts.

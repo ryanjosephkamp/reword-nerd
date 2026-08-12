@@ -48,7 +48,15 @@ interface ExportSnapshot {
   chosenProfile: ExportDocumentInput["chosenProfile"];
   promptSet: ExportDocumentInput["promptSet"];
   warnings: string[];
-  contextAssessment: ExportDocumentInput["contextAssessment"];
+  contextAssessment: Pick<ExportDocumentInput["contextAssessment"],
+    | "estimateLabel"
+    | "sourceTokens"
+    | "workflowTokens"
+    | "contextWindowTokens"
+    | "ratio"
+    | "oversized"
+    | "acknowledgmentRequired"
+  >;
   reviewed: boolean;
   contextWarningAcknowledged: boolean;
   uploadOrdinal: number;
@@ -259,9 +267,16 @@ function snapshotInput(value: unknown): ExportSnapshot | undefined {
     || !value.warnings.every((warning) => typeof warning === "string")
     || context.estimateLabel !== "Estimated tokens"
     || !isNonnegativeInteger(context.sourceTokens)
+    || !isNonnegativeInteger(context.oneShotWorkflowTokens)
+    || !isNonnegativeInteger(context.manualWorkflowTokens)
     || !isNonnegativeInteger(context.workflowTokens)
     || !isPositiveIntegerOrNull(context.contextWindowTokens)
+    || !(context.oneShotRatio === null || (typeof context.oneShotRatio === "number" && Number.isFinite(context.oneShotRatio) && context.oneShotRatio >= 0))
+    || !(context.manualRatio === null || (typeof context.manualRatio === "number" && Number.isFinite(context.manualRatio) && context.manualRatio >= 0))
     || !(context.ratio === null || (typeof context.ratio === "number" && Number.isFinite(context.ratio) && context.ratio >= 0))
+    || typeof context.oneShotOversized !== "boolean"
+    || typeof context.manualOversized !== "boolean"
+    || typeof context.oneShotWarning !== "boolean"
     || typeof context.oversized !== "boolean"
     || typeof context.acknowledgmentRequired !== "boolean") return undefined;
 
@@ -275,6 +290,8 @@ function snapshotInput(value: unknown): ExportSnapshot | undefined {
     || !(promptStrategy.layout === "task-first" || promptStrategy.layout === "source-first-task-last")
     || !(promptStrategy.delimiterStyle === "markdown" || promptStrategy.delimiterStyle === "xml")
     || !isNonblankString(promptStrategy.sharedGuidance)
+    || !isNonblankString(promptStrategy.oneShotGuidanceVersion)
+    || !isNonblankString(promptStrategy.oneShotGuidance)
     || !isRecord(stageGuidance)
     || stages.some((stage) => !isNonblankString(stageGuidance[stage]))) return undefined;
 
@@ -321,6 +338,8 @@ function snapshotInput(value: unknown): ExportSnapshot | undefined {
         layout: promptStrategy.layout,
         delimiterStyle: promptStrategy.delimiterStyle,
         sharedGuidance: promptStrategy.sharedGuidance,
+        oneShotGuidanceVersion: promptStrategy.oneShotGuidanceVersion,
+        oneShotGuidance: promptStrategy.oneShotGuidance,
         stageGuidance: {
           decompose: stageGuidance.decompose as string,
           rewrite: stageGuidance.rewrite as string,

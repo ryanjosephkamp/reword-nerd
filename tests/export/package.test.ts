@@ -47,6 +47,13 @@ function documentInput(): ExportDocumentInput {
     contextAssessment: {
       estimateLabel: "Estimated tokens",
       sourceTokens: 3,
+      oneShotWorkflowTokens: 1_506,
+      manualWorkflowTokens: 3_012,
+      oneShotRatio: 1_506 / 1_050_000,
+      manualRatio: 3_012 / 1_050_000,
+      oneShotOversized: false,
+      manualOversized: false,
+      oneShotWarning: false,
       workflowTokens: 3_012,
       contextWindowTokens: 1_050_000,
       ratio: 3_012 / 1_050_000,
@@ -534,7 +541,15 @@ describe("prompt-package export", () => {
       },
     });
     expect(document.reviewedExtraction.warnings).toEqual(["Converted safely."]);
-    expect(document.contextAssessment).toEqual(documentInput().contextAssessment);
+    expect(document.contextAssessment).toEqual({
+      estimateLabel: "Estimated tokens",
+      sourceTokens: 3,
+      workflowTokens: 3_012,
+      contextWindowTokens: 1_050_000,
+      ratio: 3_012 / 1_050_000,
+      oversized: false,
+      acknowledgmentRequired: false,
+    });
 
     const archive = await JSZip.loadAsync(result.blob, { checkCRC32: true });
     const manifestText = await archive.file("manifest.json")?.async("string");

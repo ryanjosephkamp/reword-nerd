@@ -81,11 +81,13 @@ describe("curated model profiles", () => {
       const research = readFileSync(strategy.guidanceDocument, "utf8");
       expect(research).toContain(`Runtime strategy ID: \`${strategy.id}\``);
       expect(research).toContain(`Runtime strategy version: \`${strategy.version}\``);
+      expect(research).toContain(`One-shot guidance version: \`${strategy.oneShotGuidanceVersion}\``);
       expect(research).toContain(`Reference model: ${strategy.referenceModel}`);
       expect(research).toContain(`Reviewed: ${strategy.reviewedAt}`);
       expect(research).toContain(`Runtime layout: \`${strategy.layout}\``);
       expect(research).toContain(`Runtime delimiters: \`${strategy.delimiterStyle}\``);
       expect(research).toContain(strategy.sharedGuidance);
+      expect(research).toContain(strategy.oneShotGuidance);
       for (const stageGuidance of Object.values(strategy.stageGuidance)) {
         expect(research).toContain(stageGuidance);
       }

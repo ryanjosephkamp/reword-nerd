@@ -2,6 +2,7 @@
 
 - Runtime strategy ID: `custom-neutral-v1`
 - Runtime strategy version: `2026-08-11-v1`
+- One-shot guidance version: `2026-08-11-v1`
 - Reference model: User supplied
 - Default context: Unknown; editable
 - Reviewed: 2026-08-11
@@ -34,10 +35,17 @@ The generated prompts are safe to paste into a chat interface or local frontend.
 
 > Use a conservative provider-neutral prompt structure with explicit stages, named inputs, constraints, and output requirements.
 
+## One-shot guidance injected
+
+Design-policy inference only. No provider-specific evidence can apply until the user identifies the custom model and its current model card.
+
+> Perform all four stages internally in one request and emit only the marked final document plus a short evidence-bound fidelity audit.
+
 ## Evidence gaps
 
 All model-specific behavior is unknown. Smaller or base models may need shorter inputs, examples, a native chat template, or a more constrained output. The context estimate is only a rough cross-tokenizer heuristic.
 
 ## Change log
 
+- **2026-08-11:** Added versioned provider-neutral One-shot guidance.
 - **2026-08-11:** Consolidated the former Local and Custom choices into one provider-neutral profile.

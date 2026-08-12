@@ -2,7 +2,8 @@ import decomposeTemplate from "../../prompts/01_decompose.md?raw";
 import rewriteTemplate from "../../prompts/02_rewrite.md?raw";
 import verifyTemplate from "../../prompts/03_verify.md?raw";
 import finalTemplate from "../../prompts/04_final.md?raw";
-import type { DocumentFormat, PromptSet } from "../domain/contracts";
+import oneShotTemplate from "../../prompts/00_one_shot.md?raw";
+import type { DocumentFormat, PromptBundle, PromptSet } from "../domain/contracts";
 import type {
   ModelProfile,
   PromptDelimiterStyle,
@@ -65,7 +66,9 @@ const assetStageGuidance: Record<PromptStage, string> = {
   final: "For this stage, repair missing or incorrect visual placement. Propose a clearly identified description only when the source supplied no caption or alt text.",
 };
 
-function documentFidelityContext(context: PromptDocumentContext, stage: PromptStage): string {
+const oneShotAssetGuidance = "For the internal decomposition, inventory every included asset and its role. Preserve and place required assets in the rewrite, verify every reference and caption, then repair any supported fidelity issue before finalizing.";
+
+function documentFidelityContext(context: PromptDocumentContext, stage: PromptStage | "oneShot"): string {
   const included = context.assets.filter((asset) => asset.included);
   const catalog = included.length === 0
     ? "No extracted visual assets are included."
@@ -80,7 +83,33 @@ function documentFidelityContext(context: PromptDocumentContext, stage: PromptSt
   const latex = context.format === "latex" || context.format === "latex-project"
     ? `\n\n## LaTeX Fidelity Contract\nPreserve LaTeX preambles, macros, math, citations, labels, references, paths, and figure environments unless an explicit requirement says otherwise. Main file: ${context.latexMainFile ?? "standalone or not yet selected"}. For a multi-file response, emit one safe block per rewritten TeX source using exactly:\n<<<FILE relative/path.tex>>>\nrewritten source\n<<<END FILE>>>\nDo not rewrite bibliography or binary asset bytes.`
     : "";
-  return `## Visual Asset Workflow\n${assetStageGuidance[stage]}\nAttach the packaged files manually when the selected model interface supports image input. Otherwise use this catalog and the reviewed OCR text.\n\n${artifact("VISUAL ASSET CATALOG", catalog, "markdown")}${latex}`;
+  const guidance = stage === "oneShot" ? oneShotAssetGuidance : assetStageGuidance[stage];
+  return `## Visual Asset Workflow\n${guidance}\nAttach the packaged files manually when the selected model interface supports image input. Otherwise use this catalog and the reviewed OCR text.\n\n${artifact("VISUAL ASSET CATALOG", catalog, "markdown")}${latex}`;
+}
+
+function oneShotContext(
+  settings: RewriteSettings,
+  profile: ModelProfile,
+  documentContext?: PromptDocumentContext,
+): string {
+  const customRequirements = settings.customRequirements || "None.";
+  return `## Model Workflow
+Selected model: ${profile.label}
+Reference model: ${profile.promptStrategy.referenceModel}
+Guidance version: ${profile.promptStrategy.version}
+One-shot guidance version: ${profile.promptStrategy.oneShotGuidanceVersion}
+Start a new conversation for each document. One-shot performs Decompose, Rewrite, Verify, and Final internally in a single request.
+
+## Model-Specific Execution Guidance
+${profile.promptStrategy.sharedGuidance}
+${profile.promptStrategy.oneShotGuidance}
+
+## Rewrite Preferences
+Tone: ${toneLabel(settings.tone)}
+Formality: ${formalityLabel(settings.formality)}
+Length: ${lengthLabel(settings.length)}
+Output language: ${settings.outputLanguage}
+${artifact("CUSTOM REQUIREMENTS", customRequirements, profile.promptStrategy.delimiterStyle)}${documentContext ? `\n\n${documentFidelityContext(documentContext, "oneShot")}` : ""}`;
 }
 
 function sharedContext(
@@ -138,5 +167,23 @@ export function renderPromptSet(
     rewrite: promptForStage("rewrite", sharedContext(settings, profile, "rewrite", documentContext), [source, decomposition], profile),
     verify: promptForStage("verify", sharedContext(settings, profile, "verify", documentContext), [source, decomposition, rewrite], profile),
     final: promptForStage("final", sharedContext(settings, profile, "final", documentContext), [source, decomposition, rewrite, verification], profile),
+  };
+}
+
+export function renderPromptBundle(
+  sourceText: string,
+  settings: RewriteSettings,
+  profile: ModelProfile,
+  documentContext?: PromptDocumentContext,
+): PromptBundle {
+  const source = artifact("SOURCE DOCUMENT", sourceText, profile.promptStrategy.delimiterStyle);
+  const context = oneShotContext(settings, profile, documentContext);
+  const oneShot = profile.promptStrategy.layout === "source-first-task-last"
+    ? `${source}\n\n${context}\n\n${oneShotTemplate}`
+    : `${oneShotTemplate}\n${context}\n\n${source}`;
+
+  return {
+    oneShot,
+    manual: renderPromptSet(sourceText, settings, profile, documentContext),
   };
 }

@@ -2,6 +2,7 @@
 
 - Runtime strategy ID: `deepseek-v4-pro-v1`
 - Runtime strategy version: `2026-08-11-v1`
+- One-shot guidance version: `2026-08-11-v1`
 - Reference model: DeepSeek V4 Pro
 - Default context: 1,000,000 tokens
 - Reviewed: 2026-08-11
@@ -35,10 +36,17 @@ Thinking/non-thinking mode is an API or product selection, not a prompt instruct
 
 > Define the role, current stage, source boundaries, constraints, and required output explicitly. Keep the staged workflow unambiguous.
 
+## One-shot guidance injected
+
+Inference from the first-party capability and interface material above; DeepSeek does not publish a benchmark for this exact rewrite workflow.
+
+> Execute the four named stages internally, remain grounded in the supplied source, and return only the two marked one-shot deliverables.
+
 ## Evidence gaps
 
 No reviewed first-party DeepSeek V4 Pro prompt guide directly recommends a particular delimiter or task position. The Markdown task-first layout is a conservative inference, not a provider claim.
 
 ## Change log
 
+- **2026-08-11:** Added versioned One-shot guidance from the current first-party model material.
 - **2026-08-11:** Initial DeepSeek V4 Pro review; marked prompt-tactic confidence medium.

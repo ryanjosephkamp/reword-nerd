@@ -23,6 +23,9 @@ These artifacts document the evidence behind every selectable reword-nerd model 
 
 The review prioritizes official model pages, provider prompt guides, technical reports, and release notes. Product announcements establish capabilities but do not by themselves justify detailed prompt rules. API-only advice—reasoning effort, caching identifiers, structured-output flags, and similar controls—is documented but excluded from prompts intended for manual chat use. Each artifact separates supported findings, reword-nerd’s cautious inference, evidence gaps, and the exact concise guidance injected at runtime.
 
+Every selectable strategy also carries versioned One-shot guidance. Those concise instructions are explicitly labeled as reword-nerd inferences in the provider artifacts because no reviewed first-party source benchmarks this exact Decompose -> Rewrite -> Verify -> Final single-request workflow.
+
 ## Change log
 
 - **2026-08-11:** Initial profile-wide review; established strategy version `2026-08-11-v1` and the manifest-v2 provenance fields.
+- **2026-08-11:** Added One-shot guidance version `2026-08-11-v1` for every selectable strategy after reviewing the linked current first-party sources.

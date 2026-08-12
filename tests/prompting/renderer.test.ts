@@ -10,6 +10,59 @@ const markers = [
 const markerOccurrences = (prompt: string, marker: string) => prompt.split(marker).length - 1;
 
 describe("four-stage prompt rendering", () => {
+  it("renders a one-shot prompt beside the unchanged manual workflow", async () => {
+    // This catches a bundle renderer that drops a manual stage or mutates the canonical manual prompt bytes.
+    const prompting = await import("../../src/prompting/renderPromptSet");
+    const settings = await import("../../src/domain/settings");
+    const profiles = await import("../../src/domain/profiles");
+    const profile = profiles.CURATED_MODEL_PROFILES.find((item) => item.id === "openai-general")!;
+
+    const bundle = prompting.renderPromptBundle("Source", settings.DEFAULT_SETTINGS, profile);
+    const legacy = prompting.renderPromptSet("Source", settings.DEFAULT_SETTINGS, profile);
+
+    expect(bundle.manual).toEqual(legacy);
+    expect(Object.keys(bundle.manual)).toEqual(["decompose", "rewrite", "verify", "final"]);
+    expect(bundle.oneShot).toContain("# One-shot: Decompose, Rewrite, Verify, Final");
+    expect(bundle.oneShot).not.toContain("INSERT_STAGE_");
+  });
+
+  it("gives one-shot a stable final-document and compact-audit contract", async () => {
+    // This catches a one-shot response that exposes bulky intermediate stages or cannot be parsed into its two deliverables.
+    const prompting = await import("../../src/prompting/renderPromptSet");
+    const settings = await import("../../src/domain/settings");
+    const profiles = await import("../../src/domain/profiles");
+    const canonical = readFileSync("prompts/00_one_shot.md", "utf8");
+    const profile = profiles.CURATED_MODEL_PROFILES.find((item) => item.id === "openai-general")!;
+    const resolved = settings.resolveSettings(settings.DEFAULT_SETTINGS, {
+      customRequirements: "Keep the heading.\n\nRetain  internal spacing.",
+    });
+
+    const prompt = prompting.renderPromptBundle("Source\nwith math $x^2$\n", resolved, profile, {
+      format: "latex-project",
+      assets: [{
+        id: "asset-figure1",
+        filename: "figure-1.png",
+        mimeType: "image/png",
+        sourcePath: "figures/figure-1.png",
+        included: true,
+      }],
+      latexMainFile: "main.tex",
+    }).oneShot;
+
+    expect(prompt.startsWith(canonical)).toBe(true);
+    expect(prompt).toContain("Perform all four stages internally");
+    expect(prompt).toContain("<<<FINAL_DOCUMENT>>>");
+    expect(prompt).toContain("<<<END_FINAL_DOCUMENT>>>");
+    expect(prompt).toContain("<<<FIDELITY_AUDIT>>>");
+    expect(prompt).toContain("<<<END_FIDELITY_AUDIT>>>");
+    expect(prompt).toContain("Keep the heading.\n\nRetain  internal spacing.");
+    expect(prompt).toContain("asset-figure1 | figure-1.png | source figures/figure-1.png");
+    expect(prompt).toContain("Preserve LaTeX preambles, macros, math, citations, labels, references, paths, and figure environments");
+    expect(prompt.split(profile.promptStrategy.sharedGuidance)).toHaveLength(2);
+    expect(prompt.split(profile.promptStrategy.oneShotGuidance)).toHaveLength(2);
+    expect(prompt.match(/## Model-Specific Execution Guidance/g)).toHaveLength(1);
+  });
+
   it("renders self-contained prompts in canonical order with preserved source artifacts", async () => {
     // This catches prompt assembly that alters source bytes or omits the model/settings context.
     const prompting = await import("../../src/prompting/renderPromptSet");

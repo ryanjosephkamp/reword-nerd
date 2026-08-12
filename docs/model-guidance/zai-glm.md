@@ -2,6 +2,7 @@
 
 - Runtime strategy ID: `zai-glm-v1`
 - Runtime strategy version: `2026-08-11-v1`
+- One-shot guidance version: `2026-08-11-v1`
 - Reference model: GLM-5.1
 - Default context: 200,000 tokens
 - Reviewed: 2026-08-11
@@ -34,10 +35,17 @@ The `thinking` object, temperature, caching, structured output, SDK, and endpoin
 
 > Use clear instructions and constraints, and enable deeper thinking for complex semantic comparison when the interface offers it.
 
+## One-shot guidance injected
+
+Inference from Z.AI's first-party complex-instruction, long-context, structured-output, and thinking-mode material above; Z.AI does not benchmark this exact rewrite workflow.
+
+> Apply the four stages internally with clear source constraints, then emit only the marked final document and compact fidelity audit.
+
 ## Evidence gaps
 
 The provider page is capability-focused and does not identify a preferred Markdown/XML or source ordering for rewriting. The task-first Markdown strategy is conservative.
 
 ## Change log
 
+- **2026-08-11:** Added versioned One-shot guidance from the current first-party model material.
 - **2026-08-11:** Initial GLM-5.1 review and 200K context default.

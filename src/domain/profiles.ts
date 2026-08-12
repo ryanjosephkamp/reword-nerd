@@ -25,6 +25,8 @@ export interface ModelPromptStrategy {
   layout: PromptLayout;
   delimiterStyle: PromptDelimiterStyle;
   sharedGuidance: string;
+  oneShotGuidanceVersion: string;
+  oneShotGuidance: string;
   stageGuidance: Readonly<Record<PromptStage, string>>;
 }
 
@@ -44,6 +46,7 @@ export class ProfileValidationError extends Error {
 
 const REVIEW_DATE = "2026-08-11";
 const STRATEGY_VERSION = "2026-08-11-v1";
+const ONE_SHOT_GUIDANCE_VERSION = "2026-08-11-v1";
 const WORKFLOW_NOTE =
   "Start a new conversation for each document, run the four prompts in order, and replace response markers with the previous stage outputs. Context limits vary by model and account; check them with the user before running the workflow.";
 
@@ -61,6 +64,7 @@ function strategy(
   layout: PromptLayout,
   delimiterStyle: PromptDelimiterStyle,
   sharedGuidance: string,
+  oneShotGuidance: string,
 ): Readonly<ModelPromptStrategy> {
   return Object.freeze({
     id,
@@ -71,6 +75,8 @@ function strategy(
     layout,
     delimiterStyle,
     sharedGuidance,
+    oneShotGuidanceVersion: ONE_SHOT_GUIDANCE_VERSION,
+    oneShotGuidance,
     stageGuidance: STAGE_GUIDANCE,
   });
 }
@@ -83,6 +89,7 @@ const STRATEGIES = {
     "task-first",
     "markdown",
     "Use a clear task, named sections, explicit constraints, and a concrete output contract. Keep instructions direct and internally consistent.",
+    "Run the four stages as one grounded workflow, keep intermediate analysis internal, and return only the marked final document and compact fidelity audit.",
   ),
   anthropic: strategy(
     "anthropic-claude-v1",
@@ -91,6 +98,7 @@ const STRATEGIES = {
     "source-first-task-last",
     "xml",
     "Use descriptive XML tags to separate inputs. For long documents, place source material before the task. State the required deliverable and length explicitly, without redundant self-verification instructions.",
+    "Keep the source before the one-shot task, use the named output markers exactly, perform the staged checks internally, and keep the visible audit concise.",
   ),
   custom: strategy(
     "custom-neutral-v1",
@@ -99,6 +107,7 @@ const STRATEGIES = {
     "task-first",
     "markdown",
     "Use a conservative provider-neutral prompt structure with explicit stages, named inputs, constraints, and output requirements.",
+    "Perform all four stages internally in one request and emit only the marked final document plus a short evidence-bound fidelity audit.",
   ),
   deepseek: strategy(
     "deepseek-v4-pro-v1",
@@ -107,6 +116,7 @@ const STRATEGIES = {
     "task-first",
     "markdown",
     "Define the role, current stage, source boundaries, constraints, and required output explicitly. Keep the staged workflow unambiguous.",
+    "Execute the four named stages internally, remain grounded in the supplied source, and return only the two marked one-shot deliverables.",
   ),
   google: strategy(
     "google-gemini-v1",
@@ -115,6 +125,7 @@ const STRATEGIES = {
     "source-first-task-last",
     "xml",
     "Use consistent structured sections, define ambiguous terms and output verbosity, and place the specific task after long source context.",
+    "Place long source context before the one-shot task, complete all stages internally, and return the final document plus a compact marked audit.",
   ),
   meta: strategy(
     "meta-muse-v1",
@@ -123,6 +134,7 @@ const STRATEGIES = {
     "task-first",
     "markdown",
     "State the scope, constraints, and complete deliverable concisely. Keep the model focused on the current stage and supplied evidence.",
+    "Treat the request as one bounded four-stage procedure, retain intermediates internally, and emit only the marked final document and concise audit.",
   ),
   minimax: strategy(
     "minimax-m3-v1",
@@ -131,6 +143,7 @@ const STRATEGIES = {
     "source-first-task-last",
     "markdown",
     "Use flat named sections, explicit role, format, length, and grounding rules. For long inputs, place the task after indexed source material.",
+    "For long inputs keep the task after the delimited source, run all four stages internally, and follow the two-part marked output contract exactly.",
   ),
   mistral: strategy(
     "mistral-large-3-v1",
@@ -139,6 +152,7 @@ const STRATEGIES = {
     "task-first",
     "markdown",
     "Start with a precise purpose, organize instructions hierarchically, use measurable requirements, and avoid subjective or contradictory wording.",
+    "Use the explicit four-stage procedure as an internal checklist and return only the measurable two-part output contract without intermediate prose.",
   ),
   moonshot: strategy(
     "moonshot-kimi-v1",
@@ -147,6 +161,7 @@ const STRATEGIES = {
     "task-first",
     "markdown",
     "Give clear instructions, delimit reference text, define the steps and output length, and ground each stage in the supplied document artifacts.",
+    "Complete the four defined steps internally from the delimited artifacts, then return only the marked final document and brief fidelity audit.",
   ),
   openai: strategy(
     "openai-chatgpt-v1",
@@ -155,6 +170,7 @@ const STRATEGIES = {
     "task-first",
     "markdown",
     "Keep the prompt lean and state each instruction once. Specify the outcome, relevant context, constraints, evidence boundary, and output format.",
+    "Use the lean four-stage procedure internally, do not expose intermediate work, and emit only the marked final document and compact fidelity audit.",
   ),
   xai: strategy(
     "xai-grok-v1",
@@ -163,6 +179,7 @@ const STRATEGIES = {
     "task-first",
     "markdown",
     "Use a minimal direct task with explicit source boundaries and result format. Use stronger reasoning settings for the verification stage when the interface offers them.",
+    "Follow the four-stage fidelity procedure internally and return only the two marked deliverables, keeping the audit short and evidence-bound.",
   ),
   zai: strategy(
     "zai-glm-v1",
@@ -171,6 +188,7 @@ const STRATEGIES = {
     "task-first",
     "markdown",
     "Use clear instructions and constraints, and enable deeper thinking for complex semantic comparison when the interface offers it.",
+    "Apply the four stages internally with clear source constraints, then emit only the marked final document and compact fidelity audit.",
   ),
 } as const;
 
