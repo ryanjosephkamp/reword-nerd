@@ -10,8 +10,8 @@ function sourceFiles(directory: string): string[] {
 }
 
 describe("production privacy boundary", () => {
-  it("keeps production source free of remote endpoints, persistence writes, and outbound clients", () => {
-    // This catches a future production change silently adding a network or persistence side effect.
+  it("keeps production source free of remote endpoints and unapproved persistence clients", () => {
+    // This catches a future production change silently adding a network or persistence side effect outside the preference adapter.
     const root = join(process.cwd(), "src");
     const forbidden = [
       /https?:\/\//u,
@@ -21,18 +21,33 @@ describe("production privacy boundary", () => {
       /\bEventSource\b/u,
       /\bsendBeacon\b/u,
       /\bserviceWorker\s*\.\s*register\b/u,
-      /\blocalStorage\s*\.\s*setItem\b/u,
       /\bsessionStorage\s*\.\s*setItem\b/u,
       /\bindexedDB\s*\.\s*open\b/u,
       /\bcaches\s*\.\s*open\b/u,
     ];
     const findings = sourceFiles(root).flatMap((path) => {
       const source = readFileSync(path, "utf8");
-      return forbidden.flatMap((pattern) => pattern.test(source)
+      const forbiddenStorageMethod = /\.\s*(?:setItem|removeItem)\s*\(/u.test(source)
+        && !path.endsWith(join("app", "workbench", "preferences.ts"));
+      return [
+        ...(forbiddenStorageMethod ? [`${relative(process.cwd(), path)} used a storage write outside the preference adapter`] : []),
+        ...forbidden.flatMap((pattern) => pattern.test(source)
         ? [`${relative(process.cwd(), path)} matched ${pattern.source}`]
-        : []);
+        : []),
+      ];
     });
 
     expect(findings).toEqual([]);
+  });
+
+  it("allows exactly one explicit namespaced browser-storage key", () => {
+    // This catches a second persistence namespace or an implicit key that privacy review cannot audit.
+    const root = join(process.cwd(), "src");
+    const keys = sourceFiles(root).flatMap((path) => {
+      const source = readFileSync(path, "utf8");
+      return [...source.matchAll(/["'`](reword-nerd:[^"'`]+)["'`]/gu)].map((match) => match[1]);
+    });
+
+    expect(keys).toEqual(["reword-nerd:preferences:v1"]);
   });
 });

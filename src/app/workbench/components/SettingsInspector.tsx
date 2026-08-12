@@ -13,6 +13,7 @@ interface SettingsInspectorProps {
   onProfileLabel(value: string): void;
   onContextDraft(value: string, parsed: number | null): void;
   onExtractionOptionsChange(options: ExtractionOptions, reprocess: boolean): void;
+  onResetPreferences(returnFocus: HTMLButtonElement): void;
   exportPanel?: React.ReactNode;
 }
 
@@ -93,9 +94,9 @@ export function SettingsInspector(props: SettingsInspectorProps) {
         onChange={(event) => change("customRequirements", Array.from(event.currentTarget.value).slice(0, MAX_CUSTOM_REQUIREMENTS_LENGTH).join(""))}
       />
     </label>
-    <details className="processing-settings">
-      <summary>DOCUMENT PROCESSING</summary>
-      <p className="processing-help">Conservative defaults keep media extraction and OCR off. Changes to an uploaded file reprocess it locally.</p>
+    <fieldset className="processing-settings">
+      <legend>DOCUMENT PROCESSING</legend>
+      <p className="processing-help">Embedded images are extracted by default. PDF page capture and OCR stay off until enabled. Changes to an uploaded file reprocess it locally.</p>
       <label className="checkbox-row">
         <input type="checkbox" checked={extraction.extractEmbeddedImages} onChange={(event) => extractionChange("extractEmbeddedImages", event.currentTarget.checked)} />
         Extract embedded images
@@ -129,7 +130,8 @@ export function SettingsInspector(props: SettingsInspectorProps) {
         Exclude likely decorative images
       </label>
       <p className="processing-help">OCR uses bundled English locally, is capped at 150 pages or images, and always requires review before export.</p>
-    </details>
+    </fieldset>
+    <button type="button" className="reset-preferences-button" onClick={(event) => props.onResetPreferences(event.currentTarget)}>Reset saved preferences</button>
     {props.exportPanel}
   </div>;
 }

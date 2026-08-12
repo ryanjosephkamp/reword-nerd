@@ -2,9 +2,19 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { App } from "../../src/app/App";
 import type { WorkbenchServices } from "../../src/app/workbench/contracts";
 import type { CombinedPromptArtifact } from "../../src/export";
+import { CURRENT_TUTORIAL_VERSION, PREFERENCES_STORAGE_KEY } from "../../src/app/workbench/preferences";
 
 const defaultMatchMedia = window.matchMedia;
-afterEach(() => { window.matchMedia = defaultMatchMedia; });
+beforeEach(() => {
+  window.localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify({
+    version: 1,
+    data: { tutorialVersion: CURRENT_TUTORIAL_VERSION },
+  }));
+});
+afterEach(() => {
+  window.matchMedia = defaultMatchMedia;
+  window.localStorage.clear();
+});
 
 function combinedArtifact(documentKey = "notes", name = "notes.md"): CombinedPromptArtifact {
   const promptBlocks = [
@@ -114,8 +124,8 @@ describe("Night Terminal workbench", () => {
     expect(screen.getByText(/local, self-hosted, fine-tuned, or otherwise unlisted/i)).toBeInTheDocument();
   });
 
-  it("keeps conservative processing defaults and reprocesses after an explicit image or OCR change", async () => {
-    // This catches optional expensive processing silently becoming the default or settings failing to reach extraction.
+  it("uses the v0.4 processing defaults and reprocesses after an explicit page-capture or OCR change", async () => {
+    // This catches embedded-image extraction becoming default-off, optional expensive processing becoming implicit, or changes failing to reach extraction.
     const extract = vi.fn(services().extract);
     render(<App services={services({ extract })} />);
     fireEvent.change(screen.getByLabelText("Add supported files"), {
@@ -123,16 +133,16 @@ describe("Night Terminal workbench", () => {
     });
     await screen.findByDisplayValue("Source text");
     expect(extract).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), expect.objectContaining({
-      extractEmbeddedImages: false,
+      extractEmbeddedImages: true,
       capturePageVisuals: false,
       ocrMode: "off",
     }), expect.any(AbortSignal), expect.any(Function));
 
-    fireEvent.click(screen.getByText("DOCUMENT PROCESSING"));
-    fireEvent.click(screen.getByLabelText("Extract embedded images"));
+    fireEvent.click(screen.getByLabelText("Capture PDF page visuals"));
     await waitFor(() => expect(extract).toHaveBeenCalledTimes(2));
     expect(extract).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), expect.objectContaining({
       extractEmbeddedImages: true,
+      capturePageVisuals: true,
       ocrMode: "off",
     }), expect.any(AbortSignal), expect.any(Function));
   });
@@ -458,8 +468,8 @@ describe("Night Terminal workbench", () => {
 
     const helpButton = screen.getByRole("button", { name: "Help" });
     fireEvent.click(helpButton);
-    expect(screen.getByRole("dialog", { name: "Four-stage package" })).toHaveTextContent(
-      "Four-stage package: run the prompts in order and carry each response forward.",
+    expect(screen.getByRole("dialog", { name: "Help and workflow guide" })).toHaveTextContent(
+      "One-shot and Manual",
     );
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -481,18 +491,18 @@ describe("Night Terminal workbench", () => {
     render(<App services={services()} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Help" }));
-    const help = screen.getByRole("dialog", { name: "Four-stage package" });
+    const help = screen.getByRole("dialog", { name: "Help and workflow guide" });
     fireEvent.keyDown(help, { key: "Tab" });
     const closeHelp = screen.getByRole("button", { name: "Close help" });
     expect(closeHelp).toHaveFocus();
     fireEvent.keyDown(closeHelp, { key: "Tab", shiftKey: true });
-    expect(closeHelp).toHaveFocus();
+    expect(screen.getByRole("button", { name: "REPLAY QUICK START" })).toHaveFocus();
     fireEvent.click(closeHelp);
 
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     const settings = screen.getByRole("dialog", { name: "Parameters" });
     const closeSettings = screen.getByRole("button", { name: "Close settings" });
-    const lastSettingsControl = within(settings).getByLabelText("Custom requirements");
+    const lastSettingsControl = within(settings).getByRole("button", { name: "Reset saved preferences" });
     expect(closeSettings).toHaveFocus();
     fireEvent.keyDown(closeSettings, { key: "Tab", shiftKey: true });
     expect(lastSettingsControl).toHaveFocus();
@@ -517,7 +527,7 @@ describe("Night Terminal workbench", () => {
     const menu = screen.getByRole("button", { name: "Menu" });
     fireEvent.click(menu);
     fireEvent.click(screen.getByRole("menuitem", { name: "Help" }));
-    expect(screen.getByRole("dialog", { name: "Four-stage package" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Help and workflow guide" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Close help" }));
     expect(menu).toHaveFocus();
 
@@ -528,11 +538,10 @@ describe("Night Terminal workbench", () => {
     window.matchMedia = originalMatchMedia;
   });
 
-  it("announces rejection issues in input order and never stores browser state", async () => {
+  it("announces rejection issues in input order without persisting session state", async () => {
     const storageSpies = [
-      vi.spyOn(Storage.prototype, "setItem"),
-      vi.spyOn(Storage.prototype, "getItem"),
-      vi.spyOn(Storage.prototype, "removeItem"),
+      vi.spyOn(window.localStorage, "setItem"),
+      vi.spyOn(window.localStorage, "removeItem"),
     ];
     render(<App services={services({
       preflight: async (files) => files.map((file) => ({

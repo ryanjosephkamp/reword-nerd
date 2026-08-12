@@ -12,6 +12,7 @@ import {
   type WorkspaceDocument,
 } from "../../domain";
 import type { BuiltPromptPackage, MobileTab, PreviewMode, WorkbenchDocument, WorkbenchState } from "./contracts";
+import { CURRENT_TUTORIAL_VERSION, type SavedPreferencesPatch } from "./preferences";
 
 type IntakeDocument = { document: WorkspaceDocument; uploadOrdinal: number };
 
@@ -57,6 +58,11 @@ export type WorkbenchAction =
   | { type: "preview/artifact-selected"; documentKey: string }
   | { type: "drawer/changed"; open: boolean }
   | { type: "help/changed"; open: boolean }
+  | { type: "tutorial/opened" }
+  | { type: "tutorial/dismissed" }
+  | { type: "preferences/reset-requested" }
+  | { type: "preferences/reset-cancelled" }
+  | { type: "preferences/reset-confirmed" }
   | { type: "focus/consumed" }
   | { type: "export/started"; operationId: number; revision: number }
   | { type: "export/package-built"; operationId: number; revision: number; builtPackage: BuiltPromptPackage }
@@ -69,22 +75,42 @@ export type WorkbenchAction =
 const firstProfile = CURATED_MODEL_PROFILES.find((profile) => profile.id === DEFAULT_MODEL_PROFILE_ID)
   ?? CURATED_MODEL_PROFILES[0];
 
-export function createInitialWorkbenchState(): WorkbenchState {
+export function createInitialWorkbenchState(preferences: SavedPreferencesPatch | null = null): WorkbenchState {
+  const selectedProfile = CURATED_MODEL_PROFILES.find((profile) => profile.id === preferences?.selectedProfileId)
+    ?? firstProfile;
+  const savedContext = preferences && Object.hasOwn(preferences, "contextWindowTokens")
+    ? preferences.contextWindowTokens
+    : selectedProfile.contextWindowTokens;
+  const customProfileLabel = preferences?.customProfileLabel ?? "";
+  const workingProfile = {
+    ...selectedProfile,
+    label: selectedProfile.id === "custom" && customProfileLabel
+      ? customProfileLabel
+      : selectedProfile.label,
+    contextWindowTokens: savedContext ?? null,
+  };
   return {
     documents: [],
     selectedDocumentId: null,
-    globalSettings: { ...DEFAULT_SETTINGS },
-    globalExtractionOptions: cloneExtractionOptions(DEFAULT_EXTRACTION_OPTIONS),
-    selectedProfileId: firstProfile.id,
-    workingProfile: { ...firstProfile },
-    customProfileLabel: "",
-    customContextDraft: "",
+    globalSettings: { ...DEFAULT_SETTINGS, ...preferences?.globalSettings },
+    globalExtractionOptions: cloneExtractionOptions({
+      ...DEFAULT_EXTRACTION_OPTIONS,
+      ...preferences?.processing,
+      ocrLanguage: DEFAULT_EXTRACTION_OPTIONS.ocrLanguage,
+    }),
+    selectedProfileId: selectedProfile.id,
+    workingProfile,
+    customProfileLabel,
+    customContextDraft: savedContext?.toString() ?? "",
     overrideEnabled: {},
     mobileTab: "files",
     previewMode: "source",
     previewArtifactKey: null,
     settingsDrawerOpen: false,
     helpDialogOpen: false,
+    quickStartDialogOpen: preferences?.tutorialVersion !== CURRENT_TUTORIAL_VERSION,
+    resetPreferencesDialogOpen: false,
+    tutorialSeenVersion: preferences?.tutorialVersion ?? null,
     intake: { dragging: false, activeBatchId: null, issues: [] },
     editor: {},
     export: { status: "idle", safeMessage: "" },
@@ -492,6 +518,29 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
       return { ...state, settingsDrawerOpen: action.open };
     case "help/changed":
       return { ...state, helpDialogOpen: action.open };
+    case "tutorial/opened":
+      return { ...state, helpDialogOpen: false, quickStartDialogOpen: true };
+    case "tutorial/dismissed":
+      return {
+        ...state,
+        quickStartDialogOpen: false,
+        tutorialSeenVersion: CURRENT_TUTORIAL_VERSION,
+      };
+    case "preferences/reset-requested":
+      return { ...state, resetPreferencesDialogOpen: true };
+    case "preferences/reset-cancelled":
+      return { ...state, resetPreferencesDialogOpen: false };
+    case "preferences/reset-confirmed":
+      return changed(state, {
+        globalSettings: { ...DEFAULT_SETTINGS },
+        globalExtractionOptions: cloneExtractionOptions(DEFAULT_EXTRACTION_OPTIONS),
+        selectedProfileId: firstProfile.id,
+        workingProfile: { ...firstProfile },
+        customProfileLabel: "",
+        customContextDraft: firstProfile.contextWindowTokens?.toString() ?? "",
+        resetPreferencesDialogOpen: false,
+        documents: state.documents,
+      });
     case "focus/consumed":
       return { ...state, focusTarget: null };
     case "export/started":

@@ -48,11 +48,11 @@ function builtPackage(): BuiltPromptPackage {
 }
 
 describe("workbench reducer", () => {
-  it("keeps document processing conservative and invalidates reviewed media when options change", () => {
-    // This catches expensive extraction becoming default-on or an old reviewed package surviving changed media inputs.
+  it("uses the v0.4 media defaults and invalidates reviewed media when options change", () => {
+    // This catches embedded-image extraction becoming default-off, optional OCR becoming implicit, or reviewed media surviving changed inputs.
     let state = createInitialWorkbenchState();
     expect((state as unknown as { globalExtractionOptions?: unknown }).globalExtractionOptions).toMatchObject({
-      extractEmbeddedImages: false,
+      extractEmbeddedImages: true,
       capturePageVisuals: false,
       ocrMode: "off",
     });

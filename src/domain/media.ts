@@ -23,7 +23,7 @@ export interface ExtractionOptions {
 }
 
 export const DEFAULT_EXTRACTION_OPTIONS: Readonly<ExtractionOptions> = Object.freeze({
-  extractEmbeddedImages: false,
+  extractEmbeddedImages: true,
   capturePageVisuals: false,
   pageSelection: "all",
   pageCaptureQuality: "standard",

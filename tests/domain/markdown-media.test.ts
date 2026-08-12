@@ -36,10 +36,12 @@ describe("Markdown embedded media", () => {
     expect(Array.from(result.visualAssets?.[0].bytes ?? [])).toEqual(Array.from(imageBytes));
   });
 
-  it("keeps extraction disabled by default and replaces data bytes with an inspectable omission marker", async () => {
-    // This catches conservative defaults accidentally decoding images or carrying a large data URL into generated prompts.
+  it("honors an explicit embedded-image opt-out and replaces data bytes with an inspectable omission marker", async () => {
+    // This catches a saved off choice being ignored or a large data URL entering generated prompts after opt-out.
     const source = `![Plot](data:image/png;base64,${encodedImage})`;
-    const result = await extractFile(accepted(source));
+    const result = await extractFile(accepted(source), {
+      options: { ...cloneExtractionOptions(DEFAULT_EXTRACTION_OPTIONS), extractEmbeddedImages: false },
+    } as never);
 
     expect(result.visualAssets).toEqual([]);
     expect(result.extractedText).toBe("[Embedded image omitted: Plot]");

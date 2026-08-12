@@ -47,6 +47,9 @@ export interface WorkbenchState {
   previewArtifactKey: string | null;
   settingsDrawerOpen: boolean;
   helpDialogOpen: boolean;
+  quickStartDialogOpen: boolean;
+  resetPreferencesDialogOpen: boolean;
+  tutorialSeenVersion: string | null;
   intake: {
     dragging: boolean;
     activeBatchId: string | null;
