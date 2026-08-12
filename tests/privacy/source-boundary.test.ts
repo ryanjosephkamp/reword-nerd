@@ -13,6 +13,12 @@ describe("production privacy boundary", () => {
   it("keeps production source free of remote endpoints and unapproved persistence clients", () => {
     // This catches a future production change silently adding a network or persistence side effect outside the preference adapter.
     const root = join(process.cwd(), "src");
+    const deliberateNavigationDestinations = [
+      "https://github.com/ryanjosephkamp/reword-nerd",
+      "https://github.com/ryanjosephkamp/",
+      "https://ryanjosephkamp.github.io",
+      "https://github.com/sponsors/ryanjosephkamp",
+    ] as const;
     const forbidden = [
       /https?:\/\//u,
       /\bfetch\s*\(/u,
@@ -27,11 +33,15 @@ describe("production privacy boundary", () => {
     ];
     const findings = sourceFiles(root).flatMap((path) => {
       const source = readFileSync(path, "utf8");
+      const sourceWithoutApprovedNavigation = deliberateNavigationDestinations.reduce(
+        (current, destination) => current.replaceAll(destination, "APPROVED_NAVIGATION_DESTINATION"),
+        source,
+      );
       const forbiddenStorageMethod = /\.\s*(?:setItem|removeItem)\s*\(/u.test(source)
         && !path.endsWith(join("app", "workbench", "preferences.ts"));
       return [
         ...(forbiddenStorageMethod ? [`${relative(process.cwd(), path)} used a storage write outside the preference adapter`] : []),
-        ...forbidden.flatMap((pattern) => pattern.test(source)
+        ...forbidden.flatMap((pattern) => pattern.test(sourceWithoutApprovedNavigation)
         ? [`${relative(process.cwd(), path)} matched ${pattern.source}`]
         : []),
       ];

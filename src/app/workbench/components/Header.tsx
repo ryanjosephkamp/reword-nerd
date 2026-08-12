@@ -1,23 +1,49 @@
-import { useRef, useState, type RefObject } from "react";
-import { FolderIcon, GearIcon, HelpIcon, MoreIcon } from "./Icons";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import { FolderIcon, GearIcon, HelpIcon, InfoIcon, MoreIcon, RestartIcon } from "./Icons";
 
 interface HeaderProps {
   onOpenFiles(): void;
   onOpenSettings(): void;
   onOpenHelp(returnFocus: HTMLButtonElement): void;
+  onOpenInfo(returnFocus: HTMLButtonElement): void;
+  onNewSession(returnFocus: HTMLButtonElement): void;
+  settingsExpanded: boolean;
+  settingsControls: string;
   settingsButtonRef: RefObject<HTMLButtonElement | null>;
 }
 
-export function Header({ onOpenFiles, onOpenSettings, onOpenHelp, settingsButtonRef }: HeaderProps) {
+export function Header({ onOpenFiles, onOpenSettings, onOpenHelp, onOpenInfo, onNewSession, settingsExpanded, settingsControls, settingsButtonRef }: HeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const outside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!menuRef.current?.contains(target) && !menuButtonRef.current?.contains(target)) setMenuOpen(false);
+    };
+    const escape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setMenuOpen(false);
+      menuButtonRef.current?.focus();
+    };
+    document.addEventListener("mousedown", outside);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("mousedown", outside);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [menuOpen]);
   return <header className="workbench-header">
     <h1 className="brand">reword_nerd/</h1>
     <div className="session-copy"><strong>LOCAL SESSION</strong><span>Files stay in this browser</span></div>
     <div className="header-actions" aria-label="Workspace utilities">
       <button type="button" className="icon-button folder-button" aria-label="Open files" onClick={onOpenFiles}><FolderIcon /></button>
-      <button type="button" className="icon-button settings-button" aria-label="Settings" onClick={onOpenSettings} ref={settingsButtonRef}><GearIcon /></button>
+      <button type="button" className="icon-button restart-button" aria-label="New session" onClick={(event) => onNewSession(event.currentTarget)}><RestartIcon /></button>
+      <button type="button" className="icon-button settings-button" aria-label="Settings" aria-expanded={settingsExpanded} aria-controls={settingsControls} onClick={onOpenSettings} ref={settingsButtonRef}><GearIcon /></button>
       <button type="button" className="icon-button help-button" aria-label="Help" onClick={(event) => onOpenHelp(event.currentTarget)}><HelpIcon /></button>
+      <button type="button" className="icon-button info-button" aria-label="Info" onClick={(event) => onOpenInfo(event.currentTarget)}><InfoIcon /></button>
       <button
         type="button"
         className="icon-button mobile-menu"
@@ -27,13 +53,23 @@ export function Header({ onOpenFiles, onOpenSettings, onOpenHelp, settingsButton
         onClick={() => setMenuOpen((open) => !open)}
         ref={menuButtonRef}
       ><MoreIcon /></button>
-      {menuOpen ? <div id="mobile-utility-menu" className="mobile-utility-menu" role="menu">
-        <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onOpenSettings(); }}>Settings</button>
-        <button type="button" role="menuitem" onClick={() => {
+      {menuOpen ? <div id="mobile-utility-menu" className="mobile-utility-menu" aria-label="Mobile utilities" ref={menuRef}>
+        <button type="button" onClick={() => { setMenuOpen(false); onOpenSettings(); }}>Settings</button>
+        <button type="button" onClick={() => {
           const returnFocus = menuButtonRef.current;
           setMenuOpen(false);
           if (returnFocus) onOpenHelp(returnFocus);
         }}>Help</button>
+        <button type="button" onClick={() => {
+          const returnFocus = menuButtonRef.current;
+          setMenuOpen(false);
+          if (returnFocus) onOpenInfo(returnFocus);
+        }}>Info</button>
+        <button type="button" onClick={() => {
+          const returnFocus = menuButtonRef.current;
+          setMenuOpen(false);
+          if (returnFocus) onNewSession(returnFocus);
+        }}>New session</button>
       </div> : null}
     </div>
   </header>;

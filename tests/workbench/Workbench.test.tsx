@@ -28,6 +28,13 @@ function workbook(documentKey = "notes", name = "notes.md"): DocumentWorkbook {
     originalDisplayName: name,
     runbook: {} as never,
     runbookMarkdown: "# reword-nerd prompt package\n\nRun each stage in order.",
+    runbookDocument: {
+      type: "runbook-document",
+      blocks: [
+        { type: "heading", depth: 1, content: [{ type: "text", value: "reword-nerd prompt package" }] },
+        { type: "paragraph", content: [{ type: "text", value: "Run each stage in order." }] },
+      ],
+    },
     promptBundle: {
       oneShot: "ONE-SHOT PROMPT\nSource text",
       manual: {
@@ -100,6 +107,75 @@ async function uploadReviewedFile(testServices: WorkbenchServices) {
 }
 
 describe("Night Terminal workbench", () => {
+  it("collapses desktop Settings without invalidating the session and expands it on demand", async () => {
+    // This catches the desktop gear being inert or a view-only collapse invalidating a built package.
+    await uploadReviewedFile(services());
+    const settingsButton = screen.getByRole("button", { name: "Settings" });
+    const grid = document.querySelector(".workbench-grid");
+    expect(settingsButton).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("region", { name: "Parameters" })).toBeInTheDocument();
+
+    fireEvent.click(settingsButton);
+    expect(settingsButton).toHaveAttribute("aria-expanded", "false");
+    expect(grid).toHaveClass("settings-collapsed");
+    expect(document.getElementById("panel-settings")).toHaveAttribute("hidden");
+
+    fireEvent.click(settingsButton);
+    expect(settingsButton).toHaveAttribute("aria-expanded", "true");
+    expect(grid).not.toHaveClass("settings-collapsed");
+  });
+
+  it("opens New session from the header and clears documents only after confirmation", async () => {
+    // This catches destructive session reset without confirmation or Settings loss.
+    await uploadReviewedFile(services());
+    fireEvent.change(screen.getByLabelText("Custom requirements"), { target: { value: "Keep terminology." } });
+    const restart = screen.getByRole("button", { name: "New session" });
+    fireEvent.click(restart);
+    const dialog = screen.getByRole("dialog", { name: "Start a new session?" });
+    expect(dialog).toHaveTextContent(/uploaded files.*progress.*built package/i);
+    await act(async () => { fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" })); });
+    expect(screen.getByDisplayValue("Source text")).toBeInTheDocument();
+    expect(restart).toHaveFocus();
+
+    fireEvent.click(restart);
+    fireEvent.click(screen.getByRole("button", { name: "Start new session" }));
+    expect(screen.queryByDisplayValue("Source text")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Custom requirements")).toHaveValue("Keep terminology.");
+    expect(screen.getByRole("button", { name: "Add files" })).toHaveFocus();
+    expect(screen.getByText("New session ready. Settings kept.")).toBeInTheDocument();
+  });
+
+  it("exposes branded Info on desktop with exact deliberate creator links", () => {
+    // This catches missing identity/version or links drifting outside the privacy navigation allowlist.
+    render(<App services={services()} />);
+    const infoButton = screen.getByRole("button", { name: "Info" });
+    fireEvent.click(infoButton);
+    const dialog = screen.getByRole("dialog", { name: "About reword-nerd" });
+    expect(within(dialog).getByText("reword-nerd v0.5.0")).toBeInTheDocument();
+    expect(within(dialog).getByRole("img", { name: /reword-nerd logo/i })).toBeInTheDocument();
+    const links = {
+      Repository: "https://github.com/ryanjosephkamp/reword-nerd",
+      GitHub: "https://github.com/ryanjosephkamp/",
+      Website: "https://ryanjosephkamp.github.io",
+      Sponsor: "https://github.com/sponsors/ryanjosephkamp",
+    };
+    for (const [name, href] of Object.entries(links)) {
+      expect(within(dialog).getByRole("link", { name })).toHaveAttribute("href", href);
+      expect(within(dialog).getByRole("link", { name })).toHaveAttribute("rel", "noopener noreferrer");
+    }
+  });
+
+  it("resets the open Help chapter after Help is dismissed and reopened", () => {
+    render(<App services={services()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Help" }));
+    fireEvent.click(screen.getByRole("button", { name: "WATCH SETTINGS DEMO" }));
+    expect(screen.getByLabelText("Settings demonstration")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close help" }));
+    fireEvent.click(screen.getByRole("button", { name: "Help" }));
+    expect(screen.queryByLabelText("Settings demonstration")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "WATCH SETTINGS DEMO" })).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("preserves spaces and returns while editing global and per-file requirements", async () => {
     // This catches binding a controlled textarea to normalized settings, which erases trailing input on every render.
     await uploadReviewedFile(services());
@@ -318,6 +394,33 @@ describe("Night Terminal workbench", () => {
     expect(await screen.findAllByText(/20-file session limit/)).toHaveLength(5);
   });
 
+  it("drops an intake that was queued before a new session reset", async () => {
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let calls = 0;
+    const preflight = vi.fn(async (files: readonly File[]) => {
+      calls += 1;
+      if (calls === 1) await firstGate;
+      return files.map((file) => ({
+        accepted: true as const,
+        file,
+        format: "markdown" as const,
+        originalBytes: new TextEncoder().encode(file.name).buffer,
+      }));
+    });
+    render(<App services={services({ preflight })} />);
+    const input = screen.getByLabelText("Add supported files");
+    fireEvent.change(input, { target: { files: [new File(["a"], "first.md")] } });
+    await waitFor(() => expect(preflight).toHaveBeenCalledTimes(1));
+    fireEvent.change(input, { target: { files: [new File(["b"], "queued-before-reset.md")] } });
+
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start new session" }));
+    await act(async () => { releaseFirst(); await firstGate; });
+    await waitFor(() => expect(within(screen.getByRole("listbox", { name: "Uploaded files" })).queryAllByRole("option")).toHaveLength(0));
+    expect(preflight).toHaveBeenCalledTimes(1);
+  });
+
   it("admits a bubbling drop through exactly one intake boundary", async () => {
     const preflight = vi.fn(services().preflight);
     const { container } = render(<App services={services({ preflight })} />);
@@ -348,7 +451,8 @@ describe("Night Terminal workbench", () => {
     expect(download).not.toHaveBeenCalled();
     expect(screen.getByRole("heading", { name: "PACKAGE PREVIEW" })).toHaveFocus();
     expect(screen.getByText(/Run each stage in order\./)).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "ONE-SHOT" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "RUNBOOK" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("tab", { name: "ONE-SHOT" }));
     expect(screen.getByRole("textbox", { name: "Editable One-shot prompt" })).toHaveValue(
       "ONE-SHOT PROMPT\nSource text",
     );
@@ -386,6 +490,7 @@ describe("Night Terminal workbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "BUILD PACKAGE" }));
     await screen.findByRole("heading", { name: "PACKAGE PREVIEW" });
     expect(screen.getByRole("button", { name: "DOWNLOAD ZIP" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("tab", { name: "ONE-SHOT" }));
     fireEvent.change(screen.getByRole("textbox", { name: "One-shot final document and compact audit" }), {
       target: { value: "obsolete workbook response" },
     });
@@ -402,6 +507,7 @@ describe("Night Terminal workbench", () => {
     expect(requirements).toHaveFocus();
 
     fireEvent.click(screen.getByRole("button", { name: "BUILD PACKAGE" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "ONE-SHOT" }));
     expect(await screen.findByRole("textbox", { name: "One-shot final document and compact audit" })).toHaveValue("");
   });
 
@@ -573,16 +679,43 @@ describe("Night Terminal workbench", () => {
     render(<App services={services()} />);
     const menu = screen.getByRole("button", { name: "Menu" });
     fireEvent.click(menu);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Help" }));
+    fireEvent.click(within(screen.getByLabelText("Mobile utilities")).getByRole("button", { name: "Help" }));
     expect(screen.getByRole("dialog", { name: "Help and workflow guide" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Close help" }));
     expect(menu).toHaveFocus();
 
     fireEvent.click(menu);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Settings" }));
+    fireEvent.click(within(screen.getByLabelText("Mobile utilities")).getByRole("button", { name: "Settings" }));
     expect(screen.getByRole("tab", { name: "SETTINGS" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: "SETTINGS" })).toHaveFocus();
     window.matchMedia = originalMatchMedia;
+  });
+
+  it("dismisses utility and file-action menus with outside activation or Escape", async () => {
+    render(<App services={services()} />);
+    const utility = screen.getByRole("button", { name: "Menu" });
+    fireEvent.click(utility);
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByLabelText("Mobile utilities")).not.toBeInTheDocument();
+
+    fireEvent.click(utility);
+    fireEvent.keyDown(screen.getByLabelText("Mobile utilities"), { key: "Escape" });
+    expect(screen.queryByLabelText("Mobile utilities")).not.toBeInTheDocument();
+    expect(utility).toHaveFocus();
+
+    fireEvent.change(screen.getByLabelText("Add supported files"), {
+      target: { files: [new File(["Source text"], "notes.md")] },
+    });
+    await screen.findByDisplayValue("Source text");
+    const fileActions = screen.getByRole("button", { name: "File actions for notes.md" });
+    fireEvent.click(fileActions);
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("button", { name: "Remove file" })).not.toBeInTheDocument();
+
+    fireEvent.click(fileActions);
+    fireEvent.keyDown(screen.getByLabelText("Actions for notes.md"), { key: "Escape" });
+    expect(screen.queryByRole("button", { name: "Remove file" })).not.toBeInTheDocument();
+    expect(fileActions).toHaveFocus();
   });
 
   it("announces rejection issues in input order without persisting session state", async () => {
@@ -711,9 +844,9 @@ describe("Night Terminal workbench", () => {
       target: { files: [new File(["Source text"], "notes.md")] },
     });
     await screen.findByDisplayValue("Source text");
-    expect(screen.queryByRole("menuitem", { name: "Remove file" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove file" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "File actions for notes.md" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Remove file" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove file" }));
     expect(screen.queryByRole("option", { name: /notes\.md/ })).not.toBeInTheDocument();
   });
 
@@ -753,7 +886,7 @@ describe("Night Terminal workbench", () => {
     expect(screen.getByText("CHARS: 11")).toBeInTheDocument();
     expect(screen.getByText("LINES: 1")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "File actions for notes.md" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Remove file" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove file" }));
     expect(screen.getByRole("button", { name: "Add files" })).toHaveFocus();
   });
 

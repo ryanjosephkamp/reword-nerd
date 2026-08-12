@@ -68,6 +68,18 @@ describe("saved preferences and onboarding UI", () => {
     });
   });
 
+  it("dismisses Quick start only from its direct backdrop and not from content activation", () => {
+    // This catches backdrop handling that either cannot dismiss or closes while interacting with media/content.
+    render(<App services={services()} />);
+    const dialog = screen.getByRole("dialog", { name: "Quick start" });
+    fireEvent.mouseDown(dialog);
+    expect(screen.getByRole("dialog", { name: "Quick start" })).toBeInTheDocument();
+    const backdrop = dialog.parentElement;
+    expect(backdrop).not.toBeNull();
+    fireEvent.click(backdrop!);
+    expect(screen.queryByRole("dialog", { name: "Quick start" })).not.toBeInTheDocument();
+  });
+
   it("routes Quick start actions to Settings focus and the existing single file picker", () => {
     // This catches onboarding creating a second upload input or leaving keyboard users outside Settings.
     const { unmount } = render(<App services={services()} />);
@@ -90,17 +102,17 @@ describe("saved preferences and onboarding UI", () => {
     // This catches Help omitting required limitations or Replay permanently resetting onboarding state.
     markTutorialSeen();
     render(<App services={services()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Help" }));
+    const helpButton = screen.getByRole("button", { name: "Help" });
+    fireEvent.click(helpButton);
     const help = screen.getByRole("dialog", { name: "Help and workflow guide" });
 
     for (const copy of [
-      "Quick start",
+      "Settings",
+      "Review",
+      "Package",
       "One-shot and Manual",
-      "Models and context",
-      "Formats, LaTeX, images, and OCR",
-      "Package and OPEN-ME",
-      "Privacy and provider limits",
-      "Reset saved preferences",
+      "Formats and privacy",
+      "Reset or restart",
     ]) expect(help).toHaveTextContent(copy);
 
     fireEvent.click(within(help).getByRole("button", { name: "REPLAY QUICK START" }));
@@ -109,6 +121,8 @@ describe("saved preferences and onboarding UI", () => {
     expect(JSON.parse(window.localStorage.getItem(PREFERENCES_STORAGE_KEY) ?? "null")).toMatchObject({
       data: { tutorialVersion: CURRENT_TUTORIAL_VERSION },
     });
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Quick start" }), { key: "Escape" });
+    expect(helpButton).toHaveFocus();
   });
 
   it("requires confirmation to reset globals, clears the key, and retains uploaded documents", async () => {
@@ -134,6 +148,19 @@ describe("saved preferences and onboarding UI", () => {
     expect(screen.getByLabelText("Tone")).toHaveValue("preserve");
     expect(screen.getByDisplayValue("Source")).toBeInTheDocument();
     expect(window.localStorage.getItem(PREFERENCES_STORAGE_KEY)).toBeNull();
+  });
+
+  it("treats the Reset Preferences close button and backdrop as Cancel", () => {
+    // This catches a confirmation surface lacking either required non-destructive dismissal route.
+    markTutorialSeen();
+    render(<App services={services()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reset saved preferences" }));
+    const dialog = screen.getByRole("dialog", { name: "Reset saved preferences" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close reset preferences" }));
+    expect(screen.queryByRole("dialog", { name: "Reset saved preferences" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Reset saved preferences" }));
+    fireEvent.click(screen.getByRole("dialog", { name: "Reset saved preferences" }).parentElement!);
+    expect(screen.queryByRole("dialog", { name: "Reset saved preferences" })).not.toBeInTheDocument();
   });
 
   it("keeps processing controls visible, gives empty Review a direct picker action, and explains persistence", () => {
@@ -183,13 +210,13 @@ describe("saved preferences and onboarding UI", () => {
     });
     fireEvent.change(screen.getByLabelText("PDF pages"), { target: { value: "3-1" } });
     fireEvent.change(screen.getByLabelText("Output language"), { target: { value: "   " } });
-    fireEvent.change(screen.getByLabelText("Model label"), { target: { value: "m".repeat(205) } });
+    fireEvent.change(screen.getByLabelText("Custom Model label"), { target: { value: "m".repeat(205) } });
     fireEvent.change(screen.getByLabelText("Custom requirements"), { target: { value: "r".repeat(2_001) } });
 
     expect(screen.getByLabelText("Context limit")).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByLabelText("PDF pages")).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByLabelText("Output language")).toHaveAttribute("aria-invalid", "true");
-    expect(screen.getByLabelText("Model label")).toHaveValue("m".repeat(200));
+    expect(screen.getByLabelText("Custom Model label")).toHaveValue("m".repeat(200));
     expect(screen.getByLabelText("Custom requirements")).toHaveValue("r".repeat(2_000));
 
     await waitFor(() => {

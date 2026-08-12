@@ -18,6 +18,13 @@ function workbook(documentKey = "notes", originalDisplayName = "notes.md"): Docu
     originalDisplayName,
     runbook: {} as never,
     runbookMarkdown: "# reword-nerd prompt package\n\nRun each stage in order.",
+    runbookDocument: {
+      type: "runbook-document",
+      blocks: [
+        { type: "heading", depth: 1, content: [{ type: "text", value: "reword-nerd prompt package" }] },
+        { type: "paragraph", content: [{ type: "text", value: "Run each stage in order." }] },
+      ],
+    },
     promptBundle: {
       oneShot: `ONE-SHOT\n${originalDisplayName}\nSource text`,
       manual: {
@@ -71,14 +78,14 @@ function PreviewHarness({
   hidden?: boolean;
 }) {
   const [selectedDocumentKey, setSelectedDocumentKey] = useState<string | null>(workbooks[0]?.documentKey ?? null);
-  const [workflow, setWorkflow] = useState<"one-shot" | "manual">("one-shot");
+  const [workflow, setWorkflow] = useState<"runbook" | "one-shot" | "manual">("runbook");
 
   const props = {
     workbooks,
     selectedDocumentKey,
-    workflow,
     onSelect: setSelectedDocumentKey,
-    onWorkflowChange: setWorkflow,
+    onTabChange: setWorkflow,
+    tab: workflow,
     downloadProgressCopy,
     copyPromptText,
     hidden,
@@ -87,6 +94,25 @@ function PreviewHarness({
 }
 
 describe("PackagePreview workbook integration", () => {
+  it("opens the rich Runbook by default and navigates across all three package tabs", () => {
+    // This catches raw Markdown runbook rendering or a build defaulting into an execution workflow.
+    render(<PreviewHarness />);
+    const tablist = screen.getByRole("tablist", { name: "Package workflow" });
+    const runbook = within(tablist).getByRole("tab", { name: "RUNBOOK" });
+    expect(runbook).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("heading", { name: "reword-nerd prompt package" })).toBeInTheDocument();
+    expect(screen.queryByText(/^# reword-nerd prompt package/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Editable One-shot prompt" })).not.toBeInTheDocument();
+
+    runbook.focus();
+    fireEvent.keyDown(runbook, { key: "ArrowRight" });
+    expect(screen.getByRole("tab", { name: "ONE-SHOT" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("tab", { name: "ONE-SHOT" }), { key: "End" });
+    expect(screen.getByRole("tab", { name: "MANUAL" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("tab", { name: "MANUAL" }), { key: "Home" });
+    expect(runbook).toHaveFocus();
+  });
+
   it("opens One-shot with accessible workflow tabs and copies the exact editable prompt", async () => {
     const previousExecCommand = document.execCommand;
     let copiedText = "";
@@ -99,6 +125,8 @@ describe("PackagePreview workbook integration", () => {
     });
 
     render(<PreviewHarness />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "ONE-SHOT" }));
 
     const tablist = screen.getByRole("tablist", { name: "Package workflow" });
     expect(within(tablist).getByRole("tab", { name: "ONE-SHOT" })).toHaveAttribute("aria-selected", "true");
@@ -123,6 +151,8 @@ describe("PackagePreview workbook integration", () => {
     const previousExecCommand = document.execCommand;
     Object.defineProperty(document, "execCommand", { configurable: true, value: vi.fn(() => false) });
     render(<PreviewHarness />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "ONE-SHOT" }));
 
     const copy = screen.getByRole("button", { name: "COPY ONE-SHOT PROMPT" });
     copy.focus();
@@ -191,11 +221,27 @@ describe("PackagePreview workbook integration", () => {
     expect(screen.getByRole("textbox", { name: "Stage 1 — Decompose model response" })).toHaveValue("first document analysis");
   });
 
+  it("clears copy feedback when the active package document or tab changes", async () => {
+    render(<PreviewHarness workbooks={[workbook("one", "one.md"), workbook("two", "two.md")]} copyPromptText={async () => "copied"} />);
+    fireEvent.click(screen.getByRole("tab", { name: "ONE-SHOT" }));
+    fireEvent.click(screen.getByRole("button", { name: "COPY ONE-SHOT PROMPT" }));
+    expect(await screen.findByText("One-shot prompt copied.")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Package document" }), { target: { value: "two" } });
+    expect(screen.queryByText("One-shot prompt copied.")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "COPY ONE-SHOT PROMPT" }));
+    expect(await screen.findByText("One-shot prompt copied.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "RUNBOOK" }));
+    expect(screen.queryByText("One-shot prompt copied.")).not.toBeInTheDocument();
+  });
+
   it("downloads the exact safe progress renderer through a separate adapter", async () => {
     const downloadProgressCopy = vi.fn<ProgressDownload>(() => ({ ok: true }));
     const sourceWorkbook = workbook();
     const storage = vi.spyOn(window.localStorage, "setItem");
     render(<PreviewHarness workbooks={[sourceWorkbook]} downloadProgressCopy={downloadProgressCopy} />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "ONE-SHOT" }));
 
     fireEvent.change(screen.getByRole("textbox", { name: "One-shot final document and compact audit" }), {
       target: { value: "one-shot result" },
@@ -222,6 +268,7 @@ describe("PackagePreview workbook integration", () => {
 
   it("supports arrow navigation between the two workflow tabs", () => {
     render(<PreviewHarness />);
+    fireEvent.click(screen.getByRole("tab", { name: "ONE-SHOT" }));
     const oneShot = screen.getByRole("tab", { name: "ONE-SHOT" });
     oneShot.focus();
     fireEvent.keyDown(oneShot, { key: "ArrowRight" });
@@ -235,6 +282,7 @@ describe("PackagePreview workbook integration", () => {
       workbooks={[workbook("one", "one.md"), workbook("two", "two.md")]}
       copyPromptText={() => pendingCopy.promise}
     />);
+    fireEvent.click(screen.getByRole("tab", { name: "ONE-SHOT" }));
     const copy = screen.getByRole("button", { name: "COPY ONE-SHOT PROMPT" });
     fireEvent.click(copy);
 
@@ -251,6 +299,7 @@ describe("PackagePreview workbook integration", () => {
   it("ignores a delayed Copy completion after the package workflow changes", async () => {
     const pendingCopy = deferred<"copied" | "select-manually">();
     render(<PreviewHarness copyPromptText={() => pendingCopy.promise} />);
+    fireEvent.click(screen.getByRole("tab", { name: "ONE-SHOT" }));
     fireEvent.click(screen.getByRole("button", { name: "COPY ONE-SHOT PROMPT" }));
 
     const manual = screen.getByRole("tab", { name: "MANUAL" });
@@ -282,6 +331,7 @@ describe("PackagePreview workbook integration", () => {
       workbooks={[workbook("one", "one.md"), workbook("two", "two.md")]}
       copyPromptText={() => pendingCopy.promise}
     />);
+    fireEvent.click(screen.getByRole("tab", { name: "ONE-SHOT" }));
     fireEvent.click(screen.getByRole("button", { name: "COPY ONE-SHOT PROMPT" }));
 
     const selector = screen.getByRole("combobox", { name: "Package document" });
@@ -298,6 +348,7 @@ describe("PackagePreview workbook integration", () => {
   it("ignores a delayed Copy completion after a package workflow round trip", async () => {
     const pendingCopy = deferred<"copied" | "select-manually">();
     render(<PreviewHarness copyPromptText={() => pendingCopy.promise} />);
+    fireEvent.click(screen.getByRole("tab", { name: "ONE-SHOT" }));
     fireEvent.click(screen.getByRole("button", { name: "COPY ONE-SHOT PROMPT" }));
 
     fireEvent.click(screen.getByRole("tab", { name: "MANUAL" }));
@@ -328,6 +379,7 @@ describe("PackagePreview workbook integration", () => {
   it("ignores a delayed Copy completion after a hidden package view round trip", async () => {
     const pendingCopy = deferred<"copied" | "select-manually">();
     const view = render(<PreviewHarness copyPromptText={() => pendingCopy.promise} />);
+    fireEvent.click(screen.getByRole("tab", { name: "ONE-SHOT" }));
     fireEvent.click(screen.getByRole("button", { name: "COPY ONE-SHOT PROMPT" }));
 
     view.rerender(<PreviewHarness copyPromptText={() => pendingCopy.promise} hidden />);

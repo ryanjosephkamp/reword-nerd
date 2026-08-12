@@ -11,7 +11,7 @@ import {
   type ProcessingProgress,
   type WorkspaceDocument,
 } from "../../domain";
-import type { BuiltPromptPackage, MobileTab, PackageWorkflow, PreviewMode, WorkbenchDocument, WorkbenchState } from "./contracts";
+import type { ActiveOverlay, BuiltPromptPackage, MobileTab, PackagePreviewTab, PreviewMode, WorkbenchDocument, WorkbenchState } from "./contracts";
 import { CURRENT_TUTORIAL_VERSION, type SavedPreferencesPatch } from "./preferences";
 
 type IntakeDocument = { document: WorkspaceDocument; uploadOrdinal: number };
@@ -55,10 +55,15 @@ export type WorkbenchAction =
   | { type: "context/acknowledged"; documentId: string; acknowledged: boolean }
   | { type: "mobile/tab-changed"; tab: MobileTab }
   | { type: "preview/mode-changed"; mode: PreviewMode }
-  | { type: "preview/workflow-changed"; workflow: PackageWorkflow }
+  | { type: "preview/workflow-changed"; workflow: PackagePreviewTab }
   | { type: "preview/document-selected"; documentKey: string }
+  | { type: "desktop/settings-expanded"; expanded: boolean }
+  | { type: "overlay/opened"; overlay: ActiveOverlay }
+  | { type: "overlay/closed" }
+  | { type: "session/reset-requested" }
+  | { type: "session/reset-cancelled" }
+  | { type: "session/reset-confirmed" }
   | { type: "drawer/changed"; open: boolean }
-  | { type: "help/changed"; open: boolean }
   | { type: "tutorial/opened" }
   | { type: "tutorial/dismissed" }
   | { type: "preferences/reset-requested" }
@@ -106,12 +111,10 @@ export function createInitialWorkbenchState(preferences: SavedPreferencesPatch |
     overrideEnabled: {},
     mobileTab: "files",
     previewMode: "source",
-    previewWorkflow: "one-shot",
+    previewWorkflow: "runbook",
     previewDocumentKey: null,
-    settingsDrawerOpen: false,
-    helpDialogOpen: false,
-    quickStartDialogOpen: preferences?.tutorialVersion !== CURRENT_TUTORIAL_VERSION,
-    resetPreferencesDialogOpen: false,
+    desktopSettingsExpanded: true,
+    activeOverlay: preferences?.tutorialVersion !== CURRENT_TUTORIAL_VERSION ? "quick-start" : null,
     tutorialSeenVersion: preferences?.tutorialVersion ?? null,
     intake: { dragging: false, activeBatchId: null, issues: [] },
     editor: {},
@@ -130,7 +133,7 @@ function changed(state: WorkbenchState, patch: Partial<WorkbenchState>): Workben
     revision: state.revision + 1,
     export: { status: "idle", safeMessage: "" },
     previewMode: "source",
-    previewWorkflow: "one-shot",
+    previewWorkflow: "runbook",
     previewDocumentKey: null,
   };
 }
@@ -523,22 +526,51 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
     case "preview/document-selected":
       if (!state.export.builtPackage?.workbooks.some((workbook) => workbook.documentKey === action.documentKey)) return state;
       return { ...state, previewDocumentKey: action.documentKey };
+    case "desktop/settings-expanded":
+      return { ...state, desktopSettingsExpanded: action.expanded };
+    case "overlay/opened":
+      return { ...state, activeOverlay: action.overlay };
+    case "overlay/closed":
+      return { ...state, activeOverlay: null };
+    case "session/reset-requested":
+      return { ...state, activeOverlay: "new-session" };
+    case "session/reset-cancelled":
+      return { ...state, activeOverlay: null };
+    case "session/reset-confirmed": {
+      const revision = state.revision + 1;
+      return {
+        ...state,
+        documents: [],
+        selectedDocumentId: null,
+        overrideEnabled: {},
+        mobileTab: "files",
+        previewMode: "source",
+        previewWorkflow: "runbook",
+        previewDocumentKey: null,
+        activeOverlay: null,
+        intake: { dragging: false, activeBatchId: null, issues: [] },
+        editor: {},
+        export: { status: "idle", safeMessage: "" },
+        liveMessage: "New session ready. Settings kept.",
+        revision,
+        lastExportedRevision: revision,
+        focusTarget: "upload",
+      };
+    }
     case "drawer/changed":
-      return { ...state, settingsDrawerOpen: action.open };
-    case "help/changed":
-      return { ...state, helpDialogOpen: action.open };
+      return { ...state, activeOverlay: action.open ? "settings" : null };
     case "tutorial/opened":
-      return { ...state, helpDialogOpen: false, quickStartDialogOpen: true };
+      return { ...state, activeOverlay: "quick-start" };
     case "tutorial/dismissed":
       return {
         ...state,
-        quickStartDialogOpen: false,
+        activeOverlay: null,
         tutorialSeenVersion: CURRENT_TUTORIAL_VERSION,
       };
     case "preferences/reset-requested":
-      return { ...state, resetPreferencesDialogOpen: true };
+      return { ...state, activeOverlay: "reset-preferences" };
     case "preferences/reset-cancelled":
-      return { ...state, resetPreferencesDialogOpen: false };
+      return { ...state, activeOverlay: null };
     case "preferences/reset-confirmed":
       return changed(state, {
         globalSettings: { ...DEFAULT_SETTINGS },
@@ -547,7 +579,7 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
         workingProfile: { ...firstProfile },
         customProfileLabel: "",
         customContextDraft: firstProfile.contextWindowTokens?.toString() ?? "",
-        resetPreferencesDialogOpen: false,
+        activeOverlay: null,
         documents: clearAcknowledgments(state.documents),
       });
     case "focus/consumed":
@@ -575,7 +607,7 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
         },
         mobileTab: "preview",
         previewMode: "package",
-        previewWorkflow: "one-shot",
+        previewWorkflow: "runbook",
         previewDocumentKey: action.builtPackage.workbooks[0]?.documentKey ?? null,
         focusTarget: "package-preview",
         liveMessage: "Package ready.",

@@ -3,11 +3,14 @@ import { MAX_FULL_HTML_BYTES } from "../domain";
 import type {
   CombinedPromptBlock,
   DocumentWorkbook,
+  RunbookDocument,
   PromptPackageManifest,
   WorkbookProgress,
   WorkbookPromptState,
   WorkbookResponseStage,
 } from "./contracts";
+import { renderRunbookHtml, serializeRunbookMarkdown } from "./runbook";
+import { isSafeArchivePath } from "./paths";
 
 const textEncoder = new TextEncoder();
 
@@ -62,19 +65,38 @@ function promptSection(title: string, prompt: string): string {
   return `## ${title}\n\n${fence}text\n${prompt}${prompt.endsWith("\n") ? "" : "\n"}${fence}`;
 }
 
-function relativeAssetPath(path: string): string {
-  const marker = "/assets/";
-  const index = path.indexOf(marker);
-  return index < 0 ? path : `assets/${path.slice(index + marker.length)}`;
+export function relativeArchivePath(fromFile: string, toFile: string): string {
+  if (!isSafeArchivePath(fromFile) || !isSafeArchivePath(toFile)) {
+    throw new Error("Workbook paths must be archive-relative and canonical.");
+  }
+  const from = fromFile.split("/").slice(0, -1);
+  const to = toFile.split("/");
+  let common = 0;
+  while (common < from.length && common < to.length && from[common] === to[common]) common += 1;
+  return `${"../".repeat(from.length - common)}${to.slice(common).join("/")}`;
 }
 
-function assetMarkdown(assets: readonly ArtifactVisualAsset[]): string {
+function archiveRootPrefix(fromFile: string): string {
+  if (!isSafeArchivePath(fromFile)) throw new Error("Workbook path must be archive-relative and canonical.");
+  return "../".repeat(fromFile.split("/").length - 1);
+}
+
+export function escapeMarkdownText(value: string): string {
+  return value
+    .replaceAll("\\", "\\\\")
+    .replace(/([`*_[\]<>#])/gu, "\\$1")
+    .replaceAll("://", "\\://")
+    .replaceAll("|", "\\|")
+    .replaceAll("\n", " ");
+}
+
+function assetMarkdown(assets: readonly ArtifactVisualAsset[], workbookPath: string): string {
   const assetLines = assets.filter(({ asset }) => asset.included).map(({ asset, path }) => [
-    `- **${asset.id}** — [${asset.filename}](${relativeAssetPath(path)})`,
-    asset.sourcePath ? `source: ${asset.sourcePath}` : undefined,
+    `- **${escapeMarkdownText(asset.id)}** — [${escapeMarkdownText(asset.filename)}](${relativeArchivePath(workbookPath, path)})`,
+    asset.sourcePath ? `source: ${escapeMarkdownText(asset.sourcePath)}` : undefined,
     asset.pageNumber ? `page: ${asset.pageNumber}` : undefined,
-    asset.caption ? `caption: ${asset.caption}` : undefined,
-    asset.altText ? `alt: ${asset.altText}` : "description: missing",
+    asset.caption ? `caption: ${escapeMarkdownText(asset.caption)}` : undefined,
+    asset.altText ? `alt: ${escapeMarkdownText(asset.altText)}` : "description: missing",
   ].filter(Boolean).join("; "));
   return `## Visual assets\n\n${assetLines.length > 0 ? assetLines.join("\n") : "No extracted visual assets are included."}`;
 }
@@ -85,6 +107,7 @@ function workflowMarkdown(
   promptBundle: PromptBundle,
   assets: readonly ArtifactVisualAsset[],
   workflow: "one-shot" | "manual" | "combined",
+  workbookPath: string,
 ): string {
   const sections: string[] = [];
   if (workflow !== "manual") sections.push(promptSection("One-shot", promptBundle.oneShot));
@@ -92,7 +115,7 @@ function workflowMarkdown(
     for (const stage of manualStages) sections.push(promptSection(stageTitles[stage], promptBundle.manual[stage]));
   }
   const title = workflow === "one-shot" ? "One-shot prompt" : workflow === "manual" ? "Manual prompts" : "Combined prompts";
-  return `${runbookMarkdown}\n---\n\n# ${title} — ${displayName}\n\n${assetMarkdown(assets)}\n\n${sections.join("\n\n")}\n`;
+  return `${runbookMarkdown}\n---\n\n# ${title} — ${escapeMarkdownText(displayName)}\n\n${assetMarkdown(assets, workbookPath)}\n\n${sections.join("\n\n")}\n`;
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -111,7 +134,7 @@ function supportsInlinePreview(asset: VisualAsset): boolean {
     || asset.mimeType === "image/webp";
 }
 
-function assetHtml(assets: readonly ArtifactVisualAsset[], mode: "lightweight" | "full"): string {
+function assetHtml(assets: readonly ArtifactVisualAsset[], mode: "lightweight" | "full", workbookPath: string): string {
   const included = assets.filter(({ asset }) => asset.included);
   if (included.length === 0) return "<p>No extracted visual assets are included.</p>";
   return `<div class="asset-grid">${included.map(({ asset, path }) => {
@@ -122,7 +145,7 @@ function assetHtml(assets: readonly ArtifactVisualAsset[], mode: "lightweight" |
     const preview = source
       ? `<img src="${source}" alt="${escapeHtml(description)}">`
       : mode === "lightweight"
-        ? `<p><a href="${escapeHtml(relativeAssetPath(path))}">Open packaged asset</a></p>`
+        ? `<p><a href="${escapeHtml(relativeArchivePath(workbookPath, path))}">Open packaged asset</a></p>`
         : "<p>This preserved format is not rendered in this standalone document.</p>";
     return `<article class="asset-card"><h3>${escapeHtml(asset.id)}</h3>${preview}<dl><dt>File</dt><dd>${escapeHtml(asset.filename)}</dd><dt>Source</dt><dd>${escapeHtml(asset.sourcePath ?? (asset.pageNumber ? `Page ${asset.pageNumber}` : "Document"))}</dd><dt>Caption</dt><dd>${escapeHtml(asset.caption ?? "Not supplied")}</dd><dt>Alt text</dt><dd>${escapeHtml(asset.altText ?? "Not supplied")}</dd></dl></article>`;
   }).join("")}</div>`;
@@ -303,7 +326,7 @@ function promptEditor(stage: ManualStage, state: Readonly<WorkbookPromptState>):
 interface StandaloneSource {
   documentKey: string;
   originalDisplayName: string;
-  runbookMarkdown: string;
+  runbookDocument: Readonly<RunbookDocument>;
   promptBundle: Readonly<PromptBundle>;
   visualAssets: readonly ArtifactVisualAsset[];
 }
@@ -313,6 +336,7 @@ function standaloneHtml(
   progress: Readonly<WorkbookProgress>,
   workflow: "one-shot" | "manual" | "combined",
   mediaMode: "lightweight" | "full",
+  workbookPath: string,
 ): string {
   const serializedBundle = workflow === "one-shot"
     ? { oneShot: source.promptBundle.oneShot }
@@ -340,12 +364,12 @@ function standaloneHtml(
     promptBundle: serializedBundle,
   }, progress: serializedProgress };
   const showTabs = workflow === "combined";
-  const manualHidden = workflow === "combined";
+  const workflowHidden = workflow === "combined";
   const title = workflow === "combined" ? "Combined prompts" : workflow === "one-shot" ? "One-shot prompt" : "Manual prompts";
   const responseValues = progress.responses;
   const manualMarkup = workflow === "one-shot" ? "" : manualStages.map((stage) => promptEditor(stage, progress.manual.prompts[stage])
     .replace(`data-response-stage="${stage}" rows="10"></textarea>`, `data-response-stage="${stage}" rows="10">${escapeHtml(responseValues[stage])}</textarea>`)).join("\n");
-  const oneShotMarkup = workflow === "manual" ? "" : `<section id="panel-one-shot"${showTabs ? ' role="tabpanel" aria-labelledby="tab-one-shot"' : ""}>
+  const oneShotMarkup = workflow === "manual" ? "" : `<section id="panel-one-shot"${showTabs ? ' role="tabpanel" aria-labelledby="tab-one-shot" hidden' : ""}>
       <h2>One-shot</h2><label for="prompt-oneShot">Editable One-shot prompt</label><textarea id="prompt-oneShot" data-prompt-stage="oneShot" rows="20">${escapeHtml(progress.oneShotPrompt.text)}</textarea>
       <div class="prompt-actions"><button type="button" data-reset-stage="oneShot">Reset</button></div>
       <label for="response-oneShot">One-shot final document and compact audit</label><textarea id="response-oneShot" data-response-stage="oneShot" rows="12">${escapeHtml(responseValues.oneShot)}</textarea>
@@ -387,11 +411,10 @@ function standaloneHtml(
       ${workflow === "one-shot" ? "" : "<button type=\"button\" data-copy-active-manual>COPY CURRENT MANUAL PROMPT</button>"}
       <button type="button" data-download-progress>DOWNLOAD PROGRESS COPY</button>
     </div>
-    ${showTabs ? `<div class="tabs" role="tablist" aria-label="Workflow"><button type="button" role="tab" id="tab-one-shot" aria-controls="panel-one-shot" aria-selected="true" data-workflow-tab="one-shot">ONE-SHOT</button><button type="button" role="tab" id="tab-manual" aria-controls="panel-manual" aria-selected="false" tabindex="-1" data-workflow-tab="manual">MANUAL</button></div>` : ""}
-    <section aria-labelledby="runbook-heading"><h2 id="runbook-heading">Package README</h2><pre class="runbook"><code>${escapeHtml(source.runbookMarkdown)}</code></pre></section>
-    <section class="assets" aria-labelledby="assets-heading"><h2 id="assets-heading">Visual assets</h2>${assetHtml(source.visualAssets, mediaMode)}</section>
+    ${showTabs ? `<div class="tabs" role="tablist" aria-label="Workbook sections"><button type="button" role="tab" id="tab-readme" aria-controls="panel-readme" aria-selected="true" data-workflow-tab="readme">README</button><button type="button" role="tab" id="tab-one-shot" aria-controls="panel-one-shot" aria-selected="false" tabindex="-1" data-workflow-tab="one-shot">ONE-SHOT</button><button type="button" role="tab" id="tab-manual" aria-controls="panel-manual" aria-selected="false" tabindex="-1" data-workflow-tab="manual">MANUAL</button></div>` : ""}
+    <section id="panel-readme"${showTabs ? ' role="tabpanel" aria-labelledby="tab-readme"' : ""}>${renderRunbookHtml(source.runbookDocument, { archiveRootPrefix: archiveRootPrefix(workbookPath) })}<section class="assets" aria-labelledby="assets-heading"><h2 id="assets-heading">Visual assets</h2>${assetHtml(source.visualAssets, mediaMode, workbookPath)}</section></section>
     ${oneShotMarkup}
-    ${workflow === "one-shot" ? "" : `<section id="panel-manual"${showTabs ? ' role="tabpanel" aria-labelledby="tab-manual"' : ""}${manualHidden ? " hidden" : ""}>${manualMarkup}</section>`}
+    ${workflow === "one-shot" ? "" : `<section id="panel-manual"${showTabs ? ' role="tabpanel" aria-labelledby="tab-manual"' : ""}${workflowHidden ? " hidden" : ""}>${manualMarkup}</section>`}
     <p id="copy-status" role="status" aria-live="polite"></p>
   </main>
   <script type="application/json" id="workbook-data">${escapeJsonForScript(payload)}</script>
@@ -464,6 +487,7 @@ function standaloneHtml(
       };
       const selectWorkflow = (selected, moveFocus) => {
         document.querySelectorAll('[role="tab"][data-workflow-tab]').forEach((tab) => { const active = tab.dataset.workflowTab === selected; tab.setAttribute("aria-selected", String(active)); tab.tabIndex = active ? 0 : -1; });
+        document.getElementById("panel-readme").hidden = selected !== "readme";
         document.getElementById("panel-one-shot").hidden = selected !== "one-shot";
         document.getElementById("panel-manual").hidden = selected !== "manual";
         if (moveFocus) document.querySelector('[data-workflow-tab="' + selected + '"]').focus();
@@ -500,10 +524,17 @@ function standaloneHtml(
 }
 
 function sourceFromWorkbook(workbook: DocumentWorkbook): StandaloneSource {
+  const runbookDocument = workbook.runbookDocument ?? Object.freeze({
+    type: "runbook-document" as const,
+    blocks: Object.freeze([Object.freeze({
+      type: "paragraph" as const,
+      content: Object.freeze([Object.freeze({ type: "text" as const, value: workbook.runbookMarkdown })]),
+    })]),
+  });
   return {
     documentKey: workbook.documentKey,
     originalDisplayName: workbook.originalDisplayName,
-    runbookMarkdown: workbook.runbookMarkdown,
+    runbookDocument,
     promptBundle: workbook.promptBundle,
     visualAssets: workbook.visualAssets.map((asset) => ({ asset, path: asset.packagedPath })),
   };
@@ -514,7 +545,9 @@ export function renderWorkbookProgressHtml(
   progress: Readonly<WorkbookProgress>,
 ): string {
   requireMatchingWorkbook(workbook, progress);
-  return standaloneHtml(sourceFromWorkbook(workbook), progress, "combined", "lightweight");
+  const workbookPath = workbook.paths?.combinedHtml
+    ?? `documents/${workbook.documentKey}/combined-prompts/combined-prompts.html`;
+  return standaloneHtml(sourceFromWorkbook(workbook), progress, "combined", "lightweight", workbookPath);
 }
 
 function isPromptState(value: unknown): value is WorkbookPromptState {
@@ -551,11 +584,12 @@ export function parseWorkbookProgressHtml(
 export function createDocumentWorkbook(
   manifest: PromptPackageManifest,
   documentIndex: number,
-  runbookMarkdown: string,
+  runbookDocument: Readonly<RunbookDocument>,
   promptBundle: PromptBundle,
   assets: readonly ArtifactVisualAsset[] = [],
 ): DocumentWorkbook {
   const document = manifest.documents[documentIndex];
+  const runbookMarkdown = serializeRunbookMarkdown(runbookDocument);
   const runbook = Object.freeze({
     package: Object.freeze({ ...manifest.package }),
     documentKey: document.key,
@@ -578,23 +612,33 @@ export function createDocumentWorkbook(
   const source: StandaloneSource = {
     documentKey: document.key,
     originalDisplayName: document.originalDisplayName,
-    runbookMarkdown,
+    runbookDocument,
     promptBundle: frozenBundle,
     visualAssets: assets,
   };
-  const shell = { documentKey: document.key, originalDisplayName: document.originalDisplayName, runbook, runbookMarkdown, promptBundle: frozenBundle, promptBlocks, visualAssets: [] } as unknown as DocumentWorkbook;
+  const paths = Object.freeze({
+    readme: manifest.rootArtifacts.readme.path,
+    oneShotMarkdown: document.workbooks.oneShot.markdown.path,
+    oneShotHtml: document.workbooks.oneShot.html.path,
+    manualMarkdown: document.workbooks.manual.markdown.path,
+    manualHtml: document.workbooks.manual.html.path,
+    combinedMarkdown: document.workbooks.combined.markdown.path,
+    combinedHtml: document.workbooks.combined.html.path,
+    ...(document.workbooks.combined.fullHtml.status === "generated" ? { combinedFullHtml: document.workbooks.combined.fullHtml.path } : {}),
+  });
+  const shell = { documentKey: document.key, originalDisplayName: document.originalDisplayName, runbook, runbookDocument, runbookMarkdown, paths, promptBundle: frozenBundle, promptBlocks, visualAssets: [] } as unknown as DocumentWorkbook;
   const progress = createWorkbookProgress(shell);
-  const oneShotMarkdown = workflowMarkdown(runbookMarkdown, document.originalDisplayName, promptBundle, assets, "one-shot");
-  const manualMarkdown = workflowMarkdown(runbookMarkdown, document.originalDisplayName, promptBundle, assets, "manual");
-  const combinedMarkdown = workflowMarkdown(runbookMarkdown, document.originalDisplayName, promptBundle, assets, "combined");
-  const oneShotHtml = standaloneHtml(source, progress, "one-shot", "lightweight");
-  const manualHtml = standaloneHtml(source, progress, "manual", "lightweight");
-  const combinedHtml = standaloneHtml(source, progress, "combined", "lightweight");
+  const oneShotMarkdown = workflowMarkdown(runbookMarkdown, document.originalDisplayName, promptBundle, assets, "one-shot", paths.oneShotMarkdown);
+  const manualMarkdown = workflowMarkdown(runbookMarkdown, document.originalDisplayName, promptBundle, assets, "manual", paths.manualMarkdown);
+  const combinedMarkdown = workflowMarkdown(runbookMarkdown, document.originalDisplayName, promptBundle, assets, "combined", paths.combinedMarkdown);
+  const oneShotHtml = standaloneHtml(source, progress, "one-shot", "lightweight", paths.oneShotHtml);
+  const manualHtml = standaloneHtml(source, progress, "manual", "lightweight", paths.manualHtml);
+  const combinedHtml = standaloneHtml(source, progress, "combined", "lightweight", paths.combinedHtml);
   const estimatedFullBytes = textEncoder.encode(combinedHtml).byteLength + assets
     .filter(({ asset }) => asset.included && supportsInlinePreview(asset))
     .reduce((total, { asset }) => total + Math.ceil(asset.byteCount / 3) * 4, 0);
-  const fullHtmlCandidate = estimatedFullBytes <= MAX_FULL_HTML_BYTES
-    ? standaloneHtml(source, progress, "combined", "full")
+  const fullHtmlCandidate = document.workbooks.combined.fullHtml.status === "generated" && estimatedFullBytes <= MAX_FULL_HTML_BYTES
+    ? standaloneHtml(source, progress, "combined", "full", paths.combinedFullHtml ?? paths.combinedHtml)
     : undefined;
   const fullHtml = fullHtmlCandidate && textEncoder.encode(fullHtmlCandidate).byteLength <= MAX_FULL_HTML_BYTES
     ? fullHtmlCandidate
@@ -616,7 +660,9 @@ export function createDocumentWorkbook(
     documentKey: document.key,
     originalDisplayName: document.originalDisplayName,
     runbook,
+    runbookDocument,
     runbookMarkdown,
+    paths,
     promptBundle: frozenBundle,
     promptBlocks,
     oneShot: Object.freeze({ prompt: promptBundle.oneShot, markdown: oneShotMarkdown, html: oneShotHtml }),

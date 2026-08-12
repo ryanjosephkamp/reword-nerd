@@ -8,6 +8,7 @@ export function useReviewEditor(
   services: WorkbenchServices,
 ) {
   const timers = useRef(new Map<string, number>());
+  const sessionGenerationRef = useRef(0);
 
   useEffect(() => () => {
     timers.current.forEach((timer) => window.clearTimeout(timer));
@@ -16,6 +17,7 @@ export function useReviewEditor(
 
   const edit = useCallback((documentId: string, text: string) => {
     const revision = (state.editor[documentId]?.revision ?? 0) + 1;
+    const generation = sessionGenerationRef.current;
     dispatch({ type: "editor/edited", documentId, text });
     const previous = timers.current.get(documentId);
     if (previous) window.clearTimeout(previous);
@@ -28,8 +30,10 @@ export function useReviewEditor(
         }
       };
       void hashWithOneRetry().then((hash) => {
+        if (generation !== sessionGenerationRef.current) return;
         dispatch({ type: "editor/hash-completed", documentId, revision, hash });
       }).catch(() => {
+        if (generation !== sessionGenerationRef.current) return;
         dispatch({ type: "editor/hash-failed", documentId, revision });
       });
     }, 160));
@@ -40,16 +44,28 @@ export function useReviewEditor(
     const document = state.documents.find((item) => item.id === documentId);
     if (!editorState || !document) return;
     const revision = editorState.revision;
+    const generation = sessionGenerationRef.current;
     if (editorState.hashFailed) {
       dispatch({ type: "editor/hash-retry-started", documentId, revision });
       void services.hashText(document.extractedText).then((hash) => {
+        if (generation !== sessionGenerationRef.current) return;
         dispatch({ type: "editor/hash-completed", documentId, revision, hash });
         dispatch({ type: "review/confirmed", documentId, revision });
-      }).catch(() => dispatch({ type: "editor/hash-failed", documentId, revision }));
+      }).catch(() => {
+        if (generation === sessionGenerationRef.current) {
+          dispatch({ type: "editor/hash-failed", documentId, revision });
+        }
+      });
       return;
     }
     dispatch({ type: "review/confirmed", documentId, revision });
   }, [dispatch, services, state.documents, state.editor]);
 
-  return { edit, confirm };
+  const resetSession = useCallback(() => {
+    sessionGenerationRef.current += 1;
+    timers.current.forEach((timer) => window.clearTimeout(timer));
+    timers.current.clear();
+  }, []);
+
+  return { edit, confirm, resetSession };
 }

@@ -1,4 +1,6 @@
 @import "./workbench.css";
+@import "./settings-help.css";
+@import "./guided-help.css";
 
 :root {
   --color-canvas: #090b10;

@@ -21,6 +21,9 @@ import { Header } from "./components/Header";
 import { HelpDialog } from "./components/HelpDialog";
 import { QuickStartDialog } from "./components/QuickStartDialog";
 import { ResetPreferencesDialog } from "./components/ResetPreferencesDialog";
+import { InfoDialog } from "./components/InfoDialog";
+import { NewSessionDialog } from "./components/NewSessionDialog";
+import { APP_VERSION } from "../../version";
 import { MobileTabs } from "./components/MobileTabs";
 import { PackagePreview } from "./components/PackagePreview";
 import { SettingsDrawer } from "./components/SettingsDrawer";
@@ -89,6 +92,8 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
   const mode = useResponsiveMode();
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const helpReturnFocusRef = useRef<HTMLButtonElement>(null);
+  const infoReturnFocusRef = useRef<HTMLButtonElement>(null);
+  const newSessionReturnFocusRef = useRef<HTMLButtonElement>(null);
   const parametersHeadingRef = useRef<HTMLHeadingElement>(null);
   const packageHeadingRef = useRef<HTMLHeadingElement>(null);
   const previousMobileTabRef = useRef(state.mobileTab);
@@ -194,7 +199,16 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
   const openSettings = () => {
     if (mode === "mobile") dispatch({ type: "mobile/tab-changed", tab: "settings" });
     else if (mode === "tablet") dispatch({ type: "drawer/changed", open: true });
-    else parametersHeadingRef.current?.focus();
+    else dispatch({ type: "desktop/settings-expanded", expanded: !state.desktopSettingsExpanded });
+  };
+  const revealSettings = () => {
+    if (mode === "mobile") dispatch({ type: "mobile/tab-changed", tab: "settings" });
+    else if (mode === "tablet") dispatch({ type: "drawer/changed", open: true });
+    else {
+      parametersHeadingRef.current?.focus();
+      dispatch({ type: "desktop/settings-expanded", expanded: true });
+      queueMicrotask(() => parametersHeadingRef.current?.focus());
+    }
   };
   const removeSelectedFromPreview = () => {
     if (!selected) return;
@@ -230,12 +244,16 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
       onOpenSettings={openSettings}
       onOpenHelp={(returnFocus) => {
         helpReturnFocusRef.current = returnFocus;
-        dispatch({ type: "help/changed", open: true });
+        dispatch({ type: "overlay/opened", overlay: "help" });
       }}
+      onOpenInfo={(returnFocus) => { infoReturnFocusRef.current = returnFocus; dispatch({ type: "overlay/opened", overlay: "info" }); }}
+      onNewSession={(returnFocus) => { newSessionReturnFocusRef.current = returnFocus; dispatch({ type: "session/reset-requested" }); }}
+      settingsExpanded={mode === "tablet" ? state.activeOverlay === "settings" : state.desktopSettingsExpanded}
+      settingsControls={mode === "tablet" ? "settings-drawer" : "panel-settings"}
       settingsButtonRef={settingsButtonRef}
     />
     <MobileTabs active={state.mobileTab} onChange={(tab) => dispatch({ type: "mobile/tab-changed", tab })} />
-    <div className="workbench-grid">
+    <div className={`workbench-grid${mode === "desktop" && !state.desktopSettingsExpanded ? " settings-collapsed" : ""}`}>
       <aside
         id="panel-files"
         {...panelAccessibility(mode, state.mobileTab, "files", "Files")}
@@ -309,10 +327,10 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
             key={state.export.builtRevision}
             workbooks={state.export.builtPackage.workbooks}
             selectedDocumentKey={state.previewDocumentKey}
-            workflow={state.previewWorkflow}
+            tab={state.previewWorkflow}
             hidden={state.previewMode !== "package"}
             onSelect={(documentKey) => dispatch({ type: "preview/document-selected", documentKey })}
-            onWorkflowChange={(workflow) => dispatch({ type: "preview/workflow-changed", workflow })}
+            onTabChange={(workflow) => dispatch({ type: "preview/workflow-changed", workflow })}
             downloadProgressCopy={services.downloadProgressCopy}
           /> : null}
           {state.previewMode === "assets" ? <AssetGallery
@@ -345,6 +363,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
         id="panel-settings"
         {...panelAccessibility(mode, state.mobileTab, "settings", "Parameters")}
         className={`parameters-panel mobile-panel${state.mobileTab === "settings" ? " is-mobile-active" : ""}`}
+        hidden={(mode === "desktop" && !state.desktopSettingsExpanded) || (mode === "mobile" && state.mobileTab !== "settings")}
       >
         <div className="panel-heading"><h2 ref={parametersHeadingRef} tabIndex={-1}>PARAMETERS</h2></div>
         {settings}
@@ -352,22 +371,23 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     </div>
     <footer className="workbench-footer">
       <StatusSummary {...counts} />
-      <div className="saved-state" aria-label="Preferences save locally; documents and contents stay in this session.">Preferences save locally; documents and contents stay in this session <span /> v0.4.0</div>
+      <div className="saved-state" aria-label="Preferences save locally; documents and contents stay in this session.">Preferences save locally; documents and contents stay in this session <span /> v{APP_VERSION}</div>
     </footer>
-    <SettingsDrawer open={state.settingsDrawerOpen} onClose={() => dispatch({ type: "drawer/changed", open: false })} returnFocusRef={settingsButtonRef}>
+    <SettingsDrawer open={state.activeOverlay === "settings"} onClose={() => dispatch({ type: "drawer/changed", open: false })} returnFocusRef={settingsButtonRef}>
       <SettingsInspector {...settingsProps} exportPanel={exportPanel} />
     </SettingsDrawer>
     <HelpDialog
-      open={state.helpDialogOpen}
-      onClose={() => dispatch({ type: "help/changed", open: false })}
+      open={state.activeOverlay === "help"}
+      onClose={() => dispatch({ type: "overlay/closed" })}
       onReplayQuickStart={() => dispatch({ type: "tutorial/opened" })}
       returnFocusRef={helpReturnFocusRef}
     />
     <QuickStartDialog
-      open={state.quickStartDialogOpen}
+      open={state.activeOverlay === "quick-start"}
+      returnFocusRef={helpReturnFocusRef}
       onReviewSettings={() => {
         dispatch({ type: "tutorial/dismissed" });
-        openSettings();
+        revealSettings();
       }}
       onAddFiles={() => {
         dispatch({ type: "tutorial/dismissed" });
@@ -375,8 +395,23 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
       }}
       onDismiss={() => dispatch({ type: "tutorial/dismissed" })}
     />
+    <InfoDialog open={state.activeOverlay === "info"} onClose={() => dispatch({ type: "overlay/closed" })} returnFocusRef={infoReturnFocusRef} />
+    <NewSessionDialog
+      open={state.activeOverlay === "new-session"}
+      onCancel={() => {
+        dispatch({ type: "session/reset-cancelled" });
+        queueMicrotask(() => newSessionReturnFocusRef.current?.focus());
+      }}
+      returnFocusRef={newSessionReturnFocusRef}
+      onConfirm={() => {
+        setBusyOcrCandidate(null);
+        intake.resetSession();
+        editor.resetSession();
+        dispatch({ type: "session/reset-confirmed" });
+      }}
+    />
     <ResetPreferencesDialog
-      open={state.resetPreferencesDialogOpen}
+      open={state.activeOverlay === "reset-preferences"}
       onCancel={() => {
         dispatch({ type: "preferences/reset-cancelled" });
         queueMicrotask(() => resetPreferencesReturnFocusRef.current?.focus());

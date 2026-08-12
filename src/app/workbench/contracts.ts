@@ -15,6 +15,8 @@ import type { ProcessingProgress } from "../../domain/media";
 export type MobileTab = "files" | "preview" | "settings";
 export type PreviewMode = "source" | "assets" | "package";
 export type PackageWorkflow = "one-shot" | "manual";
+export type PackagePreviewTab = "runbook" | PackageWorkflow;
+export type ActiveOverlay = "help" | "info" | "quick-start" | "settings" | "reset-preferences" | "new-session";
 export type BuiltPromptPackage = Extract<PromptPackageResult, { ok: true }>;
 
 export interface WorkbenchDocument extends WorkspaceDocument {
@@ -45,12 +47,10 @@ export interface WorkbenchState {
   overrideEnabled: Record<string, boolean>;
   mobileTab: MobileTab;
   previewMode: PreviewMode;
-  previewWorkflow: PackageWorkflow;
+  previewWorkflow: PackagePreviewTab;
   previewDocumentKey: string | null;
-  settingsDrawerOpen: boolean;
-  helpDialogOpen: boolean;
-  quickStartDialogOpen: boolean;
-  resetPreferencesDialogOpen: boolean;
+  desktopSettingsExpanded: boolean;
+  activeOverlay: ActiveOverlay | null;
   tutorialSeenVersion: string | null;
   intake: {
     dragging: boolean;

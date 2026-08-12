@@ -11,14 +11,15 @@ import {
   type WorkbookProgress,
   type WorkbookResponseStage,
 } from "../../../export";
-import type { PackageWorkflow } from "../contracts";
+import type { PackagePreviewTab } from "../contracts";
 import { copyText, type CopyTextResult } from "../copyText";
+import { RunbookView } from "./RunbookView";
 
 const manualStages = ["decompose", "rewrite", "verify", "final"] as const;
 type CopyStage = "oneShot" | PromptStage;
 interface CopyView {
   documentKey: string | null;
-  workflow: PackageWorkflow;
+  tab: PackagePreviewTab;
   stage: CopyStage;
   hidden: boolean;
 }
@@ -33,10 +34,10 @@ const stageLabels: Record<PromptStage, string> = {
 interface PackagePreviewProps {
   workbooks: readonly DocumentWorkbook[];
   selectedDocumentKey: string | null;
-  workflow: PackageWorkflow;
+  tab: PackagePreviewTab;
   hidden?: boolean;
   onSelect(documentKey: string): void;
-  onWorkflowChange(workflow: PackageWorkflow): void;
+  onTabChange(tab: PackagePreviewTab): void;
   downloadProgressCopy(html: string, filename: string): { ok: true } | { ok: false };
   copyPromptText?(text: string): Promise<CopyTextResult>;
 }
@@ -51,10 +52,10 @@ function createProgressMap(workbooks: readonly DocumentWorkbook[]) {
 export function PackagePreview({
   workbooks,
   selectedDocumentKey,
-  workflow,
+  tab,
   hidden = false,
   onSelect,
-  onWorkflowChange,
+  onTabChange,
   downloadProgressCopy,
   copyPromptText = copyText,
 }: PackagePreviewProps) {
@@ -68,19 +69,22 @@ export function PackagePreview({
   const copyOperationRef = useRef(0);
   const viewGenerationRef = useRef(0);
   const mountedRef = useRef(true);
-  const initialStage: CopyStage = workflow === "one-shot" ? "oneShot" : activeManualStage;
+  const initialStage: CopyStage = tab === "one-shot" ? "oneShot" : activeManualStage;
   const currentViewRef = useRef<CopyView>({
     documentKey: workbook?.documentKey ?? null,
-    workflow,
+    tab,
     stage: initialStage,
     hidden,
   });
   const transitionCopyView = useCallback((next: CopyView) => {
     const current = currentViewRef.current;
-    if (current.documentKey !== next.documentKey
-      || current.workflow !== next.workflow
+    const changed = current.documentKey !== next.documentKey
+      || current.tab !== next.tab
       || current.stage !== next.stage
-      || current.hidden !== next.hidden) viewGenerationRef.current += 1;
+      || current.hidden !== next.hidden;
+    if (changed) {
+      viewGenerationRef.current += 1;
+    }
     currentViewRef.current = next;
   }, []);
   useLayoutEffect(() => {
@@ -92,14 +96,19 @@ export function PackagePreview({
     };
   }, []);
   useLayoutEffect(() => {
-    const stage: CopyStage = workflow === "one-shot" ? "oneShot" : activeManualStage;
+    const stage: CopyStage = tab === "one-shot" ? "oneShot" : activeManualStage;
+    const current = currentViewRef.current;
+    if (current.documentKey !== (workbook?.documentKey ?? null)
+      || current.tab !== tab
+      || current.stage !== stage
+      || current.hidden !== hidden) setStatus("");
     transitionCopyView({
       documentKey: workbook?.documentKey ?? null,
-      workflow,
+      tab,
       stage,
       hidden,
     });
-  }, [activeManualStage, hidden, transitionCopyView, workbook?.documentKey, workflow]);
+  }, [activeManualStage, hidden, tab, transitionCopyView, workbook?.documentKey]);
 
   if (!workbook) {
     return <div className="package-preview-empty">No package workbook is available.</div>;
@@ -121,6 +130,7 @@ export function PackagePreview({
       : reapplyWorkbookPrompt(workbook, progress, stage));
   };
   const activateManualStage = (stage: PromptStage) => {
+    if (currentViewRef.current.stage !== stage) setStatus("");
     transitionCopyView({ ...currentViewRef.current, stage });
     setActiveManualStage(stage);
   };
@@ -132,7 +142,7 @@ export function PackagePreview({
     const promptState = stage === "oneShot" ? progress.oneShotPrompt : progress.manual.prompts[stage];
     transitionCopyView({
       documentKey: workbook.documentKey,
-      workflow,
+      tab,
       stage,
       hidden,
     });
@@ -140,7 +150,7 @@ export function PackagePreview({
       token: ++copyOperationRef.current,
       viewGeneration: viewGenerationRef.current,
       documentKey: workbook.documentKey,
-      workflow,
+      tab,
       stage,
     };
     const result = await copyPromptText(promptState.text);
@@ -149,7 +159,7 @@ export function PackagePreview({
       || operation.token !== copyOperationRef.current
       || operation.viewGeneration !== viewGenerationRef.current
       || operation.documentKey !== currentView.documentKey
-      || operation.workflow !== currentView.workflow
+      || operation.tab !== currentView.tab
       || operation.stage !== currentView.stage
       || currentView.hidden) return;
     if (result === "copied") {
@@ -159,21 +169,24 @@ export function PackagePreview({
     }
     if (button.isConnected) button.focus();
   };
-  const selectWorkflow = (nextWorkflow: PackageWorkflow, focus = false) => {
-    const stage: CopyStage = nextWorkflow === "one-shot" ? "oneShot" : activeManualStage;
-    transitionCopyView({ ...currentViewRef.current, workflow: nextWorkflow, stage });
-    onWorkflowChange(nextWorkflow);
-    if (focus) document.getElementById(`package-workflow-${nextWorkflow}`)?.focus();
+  const selectTab = (nextTab: PackagePreviewTab, focus = false) => {
+    const stage: CopyStage = nextTab === "one-shot" ? "oneShot" : activeManualStage;
+    if (currentViewRef.current.tab !== nextTab) setStatus("");
+    transitionCopyView({ ...currentViewRef.current, tab: nextTab, stage });
+    onTabChange(nextTab);
+    if (focus) document.getElementById(`package-workflow-${nextTab}`)?.focus();
   };
   const onWorkflowKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
-    const index = workflow === "one-shot" ? 0 : 1;
+    const tabs: readonly PackagePreviewTab[] = ["runbook", "one-shot", "manual"];
+    const index = tabs.indexOf(tab);
     let nextIndex: number | null = null;
-    if (event.key === "ArrowRight" || event.key === "ArrowLeft") nextIndex = index === 0 ? 1 : 0;
+    if (event.key === "ArrowRight") nextIndex = (index + 1) % tabs.length;
+    if (event.key === "ArrowLeft") nextIndex = (index - 1 + tabs.length) % tabs.length;
     if (event.key === "Home") nextIndex = 0;
-    if (event.key === "End") nextIndex = 1;
+    if (event.key === "End") nextIndex = tabs.length - 1;
     if (nextIndex === null) return;
     event.preventDefault();
-    selectWorkflow(nextIndex === 0 ? "one-shot" : "manual", true);
+    selectTab(tabs[nextIndex], true);
   };
   const saveProgressCopy = (button: HTMLButtonElement) => {
     const result = downloadProgressCopy(
@@ -191,49 +204,61 @@ export function PackagePreview({
     aria-label={`Package workbook for ${workbook.originalDisplayName}`}
     hidden={hidden}
   >
-    <div className="package-preview-controls">
-      {workbooks.length > 1 ? <label className="artifact-selector">
-        PACKAGE DOCUMENT
-        <select
-          aria-label="Package document"
-          value={workbook.documentKey}
-          onChange={(event) => {
-            transitionCopyView({ ...currentViewRef.current, documentKey: event.target.value });
-            onSelect(event.target.value);
-          }}
-        >
-          {workbooks.map((candidate) => <option key={candidate.documentKey} value={candidate.documentKey}>
-            {candidate.originalDisplayName}
-          </option>)}
-        </select>
-      </label> : null}
-      <div className="package-top-actions">
-        <button
-          type="button"
-          onClick={(event) => void copyPrompt("oneShot", "One-shot", event.currentTarget)}
-        >COPY ONE-SHOT PROMPT</button>
-        <button
-          type="button"
-          disabled={!progress.manual.prompts[activeManualStage].copyEnabled}
-          onClick={(event) => void copyPrompt(activeManualStage, stageLabels[activeManualStage], event.currentTarget)}
-        >COPY CURRENT MANUAL PROMPT</button>
-        <button type="button" onClick={(event) => saveProgressCopy(event.currentTarget)}>
-          DOWNLOAD PROGRESS COPY
-        </button>
+    <div className="package-sticky-header">
+      <div className="package-preview-controls">
+        {workbooks.length > 1 ? <label className="artifact-selector">
+          PACKAGE DOCUMENT
+          <select
+            aria-label="Package document"
+            value={workbook.documentKey}
+            onChange={(event) => {
+              if (currentViewRef.current.documentKey !== event.target.value) setStatus("");
+              transitionCopyView({ ...currentViewRef.current, documentKey: event.target.value });
+              onSelect(event.target.value);
+            }}
+          >
+            {workbooks.map((candidate) => <option key={candidate.documentKey} value={candidate.documentKey}>
+              {candidate.originalDisplayName}
+            </option>)}
+          </select>
+        </label> : null}
+        <div className="package-top-actions">
+          <button
+            type="button"
+            onClick={(event) => void copyPrompt("oneShot", "One-shot", event.currentTarget)}
+          >COPY ONE-SHOT PROMPT</button>
+          <button
+            type="button"
+            disabled={!progress.manual.prompts[activeManualStage].copyEnabled}
+            onClick={(event) => void copyPrompt(activeManualStage, stageLabels[activeManualStage], event.currentTarget)}
+          >COPY CURRENT MANUAL PROMPT</button>
+          <button type="button" onClick={(event) => saveProgressCopy(event.currentTarget)}>
+            DOWNLOAD PROGRESS COPY
+          </button>
+        </div>
+        <p className="package-copy-status" role="status" aria-live="polite" aria-atomic="true">{status}</p>
       </div>
-      <p className="package-copy-status" role="status" aria-live="polite" aria-atomic="true">{status}</p>
+      <div className="package-document-heading"><h3>{workbook.originalDisplayName}</h3></div>
     </div>
-
-    <h3>{workbook.originalDisplayName}</h3>
     <div className="package-workflow-tabs" role="tablist" aria-label="Package workflow">
+      <button
+        type="button"
+        role="tab"
+        id="package-workflow-runbook"
+        aria-controls="package-workflow-panel-runbook"
+        aria-selected={tab === "runbook"}
+        tabIndex={tab === "runbook" ? 0 : -1}
+        onClick={(event) => { selectTab("runbook"); event.currentTarget.focus(); }}
+        onKeyDown={onWorkflowKeyDown}
+      >RUNBOOK</button>
       <button
         type="button"
         role="tab"
         id="package-workflow-one-shot"
         aria-controls="package-workflow-panel-one-shot"
-        aria-selected={workflow === "one-shot"}
-        tabIndex={workflow === "one-shot" ? 0 : -1}
-        onClick={(event) => { selectWorkflow("one-shot"); event.currentTarget.focus(); }}
+        aria-selected={tab === "one-shot"}
+        tabIndex={tab === "one-shot" ? 0 : -1}
+        onClick={(event) => { selectTab("one-shot"); event.currentTarget.focus(); }}
         onKeyDown={onWorkflowKeyDown}
       >ONE-SHOT</button>
       <button
@@ -241,16 +266,29 @@ export function PackagePreview({
         role="tab"
         id="package-workflow-manual"
         aria-controls="package-workflow-panel-manual"
-        aria-selected={workflow === "manual"}
-        tabIndex={workflow === "manual" ? 0 : -1}
-        onClick={(event) => { selectWorkflow("manual"); event.currentTarget.focus(); }}
+        aria-selected={tab === "manual"}
+        tabIndex={tab === "manual" ? 0 : -1}
+        onClick={(event) => { selectTab("manual"); event.currentTarget.focus(); }}
         onKeyDown={onWorkflowKeyDown}
       >MANUAL</button>
     </div>
 
-    <section className="runbook-preview" aria-labelledby="package-runbook-heading">
-      <h4 id="package-runbook-heading">PACKAGE RUNBOOK</h4>
-      <pre><code>{workbook.runbookMarkdown}</code></pre>
+    <section
+      id="package-workflow-panel-runbook"
+      className="package-workflow-panel runbook-preview"
+      role="tabpanel"
+      aria-labelledby="package-workflow-runbook"
+      hidden={tab !== "runbook"}
+    >
+      {workbook.runbookDocument
+        ? <RunbookView document={workbook.runbookDocument} />
+        : <p>This package does not include a semantic runbook preview.</p>}
+      {workbook.visualAssets.length > 0 ? <section className="package-assets" aria-labelledby="package-assets-heading">
+        <h4 id="package-assets-heading">PACKAGED VISUAL ASSETS</h4>
+        <ul>{workbook.visualAssets.map((asset) => <li key={asset.id}>
+          <strong>{asset.id}</strong> — {asset.filename}{asset.included ? " (included)" : " (omitted)"}
+        </li>)}</ul>
+      </section> : null}
     </section>
 
     <section
@@ -258,7 +296,7 @@ export function PackagePreview({
       className="package-workflow-panel"
       role="tabpanel"
       aria-labelledby="package-workflow-one-shot"
-      hidden={workflow !== "one-shot"}
+      hidden={tab !== "one-shot"}
     >
       <div className="prompt-preview-block">
         <header><h4>ONE-SHOT</h4></header>
@@ -289,7 +327,7 @@ export function PackagePreview({
       className="package-workflow-panel"
       role="tabpanel"
       aria-labelledby="package-workflow-manual"
-      hidden={workflow !== "manual"}
+      hidden={tab !== "manual"}
     >
       {manualStages.map((stage) => {
         const prompt = progress.manual.prompts[stage];
@@ -339,12 +377,5 @@ export function PackagePreview({
         </section>;
       })}
     </section>
-
-    {workbook.visualAssets.length > 0 ? <section className="package-assets" aria-labelledby="package-assets-heading">
-      <h4 id="package-assets-heading">PACKAGED VISUAL ASSETS</h4>
-      <ul>{workbook.visualAssets.map((asset) => <li key={asset.id}>
-        <strong>{asset.id}</strong> — {asset.filename}{asset.included ? " (included)" : " (omitted)"}
-      </li>)}</ul>
-    </section> : null}
   </article>;
 }
