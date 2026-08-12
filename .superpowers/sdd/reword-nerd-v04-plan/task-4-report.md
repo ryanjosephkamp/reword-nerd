@@ -172,3 +172,83 @@ Per the task boundary, browser E2E fixtures and full browser/mobile QA were not 
 - Task 5 still owns real-browser desktop/tablet/320–412px QA, standalone `file://` fallback QA, the complete mixed-format workflow, and broader documentation/release/deployment work.
 - The existing Vite large-chunk advisory and test-runner localStorage warning remain nonblocking and unchanged.
 - No push, PR, merge, deployment, or other GitHub mutation was performed.
+
+## Review fix round 1/5 — progress lifecycle and asynchronous Copy identity
+
+Date: 2026-08-12 (America/New_York)
+
+### Resolution and state flow
+
+- `Workbench` now retains the revision-keyed `PackagePreview` instance for the full lifetime of an installed `builtPackage`. Source and Assets navigation sets the package article's native `hidden` attribute, so it is absent from the accessibility tree and layout while its in-memory per-document progress remains mounted.
+- Content invalidation still clears `builtPackage`, so the old preview unmounts and its prompt edits/responses are discarded. The next successful build creates a fresh preview keyed by its new built revision. The existing invalidation/rebuild test proves the One-shot response is empty after rebuilding; the new navigation test proves Manual response and local prompt edits survive Package → Source → Assets → Package.
+- No reducer export state, persistence field, ZIP action, or archive path changed in this round. The build/revision lifecycle remains the sole lifetime boundary for workbook progress.
+
+### Clipboard operation and focus guard
+
+- Prompt Copy accepts an injectable async adapter for deterministic deferred-completion tests while production defaults to the existing `copyText` adapter.
+- Each Copy records a monotonically increasing operation token plus the initiating workbook key, workflow, and stage. Completion is ignored when superseded, unmounted, hidden, or no longer equal to the current document/workflow/stage identity.
+- Ignored completion does not update the live status region and does not call focus on the old button. Tests hold Copy unresolved, switch document, workflow, or active Manual stage, then resolve it and prove the new control retains focus with no stale announcement.
+- The Minor per-document active-stage/status redesign is deferred: it is not required for the two Important findings, and the identity guard prevents delayed async status/focus from crossing documents. Existing completed status and active-stage selection otherwise retain the established package-wide behavior.
+
+### Focused RED evidence
+
+Command:
+
+```sh
+npm test -- --run tests/workbench/PackagePreview.test.tsx tests/workbench/Workbench.test.tsx
+```
+
+Observed before production changes:
+
+```text
+Test Files  2 failed (2)
+Tests       3 failed | 39 passed (42)
+```
+
+The failures proved that Source/Assets navigation remounted empty progress and that delayed Copy completion stole focus after document/workflow switches.
+
+Additional stage-identity RED command:
+
+```sh
+npm test -- --run tests/workbench/PackagePreview.test.tsx
+```
+
+Observed before the stage guard:
+
+```text
+Test Files  1 failed (1)
+Tests       1 failed | 8 passed (9)
+```
+
+The delayed Decompose Copy incorrectly announced after focus moved to the Rewrite stage.
+
+### Focused GREEN and full gates
+
+Focused command:
+
+```sh
+npm test -- --run tests/workbench/PackagePreview.test.tsx tests/workbench/Workbench.test.tsx
+```
+
+Result:
+
+```text
+Test Files  2 passed (2)
+Tests       43 passed (43)
+```
+
+Final consolidated command:
+
+```sh
+npm run lint && npm run typecheck && npm test -- --run && npm run build && git diff --check
+```
+
+Results:
+
+- ESLint: PASS.
+- TypeScript project typecheck: PASS.
+- Vitest: 26 files, 199 tests, all PASS.
+- Vite production build: PASS.
+- `git diff --check`: PASS.
+
+The existing Vitest `--localstorage-file` warnings and Vite chunk-size advisory remain nonblocking and unchanged.

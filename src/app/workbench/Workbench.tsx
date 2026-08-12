@@ -305,18 +305,20 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
           </div>
         </div>
         <div className="preview-content">
-          {state.previewMode === "package" && state.export.builtPackage ? <PackagePreview
+          {state.export.builtPackage ? <PackagePreview
             key={state.export.builtRevision}
             workbooks={state.export.builtPackage.workbooks}
             selectedDocumentKey={state.previewDocumentKey}
             workflow={state.previewWorkflow}
+            hidden={state.previewMode !== "package"}
             onSelect={(documentKey) => dispatch({ type: "preview/document-selected", documentKey })}
             onWorkflowChange={(workflow) => dispatch({ type: "preview/workflow-changed", workflow })}
             downloadProgressCopy={services.downloadProgressCopy}
-          /> : state.previewMode === "assets" ? <AssetGallery
+          /> : null}
+          {state.previewMode === "assets" ? <AssetGallery
             assets={selected?.visualAssets ?? []}
             onInclusionChange={(assetId, included) => { if (selected) dispatch({ type: "visual-asset/inclusion-changed", documentId: selected.id, assetId, included }); }}
-          /> : <>
+          /> : state.previewMode === "source" ? <>
           <ExtractedTextEditor
             document={selected}
             hashPending={selected ? state.editor[selected.id]?.hashPending ?? false : false}
@@ -329,7 +331,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
             onAddFiles={intake.openFilePicker}
           />
           {selected ? <OcrReview candidates={selected.ocrCandidates ?? []} busyId={busyOcrCandidate} onReview={(candidateId, status, text) => void reviewOcrCandidate(candidateId, status, text)} /> : null}
-          </>}
+          </> : null}
         </div>
         {state.previewMode === "source" && context && selected ? <ContextMeter
           assessment={context}

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PromptStage } from "../../../domain";
 import {
   createWorkbookProgress,
@@ -12,9 +12,10 @@ import {
   type WorkbookResponseStage,
 } from "../../../export";
 import type { PackageWorkflow } from "../contracts";
-import { copyText } from "../copyText";
+import { copyText, type CopyTextResult } from "../copyText";
 
 const manualStages = ["decompose", "rewrite", "verify", "final"] as const;
+type CopyStage = "oneShot" | PromptStage;
 
 const stageLabels: Record<PromptStage, string> = {
   decompose: "Decompose",
@@ -27,9 +28,11 @@ interface PackagePreviewProps {
   workbooks: readonly DocumentWorkbook[];
   selectedDocumentKey: string | null;
   workflow: PackageWorkflow;
+  hidden?: boolean;
   onSelect(documentKey: string): void;
   onWorkflowChange(workflow: PackageWorkflow): void;
   downloadProgressCopy(html: string, filename: string): { ok: true } | { ok: false };
+  copyPromptText?(text: string): Promise<CopyTextResult>;
 }
 
 function createProgressMap(workbooks: readonly DocumentWorkbook[]) {
@@ -43,9 +46,11 @@ export function PackagePreview({
   workbooks,
   selectedDocumentKey,
   workflow,
+  hidden = false,
   onSelect,
   onWorkflowChange,
   downloadProgressCopy,
+  copyPromptText = copyText,
 }: PackagePreviewProps) {
   const workbook = useMemo(
     () => workbooks.find((candidate) => candidate.documentKey === selectedDocumentKey) ?? workbooks[0],
@@ -54,6 +59,33 @@ export function PackagePreview({
   const [progressByDocument, setProgressByDocument] = useState(() => createProgressMap(workbooks));
   const [activeManualStage, setActiveManualStage] = useState<PromptStage>("decompose");
   const [status, setStatus] = useState("");
+  const copyOperationRef = useRef(0);
+  const mountedRef = useRef(true);
+  const initialStage: CopyStage = workflow === "one-shot" ? "oneShot" : activeManualStage;
+  const currentStageRef = useRef<CopyStage>(initialStage);
+  const currentViewRef = useRef({
+    documentKey: workbook?.documentKey ?? null,
+    workflow,
+    stage: initialStage,
+    hidden,
+  });
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      copyOperationRef.current += 1;
+    };
+  }, []);
+  useLayoutEffect(() => {
+    const stage: CopyStage = workflow === "one-shot" ? "oneShot" : activeManualStage;
+    currentStageRef.current = stage;
+    currentViewRef.current = {
+      documentKey: workbook?.documentKey ?? null,
+      workflow,
+      stage,
+      hidden,
+    };
+  }, [activeManualStage, hidden, workbook?.documentKey, workflow]);
 
   if (!workbook) {
     return <div className="package-preview-empty">No package workbook is available.</div>;
@@ -66,29 +98,52 @@ export function PackagePreview({
   const changeResponse = (stage: WorkbookResponseStage, response: string) => {
     updateProgress(updateWorkbookResponse(workbook, progress, stage, response));
   };
-  const changePrompt = (stage: "oneShot" | PromptStage, text: string) => {
+  const changePrompt = (stage: CopyStage, text: string) => {
     updateProgress(editWorkbookPrompt(workbook, progress, stage, text));
   };
-  const restorePrompt = (stage: "oneShot" | PromptStage, action: "reset" | "reapply") => {
+  const restorePrompt = (stage: CopyStage, action: "reset" | "reapply") => {
     updateProgress(action === "reset"
       ? resetWorkbookPrompt(workbook, progress, stage)
       : reapplyWorkbookPrompt(workbook, progress, stage));
   };
+  const activateManualStage = (stage: PromptStage) => {
+    currentStageRef.current = stage;
+    currentViewRef.current.stage = stage;
+    setActiveManualStage(stage);
+  };
   const copyPrompt = async (
-    stage: "oneShot" | PromptStage,
+    stage: CopyStage,
     label: string,
     button: HTMLButtonElement,
   ) => {
     const promptState = stage === "oneShot" ? progress.oneShotPrompt : progress.manual.prompts[stage];
-    const result = await copyText(promptState.text);
+    currentStageRef.current = stage;
+    currentViewRef.current.stage = stage;
+    const operation = {
+      token: ++copyOperationRef.current,
+      documentKey: workbook.documentKey,
+      workflow,
+      stage,
+    };
+    const result = await copyPromptText(promptState.text);
+    const currentView = currentViewRef.current;
+    if (!mountedRef.current
+      || operation.token !== copyOperationRef.current
+      || operation.documentKey !== currentView.documentKey
+      || operation.workflow !== currentView.workflow
+      || operation.stage !== currentView.stage
+      || currentView.hidden) return;
     if (result === "copied") {
       setStatus(`${label} prompt copied.`);
     } else {
       setStatus(`Copy unavailable. Select the ${label} prompt text manually, then press Ctrl+C or Command+C.`);
     }
-    button.focus();
+    if (button.isConnected) button.focus();
   };
   const selectWorkflow = (nextWorkflow: PackageWorkflow, focus = false) => {
+    const stage: CopyStage = nextWorkflow === "one-shot" ? "oneShot" : activeManualStage;
+    currentStageRef.current = stage;
+    currentViewRef.current = { ...currentViewRef.current, workflow: nextWorkflow, stage };
     onWorkflowChange(nextWorkflow);
     if (focus) document.getElementById(`package-workflow-${nextWorkflow}`)?.focus();
   };
@@ -113,14 +168,21 @@ export function PackagePreview({
     button.focus();
   };
 
-  return <article className="package-preview" aria-label={`Package workbook for ${workbook.originalDisplayName}`}>
+  return <article
+    className="package-preview"
+    aria-label={`Package workbook for ${workbook.originalDisplayName}`}
+    hidden={hidden}
+  >
     <div className="package-preview-controls">
       {workbooks.length > 1 ? <label className="artifact-selector">
         PACKAGE DOCUMENT
         <select
           aria-label="Package document"
           value={workbook.documentKey}
-          onChange={(event) => onSelect(event.target.value)}
+          onChange={(event) => {
+            currentViewRef.current = { ...currentViewRef.current, documentKey: event.target.value };
+            onSelect(event.target.value);
+          }}
         >
           {workbooks.map((candidate) => <option key={candidate.documentKey} value={candidate.documentKey}>
             {candidate.originalDisplayName}
@@ -187,6 +249,7 @@ export function PackagePreview({
           id="package-prompt-oneShot"
           rows={20}
           value={progress.oneShotPrompt.text}
+          onFocus={() => { currentStageRef.current = "oneShot"; }}
           onChange={(event) => changePrompt("oneShot", event.target.value)}
         />
         <div className="package-prompt-actions">
@@ -197,6 +260,7 @@ export function PackagePreview({
           id="package-response-oneShot"
           rows={12}
           value={progress.responses.oneShot}
+          onFocus={() => { currentStageRef.current = "oneShot"; }}
           onChange={(event) => changeResponse("oneShot", event.target.value)}
         />
       </div>
@@ -230,8 +294,8 @@ export function PackagePreview({
             id={`package-prompt-${stage}`}
             rows={16}
             value={prompt.text}
-            onFocus={() => setActiveManualStage(stage)}
-            onChange={(event) => { setActiveManualStage(stage); changePrompt(stage, event.target.value); }}
+            onFocus={() => activateManualStage(stage)}
+            onChange={(event) => { activateManualStage(stage); changePrompt(stage, event.target.value); }}
           />
           {prompt.stale ? <p className="package-stale" role="status">
             Upstream responses changed. Review this preserved edit, then choose Reapply.
@@ -251,8 +315,8 @@ export function PackagePreview({
             id={`package-response-${stage}`}
             rows={10}
             value={progress.responses[stage]}
-            onFocus={() => setActiveManualStage(stage)}
-            onChange={(event) => { setActiveManualStage(stage); changeResponse(stage, event.target.value); }}
+            onFocus={() => activateManualStage(stage)}
+            onChange={(event) => { activateManualStage(stage); changeResponse(stage, event.target.value); }}
           />
         </section>;
       })}

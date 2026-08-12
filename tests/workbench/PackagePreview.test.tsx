@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { PackagePreview } from "../../src/app/workbench/components/PackagePreview";
 import {
   parseWorkbookProgressHtml,
@@ -51,13 +51,22 @@ function workbook(documentKey = "notes", originalDisplayName = "notes.md"): Docu
 }
 
 type ProgressDownload = (html: string, filename: string) => { ok: true } | { ok: false };
+type PromptCopy = (text: string) => Promise<"copied" | "select-manually">;
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
+}
 
 function PreviewHarness({
   workbooks = [workbook()],
   downloadProgressCopy = () => ({ ok: true as const }),
+  copyPromptText,
 }: {
   workbooks?: readonly DocumentWorkbook[];
   downloadProgressCopy?: ProgressDownload;
+  copyPromptText?: PromptCopy;
 }) {
   const [selectedDocumentKey, setSelectedDocumentKey] = useState<string | null>(workbooks[0]?.documentKey ?? null);
   const [workflow, setWorkflow] = useState<"one-shot" | "manual">("one-shot");
@@ -69,6 +78,7 @@ function PreviewHarness({
     onSelect: setSelectedDocumentKey,
     onWorkflowChange: setWorkflow,
     downloadProgressCopy,
+    copyPromptText,
   };
   return <PackagePreview {...props} />;
 }
@@ -214,5 +224,52 @@ describe("PackagePreview workbook integration", () => {
     fireEvent.keyDown(oneShot, { key: "ArrowRight" });
     expect(screen.getByRole("tab", { name: "MANUAL" })).toHaveFocus();
     expect(screen.getByRole("tab", { name: "MANUAL" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("ignores a delayed Copy completion after the package document changes", async () => {
+    const pendingCopy = deferred<"copied" | "select-manually">();
+    render(<PreviewHarness
+      workbooks={[workbook("one", "one.md"), workbook("two", "two.md")]}
+      copyPromptText={() => pendingCopy.promise}
+    />);
+    const copy = screen.getByRole("button", { name: "COPY ONE-SHOT PROMPT" });
+    fireEvent.click(copy);
+
+    const selector = screen.getByRole("combobox", { name: "Package document" });
+    fireEvent.change(selector, { target: { value: "two" } });
+    selector.focus();
+    await act(async () => pendingCopy.resolve("copied"));
+
+    expect(screen.getByRole("heading", { name: "two.md" })).toBeInTheDocument();
+    expect(screen.queryByText("One-shot prompt copied.")).not.toBeInTheDocument();
+    expect(selector).toHaveFocus();
+  });
+
+  it("ignores a delayed Copy completion after the package workflow changes", async () => {
+    const pendingCopy = deferred<"copied" | "select-manually">();
+    render(<PreviewHarness copyPromptText={() => pendingCopy.promise} />);
+    fireEvent.click(screen.getByRole("button", { name: "COPY ONE-SHOT PROMPT" }));
+
+    const manual = screen.getByRole("tab", { name: "MANUAL" });
+    fireEvent.click(manual);
+    await act(async () => pendingCopy.resolve("copied"));
+
+    expect(manual).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByText("One-shot prompt copied.")).not.toBeInTheDocument();
+    expect(manual).toHaveFocus();
+  });
+
+  it("ignores a delayed Copy completion after the active manual stage changes", async () => {
+    const pendingCopy = deferred<"copied" | "select-manually">();
+    render(<PreviewHarness copyPromptText={() => pendingCopy.promise} />);
+    fireEvent.click(screen.getByRole("tab", { name: "MANUAL" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy Decompose" }));
+
+    const rewritePrompt = screen.getByRole("textbox", { name: "Editable Stage 2 — Rewrite prompt" });
+    rewritePrompt.focus();
+    await act(async () => pendingCopy.resolve("copied"));
+
+    expect(screen.queryByText("Decompose prompt copied.")).not.toBeInTheDocument();
+    expect(rewritePrompt).toHaveFocus();
   });
 });

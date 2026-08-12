@@ -405,6 +405,31 @@ describe("Night Terminal workbench", () => {
     expect(await screen.findByRole("textbox", { name: "One-shot final document and compact audit" })).toHaveValue("");
   });
 
+  it("preserves workbook progress across non-invalidating Source and Assets navigation", async () => {
+    await uploadReviewedFile(services());
+    fireEvent.click(screen.getByRole("button", { name: "BUILD PACKAGE" }));
+    await screen.findByRole("heading", { name: "PACKAGE PREVIEW" });
+    fireEvent.click(screen.getByRole("tab", { name: "MANUAL" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Stage 1 — Decompose model response" }), {
+      target: { value: "retained analysis" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Editable Stage 2 — Rewrite prompt" }), {
+      target: { value: "retained local rewrite edit" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "SOURCE" }));
+    expect(screen.getByDisplayValue("Source text")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "ASSETS" }));
+    expect(screen.getByText("No extracted visual assets.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "PACKAGE" }));
+
+    expect(screen.getByRole("tab", { name: "MANUAL" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("textbox", { name: "Stage 1 — Decompose model response" })).toHaveValue("retained analysis");
+    expect(screen.getByRole("textbox", { name: "Editable Stage 2 — Rewrite prompt" })).toHaveValue(
+      "retained local rewrite edit",
+    );
+  });
+
   it("switches package documents without conflating the selected workflow", async () => {
     const testServices = services({
       buildPackage: async () => {
