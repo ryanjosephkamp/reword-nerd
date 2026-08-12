@@ -63,10 +63,12 @@ function PreviewHarness({
   workbooks = [workbook()],
   downloadProgressCopy = () => ({ ok: true as const }),
   copyPromptText,
+  hidden = false,
 }: {
   workbooks?: readonly DocumentWorkbook[];
   downloadProgressCopy?: ProgressDownload;
   copyPromptText?: PromptCopy;
+  hidden?: boolean;
 }) {
   const [selectedDocumentKey, setSelectedDocumentKey] = useState<string | null>(workbooks[0]?.documentKey ?? null);
   const [workflow, setWorkflow] = useState<"one-shot" | "manual">("one-shot");
@@ -79,6 +81,7 @@ function PreviewHarness({
     onWorkflowChange: setWorkflow,
     downloadProgressCopy,
     copyPromptText,
+    hidden,
   };
   return <PackagePreview {...props} />;
 }
@@ -266,10 +269,74 @@ describe("PackagePreview workbook integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy Decompose" }));
 
     const rewritePrompt = screen.getByRole("textbox", { name: "Editable Stage 2 — Rewrite prompt" });
-    rewritePrompt.focus();
+    act(() => rewritePrompt.focus());
     await act(async () => pendingCopy.resolve("copied"));
 
     expect(screen.queryByText("Decompose prompt copied.")).not.toBeInTheDocument();
     expect(rewritePrompt).toHaveFocus();
+  });
+
+  it("ignores a delayed Copy completion after a package document round trip", async () => {
+    const pendingCopy = deferred<"copied" | "select-manually">();
+    render(<PreviewHarness
+      workbooks={[workbook("one", "one.md"), workbook("two", "two.md")]}
+      copyPromptText={() => pendingCopy.promise}
+    />);
+    fireEvent.click(screen.getByRole("button", { name: "COPY ONE-SHOT PROMPT" }));
+
+    const selector = screen.getByRole("combobox", { name: "Package document" });
+    fireEvent.change(selector, { target: { value: "two" } });
+    fireEvent.change(selector, { target: { value: "one" } });
+    selector.focus();
+    await act(async () => pendingCopy.resolve("copied"));
+
+    expect(screen.getByRole("heading", { name: "one.md" })).toBeInTheDocument();
+    expect(screen.queryByText("One-shot prompt copied.")).not.toBeInTheDocument();
+    expect(selector).toHaveFocus();
+  });
+
+  it("ignores a delayed Copy completion after a package workflow round trip", async () => {
+    const pendingCopy = deferred<"copied" | "select-manually">();
+    render(<PreviewHarness copyPromptText={() => pendingCopy.promise} />);
+    fireEvent.click(screen.getByRole("button", { name: "COPY ONE-SHOT PROMPT" }));
+
+    fireEvent.click(screen.getByRole("tab", { name: "MANUAL" }));
+    const oneShot = screen.getByRole("tab", { name: "ONE-SHOT" });
+    fireEvent.click(oneShot);
+    await act(async () => pendingCopy.resolve("copied"));
+
+    expect(oneShot).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByText("One-shot prompt copied.")).not.toBeInTheDocument();
+    expect(oneShot).toHaveFocus();
+  });
+
+  it("ignores a delayed Copy completion after an active manual stage round trip", async () => {
+    const pendingCopy = deferred<"copied" | "select-manually">();
+    render(<PreviewHarness copyPromptText={() => pendingCopy.promise} />);
+    fireEvent.click(screen.getByRole("tab", { name: "MANUAL" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy Decompose" }));
+
+    act(() => screen.getByRole("textbox", { name: "Editable Stage 2 — Rewrite prompt" }).focus());
+    const decomposeResponse = screen.getByRole("textbox", { name: "Stage 1 — Decompose model response" });
+    act(() => decomposeResponse.focus());
+    await act(async () => pendingCopy.resolve("copied"));
+
+    expect(screen.queryByText("Decompose prompt copied.")).not.toBeInTheDocument();
+    expect(decomposeResponse).toHaveFocus();
+  });
+
+  it("ignores a delayed Copy completion after a hidden package view round trip", async () => {
+    const pendingCopy = deferred<"copied" | "select-manually">();
+    const view = render(<PreviewHarness copyPromptText={() => pendingCopy.promise} />);
+    fireEvent.click(screen.getByRole("button", { name: "COPY ONE-SHOT PROMPT" }));
+
+    view.rerender(<PreviewHarness copyPromptText={() => pendingCopy.promise} hidden />);
+    view.rerender(<PreviewHarness copyPromptText={() => pendingCopy.promise} />);
+    const oneShot = screen.getByRole("tab", { name: "ONE-SHOT" });
+    oneShot.focus();
+    await act(async () => pendingCopy.resolve("copied"));
+
+    expect(screen.queryByText("One-shot prompt copied.")).not.toBeInTheDocument();
+    expect(oneShot).toHaveFocus();
   });
 });

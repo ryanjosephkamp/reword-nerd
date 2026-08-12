@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PromptStage } from "../../../domain";
 import {
   createWorkbookProgress,
@@ -16,6 +16,12 @@ import { copyText, type CopyTextResult } from "../copyText";
 
 const manualStages = ["decompose", "rewrite", "verify", "final"] as const;
 type CopyStage = "oneShot" | PromptStage;
+interface CopyView {
+  documentKey: string | null;
+  workflow: PackageWorkflow;
+  stage: CopyStage;
+  hidden: boolean;
+}
 
 const stageLabels: Record<PromptStage, string> = {
   decompose: "Decompose",
@@ -60,32 +66,40 @@ export function PackagePreview({
   const [activeManualStage, setActiveManualStage] = useState<PromptStage>("decompose");
   const [status, setStatus] = useState("");
   const copyOperationRef = useRef(0);
+  const viewGenerationRef = useRef(0);
   const mountedRef = useRef(true);
   const initialStage: CopyStage = workflow === "one-shot" ? "oneShot" : activeManualStage;
-  const currentStageRef = useRef<CopyStage>(initialStage);
-  const currentViewRef = useRef({
+  const currentViewRef = useRef<CopyView>({
     documentKey: workbook?.documentKey ?? null,
     workflow,
     stage: initialStage,
     hidden,
   });
+  const transitionCopyView = useCallback((next: CopyView) => {
+    const current = currentViewRef.current;
+    if (current.documentKey !== next.documentKey
+      || current.workflow !== next.workflow
+      || current.stage !== next.stage
+      || current.hidden !== next.hidden) viewGenerationRef.current += 1;
+    currentViewRef.current = next;
+  }, []);
   useLayoutEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       copyOperationRef.current += 1;
+      viewGenerationRef.current += 1;
     };
   }, []);
   useLayoutEffect(() => {
     const stage: CopyStage = workflow === "one-shot" ? "oneShot" : activeManualStage;
-    currentStageRef.current = stage;
-    currentViewRef.current = {
+    transitionCopyView({
       documentKey: workbook?.documentKey ?? null,
       workflow,
       stage,
       hidden,
-    };
-  }, [activeManualStage, hidden, workbook?.documentKey, workflow]);
+    });
+  }, [activeManualStage, hidden, transitionCopyView, workbook?.documentKey, workflow]);
 
   if (!workbook) {
     return <div className="package-preview-empty">No package workbook is available.</div>;
@@ -107,8 +121,7 @@ export function PackagePreview({
       : reapplyWorkbookPrompt(workbook, progress, stage));
   };
   const activateManualStage = (stage: PromptStage) => {
-    currentStageRef.current = stage;
-    currentViewRef.current.stage = stage;
+    transitionCopyView({ ...currentViewRef.current, stage });
     setActiveManualStage(stage);
   };
   const copyPrompt = async (
@@ -117,10 +130,15 @@ export function PackagePreview({
     button: HTMLButtonElement,
   ) => {
     const promptState = stage === "oneShot" ? progress.oneShotPrompt : progress.manual.prompts[stage];
-    currentStageRef.current = stage;
-    currentViewRef.current.stage = stage;
+    transitionCopyView({
+      documentKey: workbook.documentKey,
+      workflow,
+      stage,
+      hidden,
+    });
     const operation = {
       token: ++copyOperationRef.current,
+      viewGeneration: viewGenerationRef.current,
       documentKey: workbook.documentKey,
       workflow,
       stage,
@@ -129,6 +147,7 @@ export function PackagePreview({
     const currentView = currentViewRef.current;
     if (!mountedRef.current
       || operation.token !== copyOperationRef.current
+      || operation.viewGeneration !== viewGenerationRef.current
       || operation.documentKey !== currentView.documentKey
       || operation.workflow !== currentView.workflow
       || operation.stage !== currentView.stage
@@ -142,8 +161,7 @@ export function PackagePreview({
   };
   const selectWorkflow = (nextWorkflow: PackageWorkflow, focus = false) => {
     const stage: CopyStage = nextWorkflow === "one-shot" ? "oneShot" : activeManualStage;
-    currentStageRef.current = stage;
-    currentViewRef.current = { ...currentViewRef.current, workflow: nextWorkflow, stage };
+    transitionCopyView({ ...currentViewRef.current, workflow: nextWorkflow, stage });
     onWorkflowChange(nextWorkflow);
     if (focus) document.getElementById(`package-workflow-${nextWorkflow}`)?.focus();
   };
@@ -180,7 +198,7 @@ export function PackagePreview({
           aria-label="Package document"
           value={workbook.documentKey}
           onChange={(event) => {
-            currentViewRef.current = { ...currentViewRef.current, documentKey: event.target.value };
+            transitionCopyView({ ...currentViewRef.current, documentKey: event.target.value });
             onSelect(event.target.value);
           }}
         >
@@ -249,7 +267,7 @@ export function PackagePreview({
           id="package-prompt-oneShot"
           rows={20}
           value={progress.oneShotPrompt.text}
-          onFocus={() => { currentStageRef.current = "oneShot"; }}
+          onFocus={() => transitionCopyView({ ...currentViewRef.current, stage: "oneShot" })}
           onChange={(event) => changePrompt("oneShot", event.target.value)}
         />
         <div className="package-prompt-actions">
@@ -260,7 +278,7 @@ export function PackagePreview({
           id="package-response-oneShot"
           rows={12}
           value={progress.responses.oneShot}
-          onFocus={() => { currentStageRef.current = "oneShot"; }}
+          onFocus={() => transitionCopyView({ ...currentViewRef.current, stage: "oneShot" })}
           onChange={(event) => changeResponse("oneShot", event.target.value)}
         />
       </div>

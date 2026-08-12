@@ -252,3 +252,59 @@ Results:
 - `git diff --check`: PASS.
 
 The existing Vitest `--localstorage-file` warnings and Vite chunk-size advisory remain nonblocking and unchanged.
+
+## Review fix round 2/5 — asynchronous Copy round trips
+
+Date: 2026-08-12 (America/New_York)
+
+### Resolution
+
+- A separate monotonically increasing view generation now advances on every document, workflow, active-stage, or hidden-state transition, including transitions that later return to the same identity.
+- Every Copy operation captures both its own operation token and the current view generation. Completion requires both to remain current, so A → B → A cannot make a stale operation current again.
+- Unmount advances both guards. New Copy still supersedes old Copy. The existing direct identity checks remain defense in depth.
+- Deferred tests cover document one → two → one, One-shot → Manual → One-shot, Decompose → Rewrite → Decompose, and Package visible → hidden → visible. Each proves no stale status announcement and no focus theft.
+
+### RED evidence
+
+Command:
+
+```sh
+npm test -- --run tests/workbench/PackagePreview.test.tsx -t "round trip"
+```
+
+Observed before the generation guard:
+
+```text
+Test Files  1 failed (1)
+Tests       4 failed | 9 skipped (13)
+```
+
+All four failures exposed a stale Copy announcement after returning to the initiating identity.
+
+### GREEN and gates
+
+Focused commands and results:
+
+```sh
+npm test -- --run tests/workbench/PackagePreview.test.tsx -t "round trip"
+# 1 file passed; 4 passed, 9 skipped
+
+npm test -- --run tests/workbench/PackagePreview.test.tsx tests/workbench/Workbench.test.tsx
+# 2 files passed; 47 tests passed
+```
+
+Final command:
+
+```sh
+npm run lint && npm run typecheck && npm test -- --run && npm run build && git diff --check
+```
+
+Results:
+
+- ESLint: PASS.
+- TypeScript project typecheck: PASS.
+- Vitest: 26 files, 203 tests, all PASS.
+- Vite production build: PASS.
+- `git diff --check`: PASS.
+
+The unchanged Vitest localStorage warning and Vite chunk-size advisory remain nonblocking.
