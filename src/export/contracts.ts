@@ -178,6 +178,10 @@ export interface WorkbookProgress {
   };
 }
 
+export interface WorkbookVisualAsset extends VisualAsset {
+  packagedPath: string;
+}
+
 export interface DocumentWorkbook {
   documentKey: string;
   originalDisplayName: string;
@@ -201,7 +205,7 @@ export interface DocumentWorkbook {
   fullHtml?: string;
   /** @deprecated Compatibility alias for combined.fullHtmlStatus. */
   fullHtmlStatus: ManifestGeneratedArtifact["status"];
-  visualAssets: readonly VisualAsset[];
+  visualAssets: readonly Readonly<WorkbookVisualAsset>[];
 }
 
 /** @deprecated Use DocumentWorkbook. */

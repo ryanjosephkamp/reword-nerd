@@ -1,5 +1,6 @@
 import JSZip from "jszip";
-import { describe, expect, it } from "vitest";
+import { JSDOM } from "jsdom";
+import { describe, expect, it, vi } from "vitest";
 import { CURATED_MODEL_PROFILES, type PromptBundle } from "../../src/domain";
 import type { ExportDocumentInput } from "../../src/export";
 
@@ -281,6 +282,123 @@ describe("v4 workbook package", () => {
     const archive = await JSZip.loadAsync(first.blob, { checkCRC32: true });
     expect(Object.keys(archive.files)).toEqual([...Object.keys(archive.files)].sort());
     expect(Object.values(archive.files).every((entry) => !entry.dir)).toBe(true);
+  });
+
+  it("keeps the top Manual Copy control locked when the active downstream prompt lacks prerequisites", async () => {
+    // This catches the top Copy action bypassing the same prerequisite gate enforced by each stage button.
+    const { buildPromptPackage } = await import("../../src/export");
+    const result = await buildPromptPackage([documentInput()]);
+    if (!result.ok) throw new Error("fixture should export");
+    const dom = new JSDOM(result.workbooks[0].combined.html, {
+      runScripts: "dangerously",
+      url: "https://workbook.local/",
+    });
+    try {
+      const { document, Event } = dom.window;
+      const manualTab = document.querySelector<HTMLButtonElement>('[data-workflow-tab="manual"]')!;
+      manualTab.click();
+      const rewrite = document.querySelector<HTMLTextAreaElement>('[data-prompt-stage="rewrite"]')!;
+      rewrite.value = "Edited before prerequisites";
+      rewrite.dispatchEvent(new Event("input", { bubbles: true }));
+
+      const topCopy = document.querySelector<HTMLButtonElement>("button[data-copy-active-manual]")!;
+      expect(topCopy.disabled).toBe(true);
+      topCopy.click();
+      await Promise.resolve();
+      expect(document.getElementById("copy-status")?.textContent).toBe("");
+    } finally {
+      dom.window.close();
+    }
+  });
+
+  it("operates combined workflow tabs with Arrow, Home, and End keys", async () => {
+    // This catches a roving tabindex tablist that keyboard users cannot move beyond the initially active One-shot tab.
+    const { buildPromptPackage } = await import("../../src/export");
+    const result = await buildPromptPackage([documentInput()]);
+    if (!result.ok) throw new Error("fixture should export");
+    const dom = new JSDOM(result.workbooks[0].combined.html, {
+      runScripts: "dangerously",
+      url: "https://workbook.local/",
+    });
+    try {
+      const { document, KeyboardEvent } = dom.window;
+      const oneShot = document.querySelector<HTMLButtonElement>('[data-workflow-tab="one-shot"]')!;
+      const manual = document.querySelector<HTMLButtonElement>('[data-workflow-tab="manual"]')!;
+      oneShot.focus();
+      oneShot.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      expect(manual.getAttribute("aria-selected")).toBe("true");
+      expect(document.activeElement).toBe(manual);
+      expect(document.getElementById("panel-one-shot")?.hidden).toBe(true);
+      expect(document.getElementById("panel-manual")?.hidden).toBe(false);
+
+      manual.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+      expect(document.activeElement).toBe(oneShot);
+      expect(oneShot.getAttribute("aria-selected")).toBe("true");
+      oneShot.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
+      expect(document.activeElement).toBe(manual);
+      manual.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+      expect(document.activeElement).toBe(oneShot);
+    } finally {
+      dom.window.close();
+    }
+  });
+
+  it("omits full HTML when its actual UTF-8 bytes exceed the configured media limit", async () => {
+    // This catches a UTF-16 string-length check admitting multibyte HTML beyond the encoded byte ceiling.
+    vi.resetModules();
+    vi.doMock("../../src/domain", async (importOriginal) => ({
+      ...await importOriginal<typeof import("../../src/domain")>(),
+      MAX_FULL_HTML_BYTES: 150_000,
+    }));
+    try {
+      const { buildPromptPackage } = await import("../../src/export");
+      const input = documentInput();
+      input.promptBundle = {
+        ...input.promptBundle,
+        oneShot: `ONE SHOT\n${"😀".repeat(10_000)}`,
+      };
+      const result = await buildPromptPackage([input]);
+      if (!result.ok) throw new Error("fixture should export");
+
+      expect(result.workbooks[0].combined.fullHtmlStatus).toBe("not-generated");
+      expect(result.manifest.documents[0].workbooks.combined.fullHtml).toEqual({
+        status: "not-generated",
+        reason: "encoded-size-limit",
+      });
+    } finally {
+      vi.doUnmock("../../src/domain");
+      vi.resetModules();
+    }
+  });
+
+  it("keeps canonical packaged asset paths in progress-copy sibling links", async () => {
+    // This catches progress rendering rebuilding traversal-prone or nonexistent links from the display filename.
+    const { buildPromptPackage, createWorkbookProgress, renderWorkbookProgressHtml } = await import("../../src/export");
+    const input = documentInput();
+    const bytes = new Uint8Array([137, 80, 78, 71]);
+    input.visualAssets = [{
+      id: "asset-safe",
+      kind: "pdf-raster",
+      filename: "../wrong display name.png",
+      mimeType: "image/png",
+      bytes,
+      byteCount: bytes.byteLength,
+      sha256: "revalidated-at-export",
+      order: 0,
+      included: true,
+      decorative: false,
+      warnings: [],
+    }];
+    const result = await buildPromptPackage([input]);
+    if (!result.ok) throw new Error("fixture should export");
+    const workbook = result.workbooks[0];
+    const canonicalPath = result.manifest.documents[0].visualAssets.records[0].path!;
+
+    expect(workbook.visualAssets[0].packagedPath).toBe(canonicalPath);
+    const progressHtml = renderWorkbookProgressHtml(workbook, createWorkbookProgress(workbook));
+    const parsed = new DOMParser().parseFromString(progressHtml, "text/html");
+    expect(parsed.querySelector(".asset-card a")?.getAttribute("href")).toBe("assets/asset-safe.png");
+    expect(progressHtml).not.toContain("../wrong display name.png\"");
   });
 });
 

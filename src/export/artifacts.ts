@@ -9,6 +9,8 @@ import type {
   WorkbookResponseStage,
 } from "./contracts";
 
+const textEncoder = new TextEncoder();
+
 const manualStages = ["decompose", "rewrite", "verify", "final"] as const;
 type ManualStage = typeof manualStages[number];
 
@@ -422,6 +424,7 @@ function standaloneHtml(
           stale.hidden = !prompt.stale;
           document.querySelector('[data-reapply-stage="' + stage + '"]').disabled = !prompt.stale;
         });
+        if (hasManual) document.querySelector("button[data-copy-active-manual]").disabled = !state.manual.prompts[activeManualStage].copyEnabled;
       };
       const setResponse = (stage, value) => {
         state = { ...state, responses: { ...state.responses, [stage]: value } };
@@ -459,21 +462,34 @@ function standaloneHtml(
         const url = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
         const link = document.createElement("a"); link.href = url; link.download = payload.workbook.documentKey + "-progress.html"; link.click(); URL.revokeObjectURL(url);
       };
+      const selectWorkflow = (selected, moveFocus) => {
+        document.querySelectorAll('[role="tab"][data-workflow-tab]').forEach((tab) => { const active = tab.dataset.workflowTab === selected; tab.setAttribute("aria-selected", String(active)); tab.tabIndex = active ? 0 : -1; });
+        document.getElementById("panel-one-shot").hidden = selected !== "one-shot";
+        document.getElementById("panel-manual").hidden = selected !== "manual";
+        if (moveFocus) document.querySelector('[data-workflow-tab="' + selected + '"]').focus();
+      };
       document.addEventListener("input", (event) => {
         const responseStage = event.target.dataset.responseStage; if (responseStage) setResponse(responseStage, event.target.value);
-        const promptStage = event.target.dataset.promptStage; if (promptStage) { setPrompt(promptStage, event.target.value); activeManualStage = promptStage === "oneShot" ? activeManualStage : promptStage; }
+        const promptStage = event.target.dataset.promptStage; if (promptStage) { activeManualStage = promptStage === "oneShot" ? activeManualStage : promptStage; setPrompt(promptStage, event.target.value); render(); }
+      });
+      document.addEventListener("keydown", (event) => {
+        const tab = event.target.closest('[role="tab"][data-workflow-tab]'); if (!tab) return;
+        const tabs = Array.from(document.querySelectorAll('[role="tab"][data-workflow-tab]'));
+        const index = tabs.indexOf(tab); let next;
+        if (event.key === "ArrowRight") next = tabs[(index + 1) % tabs.length];
+        else if (event.key === "ArrowLeft") next = tabs[(index - 1 + tabs.length) % tabs.length];
+        else if (event.key === "Home") next = tabs[0];
+        else if (event.key === "End") next = tabs[tabs.length - 1];
+        if (!next) return; event.preventDefault(); selectWorkflow(next.dataset.workflowTab, true);
       });
       document.addEventListener("click", (event) => {
         const button = event.target.closest("button"); if (!button) return;
         if (button.dataset.copyStage) void copy(button.dataset.copyStage);
-        if (button.dataset.copyActiveManual !== undefined) void copy(activeManualStage);
+        if (button.dataset.copyActiveManual !== undefined && state.manual.prompts[activeManualStage].copyEnabled) void copy(activeManualStage);
         if (button.dataset.resetStage) resetPrompt(button.dataset.resetStage);
         if (button.dataset.reapplyStage) resetPrompt(button.dataset.reapplyStage);
         if (button.dataset.downloadProgress !== undefined) progressCopy();
-        if (button.dataset.workflowTab) {
-          const selected = button.dataset.workflowTab; document.querySelectorAll('[role="tab"]').forEach((tab) => { const active = tab.dataset.workflowTab === selected; tab.setAttribute("aria-selected", String(active)); tab.tabIndex = active ? 0 : -1; });
-          document.getElementById("panel-one-shot").hidden = selected !== "one-shot"; document.getElementById("panel-manual").hidden = selected !== "manual"; button.focus();
-        }
+        if (button.dataset.workflowTab) selectWorkflow(button.dataset.workflowTab, true);
       });
       render();
     })();
@@ -489,7 +505,7 @@ function sourceFromWorkbook(workbook: DocumentWorkbook): StandaloneSource {
     originalDisplayName: workbook.originalDisplayName,
     runbookMarkdown: workbook.runbookMarkdown,
     promptBundle: workbook.promptBundle,
-    visualAssets: workbook.visualAssets.map((asset) => ({ asset, path: `assets/${asset.filename}` })),
+    visualAssets: workbook.visualAssets.map((asset) => ({ asset, path: asset.packagedPath })),
   };
 }
 
@@ -574,14 +590,18 @@ export function createDocumentWorkbook(
   const oneShotHtml = standaloneHtml(source, progress, "one-shot", "lightweight");
   const manualHtml = standaloneHtml(source, progress, "manual", "lightweight");
   const combinedHtml = standaloneHtml(source, progress, "combined", "lightweight");
-  const estimatedFullBytes = combinedHtml.length + assets
+  const estimatedFullBytes = textEncoder.encode(combinedHtml).byteLength + assets
     .filter(({ asset }) => asset.included && supportsInlinePreview(asset))
     .reduce((total, { asset }) => total + Math.ceil(asset.byteCount / 3) * 4, 0);
-  const fullHtml = estimatedFullBytes <= MAX_FULL_HTML_BYTES
+  const fullHtmlCandidate = estimatedFullBytes <= MAX_FULL_HTML_BYTES
     ? standaloneHtml(source, progress, "combined", "full")
     : undefined;
-  const visualAssets = Object.freeze(assets.map(({ asset }) => Object.freeze({
+  const fullHtml = fullHtmlCandidate && textEncoder.encode(fullHtmlCandidate).byteLength <= MAX_FULL_HTML_BYTES
+    ? fullHtmlCandidate
+    : undefined;
+  const visualAssets = Object.freeze(assets.map(({ asset, path }) => Object.freeze({
     ...asset,
+    packagedPath: path,
     bytes: asset.bytes.slice(),
     warnings: Object.freeze([...asset.warnings]) as unknown as string[],
     ...(asset.bounds ? { bounds: Object.freeze({ ...asset.bounds }) } : {}),
