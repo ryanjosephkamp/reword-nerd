@@ -160,4 +160,9 @@
     max-height: min(15rem, calc(100vh - 32px));
     transform: translateY(-50%);
   }
+
+  .processing-settings > .settings-help-popover {
+    top: 50%;
+    bottom: auto;
+  }
 }
