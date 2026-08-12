@@ -12,15 +12,19 @@ interface EditorProps {
   onRetry(): void;
   onRevealFiles(): void;
   onLatexMainFile(mainFile: string): void;
+  onAddFiles(): void;
 }
 
-export function ExtractedTextEditor({ document, hashPending, onEdit, onConfirm, onRemove, onRetry, onRevealFiles, onLatexMainFile }: EditorProps) {
+export function ExtractedTextEditor({ document, hashPending, onEdit, onConfirm, onRemove, onRetry, onRevealFiles, onLatexMainFile, onAddFiles }: EditorProps) {
   const gutterRef = useRef<HTMLDivElement>(null);
   const lines = useMemo(() => (document?.extractedText ?? "").split("\n"), [document?.extractedText]);
   const onScroll = (event: UIEvent<HTMLTextAreaElement>) => {
     if (gutterRef.current) gutterRef.current.scrollTop = event.currentTarget.scrollTop;
   };
-  if (!document) return <div className="editor-empty" aria-label="No selected file">Start with files</div>;
+  if (!document) return <div className="editor-empty" aria-label="No selected file">
+    <p>Add a supported file to review its extracted text before building a prompt package.</p>
+    <button type="button" onClick={onAddFiles}>ADD FILES</button>
+  </div>;
   const blocked = document.status === "blocked" || document.status === "error";
   const extracting = document.status === "queued" || document.status === "extracting";
   const blank = document.extractedText.trim().length === 0;

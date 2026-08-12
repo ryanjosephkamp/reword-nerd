@@ -15,12 +15,12 @@ function upload(name: string, bytes: Uint8Array, type = "application/octet-strea
 }
 
 describe("document processing contracts", () => {
-  it("uses conservative extraction defaults and the approved hard processing caps", () => {
-    // This catches expensive image/OCR work becoming implicit or the user-approved safety boundaries drifting.
+  it("extracts embedded images by default while keeping captures and OCR opt-in under approved caps", () => {
+    // This catches the v0.4 embedded-image default regressing or expensive page capture/OCR becoming implicit.
     const values = domain as unknown as Record<string, unknown>;
 
     expect(values.DEFAULT_EXTRACTION_OPTIONS).toEqual({
-      extractEmbeddedImages: false,
+      extractEmbeddedImages: true,
       capturePageVisuals: false,
       pageSelection: "all",
       pageCaptureQuality: "standard",

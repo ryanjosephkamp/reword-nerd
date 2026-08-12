@@ -2,6 +2,7 @@
 
 - Runtime strategy ID: `anthropic-claude-v1`
 - Runtime strategy version: `2026-08-11-v1`
+- One-shot guidance version: `2026-08-11-v1`
 - Reference model: Claude Opus 5
 - Default context: 1,000,000 tokens
 - Reviewed: 2026-08-11
@@ -35,10 +36,17 @@ Thinking effort, prompt caching, and platform-specific features remain outside p
 
 > Use descriptive XML tags to separate inputs. For long documents, place source material before the task. State the required deliverable and length explicitly, without redundant self-verification instructions.
 
+## One-shot guidance injected
+
+Inference from Anthropic's first-party long-context, output-format, and non-redundancy guidance above; Anthropic does not benchmark this exact rewrite workflow.
+
+> Keep the source before the one-shot task, use the named output markers exactly, perform the staged checks internally, and keep the visible audit concise.
+
 ## Evidence gaps
 
 The provider’s source-first recommendation is broader Claude guidance rather than a controlled benchmark on this exact workflow. Claude product plans can expose different feature and usage limits even though the API model window is 1M.
 
 ## Change log
 
+- **2026-08-11:** Added versioned One-shot guidance from the current first-party prompt guidance.
 - **2026-08-11:** Initial Claude Opus 5 review; selected XML and source-first/task-last layout.

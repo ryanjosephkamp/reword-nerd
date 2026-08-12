@@ -2,6 +2,7 @@
 
 - Runtime strategy ID: `minimax-m3-v1`
 - Runtime strategy version: `2026-08-11-v1`
+- One-shot guidance version: `2026-08-11-v1`
 - Reference model: MiniMax M3
 - Default context: 1,000,000 tokens
 - Reviewed: 2026-08-11
@@ -35,10 +36,17 @@ Thinking mode, cache behavior, service tier, and tool scaffolding are API/produc
 
 > Use flat named sections, explicit role, format, length, and grounding rules. For long inputs, place the task after indexed source material.
 
+## One-shot guidance injected
+
+Inference from MiniMax's first-party named-section, grounding, output-contract, and long-context ordering guidance above; MiniMax does not benchmark this exact rewrite workflow.
+
+> For long inputs keep the task after the delimited source, run all four stages internally, and follow the two-part marked output contract exactly.
+
 ## Evidence gaps
 
 The provider notes that availability above the guaranteed 512K minimum may depend on the access path. The site default uses the documented maximum and warns users to verify actual account limits.
 
 ## Change log
 
+- **2026-08-11:** Added versioned One-shot guidance from the current first-party prompt guidance.
 - **2026-08-11:** Initial MiniMax M3 review; adopted first-party task-after-source guidance.

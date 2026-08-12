@@ -1,90 +1,100 @@
 # Architecture
 
-`reword-nerd` is a static React application. Its work happens in browser
-memory: it has no application server, account service, model request, or
-persistence layer.
+`reword-nerd` is a static React application. Document work happens in browser
+memory; there is no application server, account service, model request,
+telemetry sender, or document persistence layer.
 
-## Processing path
+## Processing and state path
 
 ```text
 File API / drop event
-  -> admission checks
-  -> format-specific extraction
-  -> editable, explicit review
-  -> settings and context assessment
-  -> provider-guided four-prompt rendering
-  -> manifest + combined Markdown/HTML + ZIP Blob
-  -> in-site package preview
-  -> optional browser download
+  -> admission and signature checks
+  -> bounded format-specific extraction
+  -> editable review + asset/OCR decisions
+  -> settings + separate One-shot/Manual context estimates
+  -> PromptBundle (One-shot + canonical Manual stages)
+  -> immutable DocumentWorkbook[] + schema-v4 manifest + ZIP Blob
+  -> revision-bound in-site preview
+  -> explicit ZIP or progress-copy download
 ```
 
-### Admission and extraction
+Admission enforces format and queue limits before extraction. Text and Markdown
+are strict UTF-8; DOCX converts locally; PDF uses the bundled parser worker;
+LaTeX and safe project ZIPs are analyzed without execution. Optional visuals,
+page capture, and English OCR are local, bounded, and review-first. Batch IDs
+prevent late extraction results from restoring removed or stale documents.
 
-The workbench accepts the files selected in the browser and first enforces
-format and queue limits. Text and Markdown are strictly decoded as UTF-8.
-DOCX content is converted locally to reviewable Markdown, PDFs are read through
-the local parser worker, and TeX/project ZIP sources are analyzed without
-execution. Optional visual extraction, page capture, and English OCR are
-explicit, bounded, local, and review-first. The extraction layer computes
-SHA-256 digests with Web Crypto, records safe warnings, and rejects files that
-cannot provide reviewable content.
+The reducer holds original `File` objects, extracted text and hashes, warnings,
+review state, assets/OCR, selection, global settings, and per-file overrides in
+memory. A confirmed extraction becomes review-required again after editing.
 
-The queue is concurrent only where it is safe to be. Reducer actions retain a
-batch identity so a late extraction result cannot restore a removed or stale
-file. A failure blocks only that document; another ready document remains
-available for review and export.
+## Prompt and context contracts
 
-### Review and settings
+`src/prompting/renderPromptBundle.ts` imports all root Markdown templates as raw
+assets. `PromptBundle` contains `oneShot` plus the unchanged Manual `decompose`,
+`rewrite`, `verify`, and `final` prompt set. Provider strategy metadata controls
+portable layout guidance without changing canonical stage meaning or response
+markers.
 
-The workbench state holds the original `File`, extracted text, source and text
-digests, warnings, review state, and a transient selected-file identity.
-Editing extracted text requires another explicit review confirmation before a
-package is enabled.
+`assessContext` returns separate conservative `oneShotWorkflowTokens` and
+`manualWorkflowTokens`, ratios, and oversize states. One-shot oversize is an
+advisory. Manual oversize retains the required document-specific acknowledgement
+boundary and compatibility aliases for older internal consumers.
 
-Global writing settings resolve to a per-document setting object. A file may
-enable a local override without changing the global defaults. The selected
-model-family profile is descriptive metadata plus a versioned prompt-layout
-strategy for the manual workflow; it never connects to a provider. The
-context estimate uses the extracted source plus the expected four-stage
-exchange; an oversized estimate requires a document-specific acknowledgement.
+## Schema-v4 workbook engine
 
-### Prompt rendering
+`src/export/artifacts.ts` builds one immutable `DocumentWorkbook` model per
+document. The model is the source for separate One-shot, Manual, combined, and
+optional full HTML/Markdown bytes and for the React package preview. Generated
+HTML is never executed inside the app.
 
-`src/prompting/renderPromptSet.ts` imports the four root Markdown templates as
-raw assets and adds the document, resolved settings, selected profile strategy,
-and prior-stage response markers. The templates remain the source of truth for
-the manual Decompose, Rewrite, Verify, and Final workflow. Strategy metadata can
-select task-first or source-first/task-last ordering and Markdown or XML
-delimiters without changing canonical stage semantics or markers.
+The pure progress API creates revision-local response/prompt state, hydrates
+downstream prompts, preserves edited stale prompts, and applies explicit Reset
+or Reapply. `renderWorkbookProgressHtml` serializes the same safe standalone
+workbook model; `parseWorkbookProgressHtml` validates its embedded schema.
+Neither path automatically uses storage.
 
-### Package generation
+`src/export/package.ts` snapshots reviewed inputs, assigns safe deterministic
+document keys, hashes every declared artifact, and emits schema `4` with package
+format `dual-mode-prompt-package`. Entries are sorted by code-unit path order,
+use a fixed 1980 timestamp and permissions, STORE immutable binaries, and
+DEFLATE-9 generated text. Root `OPEN-ME.html` links to each document's workflow
+siblings.
 
-`src/export/` snapshots valid, reviewed inputs before asynchronous file reads.
-It creates a document key from a normalized name and source digest, builds all
-required per-document files, builds both combined companions from one immutable
-structured artifact, and records their SHA-256 hashes and strategy provenance
-in schema v3, including visual placement, OCR, and LaTeX project provenance.
-The archive uses deterministic entry ordering, a fixed timestamp, and fixed
-metadata so equivalent inputs create equivalent archive contents.
+## Preview, races, and lifetime
 
-Original uploads and media are stored without compression; generated Markdown,
-HTML, and JSON entries use DEFLATE level 9. zip.js produces a browser `Blob`. The accepted
-Blob and structured artifacts remain revision-bound in memory for preview. An
-explicit download uses an object URL only long enough to trigger the browser
-download; any content, review, profile, or settings mutation invalidates it.
+The accepted ZIP Blob and immutable workbooks share one export object and built
+revision. A successful current build opens Package/One-shot. Package preview
+stays mounted but natively hidden during Source or Assets navigation, preserving
+revision-local progress. Any content, review, asset, processing, profile, or
+rewrite-setting mutation advances the revision, clears Blob and workbooks
+together, returns Source, and unmounts old progress.
+
+Build and download hooks bind async completion to operation IDs and revision
+snapshots. Duplicate activation, late build completion, and stale download
+completion cannot expose obsolete workbooks or mark a changed session clean.
+Prompt Copy separately binds completion to its operation token and monotonically
+advancing view generation so document/workflow/stage/hidden round trips cannot
+announce or steal focus after the initiating view changed.
+
+## Preference boundary
+
+`src/app/workbench/preferences.ts` is the only production browser-storage
+boundary. It owns one namespaced key, validates a version-1 envelope and a
+fixed allowlist, and fails safely when storage is missing or corrupt. The key
+contains only global model/context, rewrite, processing, and tutorial-version
+preferences. Workbench documents and workbook progress are never included.
 
 ## Main modules
 
 | Location | Responsibility |
 | --- | --- |
-| `src/app/` | Application composition and workbench interaction state. |
-| `src/app/workbench/` | Reducer, selectors, browser services, hooks, and UI components. |
-| `src/domain/` | Format admission, extraction, SHA-256 hashing, profiles, settings, and context assessment. |
-| `src/prompting/` | Prompt-template loading and per-document rendering. |
-| `src/export/` | Combined artifacts, ZIP construction, manifest contract, safe archive paths, and browser download. |
-| `prompts/` | Canonical four-stage Markdown prompt templates. |
-| `tests/` | Unit, component, archive, and Playwright browser coverage. |
+| `src/app/workbench/` | Reducer, selectors, validated preferences, browser services, hooks, and UI. |
+| `src/domain/` | Admission, extraction, hashing, media/OCR/LaTeX, profiles, settings, and context. |
+| `src/prompting/` | Canonical template loading and `PromptBundle` rendering. |
+| `src/export/` | Immutable workbook/progress engine, schema-v4 manifest, ZIP, safe paths, downloads. |
+| `prompts/` | Canonical One-shot and four Manual Markdown templates. |
+| `tests/e2e/` | Built-preview Chromium, real fixtures, downloads, `file://`, network, and visual QA. |
 
-See [privacy](privacy.md), [model guidance](model-guidance/README.md),
-[extraction limitations](extraction-limitations.md), and [manifest v3](manifest-v3.md)
-for the corresponding boundaries and current data contract.
+See [manifest v4](manifest-v4.md), [privacy](privacy.md), [model guidance](model-guidance/README.md),
+and [extraction limitations](extraction-limitations.md).

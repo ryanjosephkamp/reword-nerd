@@ -11,7 +11,8 @@ import {
   type ProcessingProgress,
   type WorkspaceDocument,
 } from "../../domain";
-import type { BuiltPromptPackage, MobileTab, PreviewMode, WorkbenchDocument, WorkbenchState } from "./contracts";
+import type { BuiltPromptPackage, MobileTab, PackageWorkflow, PreviewMode, WorkbenchDocument, WorkbenchState } from "./contracts";
+import { CURRENT_TUTORIAL_VERSION, type SavedPreferencesPatch } from "./preferences";
 
 type IntakeDocument = { document: WorkspaceDocument; uploadOrdinal: number };
 
@@ -50,13 +51,19 @@ export type WorkbenchAction =
   | { type: "profile/selected"; profileId: string }
   | { type: "profile/context-limit-changed"; value: number | null }
   | { type: "profile/custom-label-changed"; value: string }
-  | { type: "profile/custom-context-draft-changed"; value: string; parsed: number | null }
+  | { type: "profile/custom-context-draft-changed"; value: string; parsed: number | null | undefined }
   | { type: "context/acknowledged"; documentId: string; acknowledged: boolean }
   | { type: "mobile/tab-changed"; tab: MobileTab }
   | { type: "preview/mode-changed"; mode: PreviewMode }
-  | { type: "preview/artifact-selected"; documentKey: string }
+  | { type: "preview/workflow-changed"; workflow: PackageWorkflow }
+  | { type: "preview/document-selected"; documentKey: string }
   | { type: "drawer/changed"; open: boolean }
   | { type: "help/changed"; open: boolean }
+  | { type: "tutorial/opened" }
+  | { type: "tutorial/dismissed" }
+  | { type: "preferences/reset-requested" }
+  | { type: "preferences/reset-cancelled" }
+  | { type: "preferences/reset-confirmed" }
   | { type: "focus/consumed" }
   | { type: "export/started"; operationId: number; revision: number }
   | { type: "export/package-built"; operationId: number; revision: number; builtPackage: BuiltPromptPackage }
@@ -69,22 +76,43 @@ export type WorkbenchAction =
 const firstProfile = CURATED_MODEL_PROFILES.find((profile) => profile.id === DEFAULT_MODEL_PROFILE_ID)
   ?? CURATED_MODEL_PROFILES[0];
 
-export function createInitialWorkbenchState(): WorkbenchState {
+export function createInitialWorkbenchState(preferences: SavedPreferencesPatch | null = null): WorkbenchState {
+  const selectedProfile = CURATED_MODEL_PROFILES.find((profile) => profile.id === preferences?.selectedProfileId)
+    ?? firstProfile;
+  const savedContext = preferences && Object.hasOwn(preferences, "contextWindowTokens")
+    ? preferences.contextWindowTokens
+    : selectedProfile.contextWindowTokens;
+  const customProfileLabel = preferences?.customProfileLabel ?? "";
+  const workingProfile = {
+    ...selectedProfile,
+    label: selectedProfile.id === "custom" && customProfileLabel
+      ? customProfileLabel
+      : selectedProfile.label,
+    contextWindowTokens: savedContext ?? null,
+  };
   return {
     documents: [],
     selectedDocumentId: null,
-    globalSettings: { ...DEFAULT_SETTINGS },
-    globalExtractionOptions: cloneExtractionOptions(DEFAULT_EXTRACTION_OPTIONS),
-    selectedProfileId: firstProfile.id,
-    workingProfile: { ...firstProfile },
-    customProfileLabel: "",
-    customContextDraft: "",
+    globalSettings: { ...DEFAULT_SETTINGS, ...preferences?.globalSettings },
+    globalExtractionOptions: cloneExtractionOptions({
+      ...DEFAULT_EXTRACTION_OPTIONS,
+      ...preferences?.processing,
+      ocrLanguage: DEFAULT_EXTRACTION_OPTIONS.ocrLanguage,
+    }),
+    selectedProfileId: selectedProfile.id,
+    workingProfile,
+    customProfileLabel,
+    customContextDraft: savedContext?.toString() ?? "",
     overrideEnabled: {},
     mobileTab: "files",
     previewMode: "source",
-    previewArtifactKey: null,
+    previewWorkflow: "one-shot",
+    previewDocumentKey: null,
     settingsDrawerOpen: false,
     helpDialogOpen: false,
+    quickStartDialogOpen: preferences?.tutorialVersion !== CURRENT_TUTORIAL_VERSION,
+    resetPreferencesDialogOpen: false,
+    tutorialSeenVersion: preferences?.tutorialVersion ?? null,
     intake: { dragging: false, activeBatchId: null, issues: [] },
     editor: {},
     export: { status: "idle", safeMessage: "" },
@@ -102,7 +130,8 @@ function changed(state: WorkbenchState, patch: Partial<WorkbenchState>): Workben
     revision: state.revision + 1,
     export: { status: "idle", safeMessage: "" },
     previewMode: "source",
-    previewArtifactKey: null,
+    previewWorkflow: "one-shot",
+    previewDocumentKey: null,
   };
 }
 
@@ -468,6 +497,9 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
           : state.workingProfile,
       });
     case "profile/custom-context-draft-changed":
+      if (action.parsed === undefined) {
+        return { ...state, customContextDraft: action.value };
+      }
       return changed(state, {
         customContextDraft: action.value,
         workingProfile: { ...state.workingProfile, contextWindowTokens: action.parsed },
@@ -485,13 +517,39 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
     case "preview/mode-changed":
       if (action.mode === "package" && !state.export.builtPackage) return state;
       return { ...state, previewMode: action.mode };
-    case "preview/artifact-selected":
-      if (!state.export.builtPackage?.artifacts.some((artifact) => artifact.documentKey === action.documentKey)) return state;
-      return { ...state, previewArtifactKey: action.documentKey };
+    case "preview/workflow-changed":
+      if (!state.export.builtPackage || state.previewMode !== "package") return state;
+      return { ...state, previewWorkflow: action.workflow };
+    case "preview/document-selected":
+      if (!state.export.builtPackage?.workbooks.some((workbook) => workbook.documentKey === action.documentKey)) return state;
+      return { ...state, previewDocumentKey: action.documentKey };
     case "drawer/changed":
       return { ...state, settingsDrawerOpen: action.open };
     case "help/changed":
       return { ...state, helpDialogOpen: action.open };
+    case "tutorial/opened":
+      return { ...state, helpDialogOpen: false, quickStartDialogOpen: true };
+    case "tutorial/dismissed":
+      return {
+        ...state,
+        quickStartDialogOpen: false,
+        tutorialSeenVersion: CURRENT_TUTORIAL_VERSION,
+      };
+    case "preferences/reset-requested":
+      return { ...state, resetPreferencesDialogOpen: true };
+    case "preferences/reset-cancelled":
+      return { ...state, resetPreferencesDialogOpen: false };
+    case "preferences/reset-confirmed":
+      return changed(state, {
+        globalSettings: { ...DEFAULT_SETTINGS },
+        globalExtractionOptions: cloneExtractionOptions(DEFAULT_EXTRACTION_OPTIONS),
+        selectedProfileId: firstProfile.id,
+        workingProfile: { ...firstProfile },
+        customProfileLabel: "",
+        customContextDraft: firstProfile.contextWindowTokens?.toString() ?? "",
+        resetPreferencesDialogOpen: false,
+        documents: clearAcknowledgments(state.documents),
+      });
     case "focus/consumed":
       return { ...state, focusTarget: null };
     case "export/started":
@@ -517,7 +575,8 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
         },
         mobileTab: "preview",
         previewMode: "package",
-        previewArtifactKey: action.builtPackage.artifacts[0]?.documentKey ?? null,
+        previewWorkflow: "one-shot",
+        previewDocumentKey: action.builtPackage.workbooks[0]?.documentKey ?? null,
         focusTarget: "package-preview",
         liveMessage: "Package ready.",
       };

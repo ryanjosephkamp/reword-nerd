@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { initiatePromptPackageDownload } from "../../src/export";
+import { initiatePromptPackageDownload, initiateWorkbookProgressDownload } from "../../src/export";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -35,5 +35,21 @@ describe("prompt-package download initiation", () => {
     expect(document.querySelector('a[href="blob:package"]')).toBeNull();
     vi.advanceTimersByTime(100);
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:package");
+  });
+
+  it("downloads progress HTML with its supplied safe filename through the same isolated adapter", () => {
+    vi.useFakeTimers();
+    const createObjectURL = vi.fn(() => "blob:progress");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+
+    expect(initiateWorkbookProgressDownload("<!doctype html><title>Progress</title>", "notes-progress.html")).toEqual({ ok: true });
+
+    expect(createObjectURL).toHaveBeenCalledWith(expect.objectContaining({ type: "text/html;charset=utf-8" }));
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('a[download="notes-progress.html"]')).toBeNull();
+    vi.advanceTimersByTime(100);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:progress");
   });
 });

@@ -19,6 +19,11 @@ export interface PromptSet {
   final: string;
 }
 
+export interface PromptBundle {
+  oneShot: string;
+  manual: PromptSet;
+}
+
 export interface WorkspaceDocument {
   id: string;
   original: File;
@@ -52,7 +57,7 @@ export interface ManifestDocumentInput {
   reviewedExtractedText: string;
   resolvedSettings: RewriteSettings;
   chosenProfile: ModelProfile;
-  promptSet: PromptSet;
+  promptBundle: PromptBundle;
   warnings: string[];
   contextAssessment: ContextAssessment;
 }

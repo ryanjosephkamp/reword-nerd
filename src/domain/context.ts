@@ -1,9 +1,19 @@
 export interface ContextAssessment {
   estimateLabel: "Estimated tokens";
   sourceTokens: number;
+  oneShotWorkflowTokens: number;
+  manualWorkflowTokens: number;
+  oneShotRatio: number | null;
+  manualRatio: number | null;
+  oneShotOversized: boolean;
+  manualOversized: boolean;
+  oneShotWarning: boolean;
+  /** @deprecated Compatibility alias for manualWorkflowTokens. */
   workflowTokens: number;
   contextWindowTokens: number | null;
+  /** @deprecated Compatibility alias for manualRatio. */
   ratio: number | null;
+  /** @deprecated Compatibility alias for manualOversized. */
   oversized: boolean;
   acknowledgmentRequired: boolean;
 }
@@ -32,17 +42,27 @@ export function assessContext(sourceText: string, contextWindowTokens: number | 
   }
 
   const sourceTokens = estimateTextTokens(sourceText);
-  const workflowTokens = Math.ceil(sourceTokens * 4 + 3_000);
-  const ratio = contextWindowTokens === null ? null : workflowTokens / contextWindowTokens;
-  const oversized = contextWindowTokens !== null && workflowTokens > contextWindowTokens;
+  const oneShotWorkflowTokens = Math.ceil(sourceTokens * 2 + 1_500);
+  const manualWorkflowTokens = Math.ceil(sourceTokens * 4 + 3_000);
+  const oneShotRatio = contextWindowTokens === null ? null : oneShotWorkflowTokens / contextWindowTokens;
+  const manualRatio = contextWindowTokens === null ? null : manualWorkflowTokens / contextWindowTokens;
+  const oneShotOversized = contextWindowTokens !== null && oneShotWorkflowTokens > contextWindowTokens;
+  const manualOversized = contextWindowTokens !== null && manualWorkflowTokens > contextWindowTokens;
 
   return {
     estimateLabel: "Estimated tokens",
     sourceTokens,
-    workflowTokens,
+    oneShotWorkflowTokens,
+    manualWorkflowTokens,
+    oneShotRatio,
+    manualRatio,
+    oneShotOversized,
+    manualOversized,
+    oneShotWarning: oneShotOversized,
+    workflowTokens: manualWorkflowTokens,
     contextWindowTokens,
-    ratio,
-    oversized,
-    acknowledgmentRequired: oversized,
+    ratio: manualRatio,
+    oversized: manualOversized,
+    acknowledgmentRequired: manualOversized,
   };
 }

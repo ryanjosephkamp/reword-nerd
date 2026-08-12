@@ -1,5 +1,5 @@
 import type { ContextAssessment } from "../domain/context";
-import type { DocumentFormat, ManifestDocumentInput, PromptSet } from "../domain/contracts";
+import type { DocumentFormat, ManifestDocumentInput, PromptBundle, PromptSet } from "../domain/contracts";
 import type { HashAdapter } from "../domain/extraction";
 import type { ModelProfile, PromptStage } from "../domain/profiles";
 import type { RewriteSettings } from "../domain/settings";
@@ -86,9 +86,24 @@ export interface ManifestDocumentRecord {
   model: Pick<ModelProfile, "id" | "family" | "label" | "contextWindowTokens" | "lastReviewed" | "workflowNote"> & {
     promptStrategy: Pick<ModelProfile["promptStrategy"], "id" | "version" | "referenceModel" | "reviewedAt">;
   };
-  contextAssessment: ContextAssessment;
+  contextAssessment: Pick<ContextAssessment,
+    | "estimateLabel"
+    | "sourceTokens"
+    | "oneShotWorkflowTokens"
+    | "manualWorkflowTokens"
+    | "oneShotRatio"
+    | "manualRatio"
+    | "oneShotOversized"
+    | "manualOversized"
+    | "oneShotWarning"
+    | "workflowTokens"
+    | "contextWindowTokens"
+    | "ratio"
+    | "oversized"
+    | "acknowledgmentRequired"
+  >;
   contextWarningAcknowledged: boolean;
-  prompts: Record<keyof PromptSet, ManifestPromptRecord>;
+  prompts: Record<"oneShot" | keyof PromptSet, ManifestPromptRecord>;
   processing: { pageCount: number | null; options: ExtractionOptions };
   visualAssets: {
     index: ManifestPromptRecord;
@@ -97,16 +112,20 @@ export interface ManifestDocumentRecord {
   };
   ocr: { path: string; sha256: string; records: ManifestOcrRecord[] };
   latexProject?: LatexProjectMetadata;
-  combined: {
-    markdown: ManifestPromptRecord;
-    html: ManifestPromptRecord;
-    fullHtml: ManifestGeneratedArtifact;
+  workbooks: {
+    oneShot: { markdown: ManifestPromptRecord; html: ManifestPromptRecord };
+    manual: { markdown: ManifestPromptRecord; html: ManifestPromptRecord };
+    combined: {
+      markdown: ManifestPromptRecord;
+      html: ManifestPromptRecord;
+      fullHtml: ManifestGeneratedArtifact;
+    };
   };
 }
 
 export interface PromptPackageManifest {
-  schemaVersion: 3;
-  package: { name: "reword-nerd"; version: "0.3.0"; format: "manual-four-stage-prompt-package" };
+  schemaVersion: 4;
+  package: { name: "reword-nerd"; version: "0.4.0"; format: "dual-mode-prompt-package" };
   archive: {
     entryOrder: "lexicographic-code-unit-ascending";
     timestamp: "1980-01-01T00:00:00.000Z";
@@ -114,10 +133,11 @@ export interface PromptPackageManifest {
     generatedCompression: "DEFLATE-9";
   };
   workflow: {
-    mode: "manual";
-    stages: ["decompose", "rewrite", "verify", "final"];
+    modes: ["one-shot", "manual"];
+    manualStages: ["decompose", "rewrite", "verify", "final"];
     responseMarkers: { stage1: string; stage2: string; stage3: string };
   };
+  rootArtifacts: { readme: ManifestPromptRecord; openMe: ManifestPromptRecord };
   documents: ManifestDocumentRecord[];
 }
 
@@ -133,26 +153,74 @@ export interface CombinedPromptRunbook {
   originalDisplayName: string;
   model: ManifestDocumentRecord["model"];
   settings: RewriteSettings;
-  contextAssessment: ContextAssessment;
+  contextAssessment: ManifestDocumentRecord["contextAssessment"];
   contextWarningAcknowledged: boolean;
   responseMarkers: PromptPackageManifest["workflow"]["responseMarkers"];
 }
 
-export interface CombinedPromptArtifact {
+export type WorkbookResponseStage = "oneShot" | PromptStage;
+
+export interface WorkbookPromptState {
+  text: string;
+  canonicalText: string;
+  copyEnabled: boolean;
+  edited: boolean;
+  stale: boolean;
+}
+
+export interface WorkbookProgress {
+  schemaVersion: 1;
+  documentKey: string;
+  responses: Readonly<Record<WorkbookResponseStage, string>>;
+  oneShotPrompt: Readonly<WorkbookPromptState>;
+  manual: {
+    prompts: Readonly<Record<PromptStage, Readonly<WorkbookPromptState>>>;
+  };
+}
+
+export interface WorkbookVisualAsset extends VisualAsset {
+  packagedPath: string;
+}
+
+export interface DocumentWorkbook {
   documentKey: string;
   originalDisplayName: string;
   runbook: Readonly<CombinedPromptRunbook>;
   runbookMarkdown: string;
+  promptBundle: Readonly<PromptBundle>;
   promptBlocks: readonly Readonly<CombinedPromptBlock>[];
+  oneShot: Readonly<{ prompt: string; markdown: string; html: string }>;
+  manual: Readonly<{ promptBlocks: readonly Readonly<CombinedPromptBlock>[]; markdown: string; html: string }>;
+  combined: Readonly<{
+    markdown: string;
+    html: string;
+    fullHtml?: string;
+    fullHtmlStatus: ManifestGeneratedArtifact["status"];
+  }>;
+  /** @deprecated Compatibility alias for combined.markdown. */
   markdown: string;
+  /** @deprecated Compatibility alias for combined.html. */
   html: string;
+  /** @deprecated Compatibility alias for combined.fullHtml. */
   fullHtml?: string;
+  /** @deprecated Compatibility alias for combined.fullHtmlStatus. */
   fullHtmlStatus: ManifestGeneratedArtifact["status"];
-  visualAssets: readonly VisualAsset[];
+  visualAssets: readonly Readonly<WorkbookVisualAsset>[];
 }
 
+/** @deprecated Use DocumentWorkbook. */
+export type CombinedPromptArtifact = DocumentWorkbook;
+
 export type PromptPackageResult =
-  | { ok: true; blob: Blob; filename: "reword-nerd-prompt-package.zip"; manifest: PromptPackageManifest; artifacts: readonly CombinedPromptArtifact[] }
+  | {
+    ok: true;
+    blob: Blob;
+    filename: "reword-nerd-prompt-package.zip";
+    manifest: PromptPackageManifest;
+    workbooks: readonly DocumentWorkbook[];
+    /** @deprecated Compatibility alias for workbooks. */
+    artifacts: readonly DocumentWorkbook[];
+  }
   | { ok: false; error: ExportFailure };
 
 export interface ExportDependencies {

@@ -2,6 +2,7 @@
 
 - Runtime strategy ID: `openai-chatgpt-v1`
 - Runtime strategy version: `2026-08-11-v1`
+- One-shot guidance version: `2026-08-11-v1`
 - Reference model: GPT-5.6 Sol
 - Default context: 1,050,000 tokens
 - Reviewed: 2026-08-11
@@ -39,10 +40,17 @@ Manual prompts do not include `reasoning.effort`, `reasoning.mode`, `text.verbos
 
 > Keep the prompt lean and state each instruction once. Specify the outcome, relevant context, constraints, evidence boundary, and output format.
 
+## One-shot guidance injected
+
+Inference from OpenAI's first-party lean-prompt, success-criteria, and output-contract guidance above; OpenAI does not benchmark this exact rewrite workflow.
+
+> Use the lean four-stage procedure internally, do not expose intermediate work, and emit only the marked final document and compact fidelity audit.
+
 ## Evidence gaps
 
 The official guide is API-oriented; ChatGPT product behavior and plan-specific context can differ. No first-party result specifically benchmarks semantic rewriting with this four-stage package.
 
 ## Change log
 
+- **2026-08-11:** Added versioned One-shot guidance from the current first-party model guidance.
 - **2026-08-11:** Initial GPT-5.6 Sol review and runtime strategy.

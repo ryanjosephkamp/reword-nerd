@@ -4,7 +4,7 @@ import {
   hashBytes,
   preflightFiles,
 } from "../../domain";
-import { buildPromptPackage, initiatePromptPackageDownload } from "../../export";
+import { buildPromptPackage, initiatePromptPackageDownload, initiateWorkbookProgressDownload } from "../../export";
 import type { WorkbenchServices } from "./contracts";
 
 const encoder = new TextEncoder();
@@ -20,6 +20,7 @@ export const defaultWorkbenchServices: WorkbenchServices = {
   hashText: (text) => hashBytes(encoder.encode(text).buffer),
   buildPackage: (inputs) => buildPromptPackage(inputs),
   download: (blob) => initiatePromptPackageDownload(blob),
+  downloadProgressCopy: (html, filename) => initiateWorkbookProgressDownload(html, filename),
   createDocumentId: () => globalThis.crypto?.randomUUID?.() ?? `document-${Date.now()}-${Math.random()}`,
 };
 

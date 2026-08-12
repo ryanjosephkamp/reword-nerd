@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
-import { renderPromptSet } from "../../prompting";
+import { renderPromptBundle } from "../../prompting";
 import type { ExportDocumentInput } from "../../export";
 import type { WorkbenchServices, WorkbenchState } from "./contracts";
 import type { WorkbenchAction } from "./reducer";
@@ -59,7 +59,7 @@ export function useExportPackage(
           reviewedExtractedText: document.extractedText,
           resolvedSettings,
           chosenProfile: { ...profile },
-          promptSet: renderPromptSet(document.extractedText, resolvedSettings, profile, {
+          promptBundle: renderPromptBundle(document.extractedText, resolvedSettings, profile, {
             format: document.format,
             assets: (document.visualAssets ?? []).map((asset) => ({
               id: asset.id,

@@ -1,23 +1,51 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "../../src/app/App";
 import type { WorkbenchServices } from "../../src/app/workbench/contracts";
-import type { CombinedPromptArtifact } from "../../src/export";
+import type { DocumentWorkbook } from "../../src/export";
+import { CURRENT_TUTORIAL_VERSION, PREFERENCES_STORAGE_KEY } from "../../src/app/workbench/preferences";
 
 const defaultMatchMedia = window.matchMedia;
-afterEach(() => { window.matchMedia = defaultMatchMedia; });
+beforeEach(() => {
+  window.localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify({
+    version: 1,
+    data: { tutorialVersion: CURRENT_TUTORIAL_VERSION },
+  }));
+});
+afterEach(() => {
+  window.matchMedia = defaultMatchMedia;
+  window.localStorage.clear();
+});
 
-function combinedArtifact(documentKey = "notes", name = "notes.md"): CombinedPromptArtifact {
+function workbook(documentKey = "notes", name = "notes.md"): DocumentWorkbook {
+  const promptBlocks = [
+    { stage: "decompose" as const, title: "Stage 1 — Decompose", content: "DECOMPOSE PROMPT\nSource text" },
+    { stage: "rewrite" as const, title: "Stage 2 — Rewrite", content: "REWRITE PROMPT\n<<<INSERT_STAGE_1_DECOMPOSITION_RESPONSE>>>" },
+    { stage: "verify" as const, title: "Stage 3 — Verify", content: "VERIFY PROMPT\n<<<INSERT_STAGE_1_DECOMPOSITION_RESPONSE>>>\n<<<INSERT_STAGE_2_REWRITE_RESPONSE>>>" },
+    { stage: "final" as const, title: "Stage 4 — Final", content: "FINAL PROMPT\n<<<INSERT_STAGE_1_DECOMPOSITION_RESPONSE>>>\n<<<INSERT_STAGE_2_REWRITE_RESPONSE>>>\n<<<INSERT_STAGE_3_VERIFICATION_RESPONSE>>>" },
+  ];
   return {
     documentKey,
     originalDisplayName: name,
     runbook: {} as never,
     runbookMarkdown: "# reword-nerd prompt package\n\nRun each stage in order.",
-    promptBlocks: [
-      { stage: "decompose", title: "Decompose", content: "DECOMPOSE PROMPT\nSource text" },
-      { stage: "rewrite", title: "Rewrite", content: "REWRITE PROMPT\nUse decomposition" },
-      { stage: "verify", title: "Verify", content: "VERIFY PROMPT\nCheck the rewrite" },
-      { stage: "final", title: "Final", content: "FINAL PROMPT\nProduce the final document" },
-    ],
+    promptBundle: {
+      oneShot: "ONE-SHOT PROMPT\nSource text",
+      manual: {
+        decompose: promptBlocks[0].content,
+        rewrite: promptBlocks[1].content,
+        verify: promptBlocks[2].content,
+        final: promptBlocks[3].content,
+      },
+    },
+    promptBlocks,
+    oneShot: { prompt: "ONE-SHOT PROMPT\nSource text", markdown: "one-shot markdown", html: "<!doctype html><title>one shot</title>" },
+    manual: { promptBlocks, markdown: "manual markdown", html: "<!doctype html><title>manual</title>" },
+    combined: {
+      markdown: "combined markdown",
+      html: "<!doctype html><title>combined prompts</title>",
+      fullHtml: "<!doctype html><title>combined prompts full</title>",
+      fullHtmlStatus: "generated",
+    },
     markdown: "combined markdown",
     html: "<!doctype html><title>combined prompts</title>",
     fullHtml: "<!doctype html><title>combined prompts full</title>",
@@ -45,14 +73,18 @@ function services(overrides: Partial<WorkbenchServices> = {}): WorkbenchServices
       requiresReview: true,
     }),
     hashText: async (text) => `hash:${text}`,
-    buildPackage: async () => ({
+    buildPackage: async () => {
+      const workbooks = [workbook()];
+      return {
       ok: true,
       blob: new Blob(["zip"]),
       filename: "reword-nerd-prompt-package.zip",
       manifest: {} as never,
-      artifacts: [combinedArtifact()],
-    }),
+      workbooks,
+      artifacts: workbooks,
+    }; },
     download: () => ({ ok: true }),
+    downloadProgressCopy: () => ({ ok: true }),
     ...overrides,
   };
 }
@@ -93,8 +125,8 @@ describe("Night Terminal workbench", () => {
     expect(screen.getByText(/local, self-hosted, fine-tuned, or otherwise unlisted/i)).toBeInTheDocument();
   });
 
-  it("keeps conservative processing defaults and reprocesses after an explicit image or OCR change", async () => {
-    // This catches optional expensive processing silently becoming the default or settings failing to reach extraction.
+  it("uses the v0.4 processing defaults and reprocesses after an explicit page-capture or OCR change", async () => {
+    // This catches embedded-image extraction becoming default-off, optional expensive processing becoming implicit, or changes failing to reach extraction.
     const extract = vi.fn(services().extract);
     render(<App services={services({ extract })} />);
     fireEvent.change(screen.getByLabelText("Add supported files"), {
@@ -102,16 +134,16 @@ describe("Night Terminal workbench", () => {
     });
     await screen.findByDisplayValue("Source text");
     expect(extract).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), expect.objectContaining({
-      extractEmbeddedImages: false,
+      extractEmbeddedImages: true,
       capturePageVisuals: false,
       ocrMode: "off",
     }), expect.any(AbortSignal), expect.any(Function));
 
-    fireEvent.click(screen.getByText("DOCUMENT PROCESSING"));
-    fireEvent.click(screen.getByLabelText("Extract embedded images"));
+    fireEvent.click(screen.getByLabelText("Capture PDF page visuals"));
     await waitFor(() => expect(extract).toHaveBeenCalledTimes(2));
     expect(extract).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), expect.objectContaining({
       extractEmbeddedImages: true,
+      capturePageVisuals: true,
       ocrMode: "off",
     }), expect.any(AbortSignal), expect.any(Function));
   });
@@ -316,8 +348,10 @@ describe("Night Terminal workbench", () => {
     expect(download).not.toHaveBeenCalled();
     expect(screen.getByRole("heading", { name: "PACKAGE PREVIEW" })).toHaveFocus();
     expect(screen.getByText(/Run each stage in order\./)).toBeInTheDocument();
-    expect(screen.getByText((_, element) => element?.tagName === "CODE"
-      && element.textContent === "DECOMPOSE PROMPT\nSource text")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "ONE-SHOT" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("textbox", { name: "Editable One-shot prompt" })).toHaveValue(
+      "ONE-SHOT PROMPT\nSource text",
+    );
 
     let copiedText = "";
     const previousExecCommand = document.execCommand;
@@ -328,15 +362,21 @@ describe("Night Terminal workbench", () => {
         return true;
       }),
     });
-    fireEvent.click(screen.getByRole("button", { name: "COPY DECOMPOSE" }));
-    expect(await screen.findByText("Decompose prompt copied.")).toBeInTheDocument();
-    expect(copiedText).toBe("DECOMPOSE PROMPT\nSource text");
+    const copyButton = screen.getByRole("button", { name: "COPY ONE-SHOT PROMPT" });
+    copyButton.focus();
+    fireEvent.click(copyButton);
+    expect(await screen.findByText("One-shot prompt copied.")).toBeInTheDocument();
+    expect(copiedText).toBe("ONE-SHOT PROMPT\nSource text");
+    expect(copyButton).toHaveFocus();
     Object.defineProperty(document, "execCommand", { configurable: true, value: previousExecCommand });
 
-    fireEvent.click(screen.getByRole("button", { name: "DOWNLOAD ZIP" }));
+    const zipDownload = screen.getByRole("button", { name: "DOWNLOAD ZIP" });
+    zipDownload.focus();
+    fireEvent.click(zipDownload);
 
     expect((await screen.findAllByText("Package downloaded.")).length).toBeGreaterThanOrEqual(1);
     expect(download).toHaveBeenCalledTimes(1);
+    expect(zipDownload).toHaveFocus();
     fireEvent.click(screen.getByRole("button", { name: "SOURCE" }));
     expect(screen.getByDisplayValue("Source text")).toBeInTheDocument();
   });
@@ -346,25 +386,63 @@ describe("Night Terminal workbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "BUILD PACKAGE" }));
     await screen.findByRole("heading", { name: "PACKAGE PREVIEW" });
     expect(screen.getByRole("button", { name: "DOWNLOAD ZIP" })).toBeEnabled();
+    fireEvent.change(screen.getByRole("textbox", { name: "One-shot final document and compact audit" }), {
+      target: { value: "obsolete workbook response" },
+    });
 
-    fireEvent.change(screen.getByLabelText("Custom requirements"), {
+    const requirements = screen.getByLabelText("Custom requirements");
+    requirements.focus();
+    fireEvent.change(requirements, {
       target: { value: "A new package requirement" },
     });
 
     expect(screen.getByRole("heading", { name: "EXTRACTED_TEXT" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "PACKAGE" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "DOWNLOAD ZIP" })).toBeDisabled();
+    expect(requirements).toHaveFocus();
+
+    fireEvent.click(screen.getByRole("button", { name: "BUILD PACKAGE" }));
+    expect(await screen.findByRole("textbox", { name: "One-shot final document and compact audit" })).toHaveValue("");
   });
 
-  it("switches among per-document combined artifacts in package preview", async () => {
+  it("preserves workbook progress across non-invalidating Source and Assets navigation", async () => {
+    await uploadReviewedFile(services());
+    fireEvent.click(screen.getByRole("button", { name: "BUILD PACKAGE" }));
+    await screen.findByRole("heading", { name: "PACKAGE PREVIEW" });
+    fireEvent.click(screen.getByRole("tab", { name: "MANUAL" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Stage 1 — Decompose model response" }), {
+      target: { value: "retained analysis" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Editable Stage 2 — Rewrite prompt" }), {
+      target: { value: "retained local rewrite edit" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "SOURCE" }));
+    expect(screen.getByDisplayValue("Source text")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "ASSETS" }));
+    expect(screen.getByText("No extracted visual assets.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "PACKAGE" }));
+
+    expect(screen.getByRole("tab", { name: "MANUAL" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("textbox", { name: "Stage 1 — Decompose model response" })).toHaveValue("retained analysis");
+    expect(screen.getByRole("textbox", { name: "Editable Stage 2 — Rewrite prompt" })).toHaveValue(
+      "retained local rewrite edit",
+    );
+  });
+
+  it("switches package documents without conflating the selected workflow", async () => {
     const testServices = services({
-      buildPackage: async () => ({
-        ok: true,
-        blob: new Blob(["zip"]),
-        filename: "reword-nerd-prompt-package.zip",
-        manifest: {} as never,
-        artifacts: [combinedArtifact("one", "one.md"), combinedArtifact("two", "two.md")],
-      }),
+      buildPackage: async () => {
+        const workbooks = [workbook("one", "one.md"), workbook("two", "two.md")];
+        return {
+          ok: true,
+          blob: new Blob(["zip"]),
+          filename: "reword-nerd-prompt-package.zip",
+          manifest: {} as never,
+          workbooks,
+          artifacts: workbooks,
+        };
+      },
     });
     render(<App services={testServices} />);
     fireEvent.change(screen.getByLabelText("Add supported files"), {
@@ -379,8 +457,12 @@ describe("Night Terminal workbench", () => {
 
     const artifactSelect = await screen.findByRole("combobox", { name: "Package document" });
     expect(screen.getByRole("heading", { name: "one.md" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "MANUAL" }));
+    artifactSelect.focus();
     fireEvent.change(artifactSelect, { target: { value: "two" } });
     expect(screen.getByRole("heading", { name: "two.md" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "MANUAL" })).toHaveAttribute("aria-selected", "true");
+    expect(artifactSelect).toHaveFocus();
   });
 
   it("retains reviewed session state on safe export failure", async () => {
@@ -433,8 +515,8 @@ describe("Night Terminal workbench", () => {
 
     const helpButton = screen.getByRole("button", { name: "Help" });
     fireEvent.click(helpButton);
-    expect(screen.getByRole("dialog", { name: "Four-stage package" })).toHaveTextContent(
-      "Four-stage package: run the prompts in order and carry each response forward.",
+    expect(screen.getByRole("dialog", { name: "Help and workflow guide" })).toHaveTextContent(
+      "One-shot and Manual",
     );
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -456,18 +538,18 @@ describe("Night Terminal workbench", () => {
     render(<App services={services()} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Help" }));
-    const help = screen.getByRole("dialog", { name: "Four-stage package" });
+    const help = screen.getByRole("dialog", { name: "Help and workflow guide" });
     fireEvent.keyDown(help, { key: "Tab" });
     const closeHelp = screen.getByRole("button", { name: "Close help" });
     expect(closeHelp).toHaveFocus();
     fireEvent.keyDown(closeHelp, { key: "Tab", shiftKey: true });
-    expect(closeHelp).toHaveFocus();
+    expect(screen.getByRole("button", { name: "REPLAY QUICK START" })).toHaveFocus();
     fireEvent.click(closeHelp);
 
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     const settings = screen.getByRole("dialog", { name: "Parameters" });
     const closeSettings = screen.getByRole("button", { name: "Close settings" });
-    const lastSettingsControl = within(settings).getByLabelText("Custom requirements");
+    const lastSettingsControl = within(settings).getByRole("button", { name: "Reset saved preferences" });
     expect(closeSettings).toHaveFocus();
     fireEvent.keyDown(closeSettings, { key: "Tab", shiftKey: true });
     expect(lastSettingsControl).toHaveFocus();
@@ -492,7 +574,7 @@ describe("Night Terminal workbench", () => {
     const menu = screen.getByRole("button", { name: "Menu" });
     fireEvent.click(menu);
     fireEvent.click(screen.getByRole("menuitem", { name: "Help" }));
-    expect(screen.getByRole("dialog", { name: "Four-stage package" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Help and workflow guide" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Close help" }));
     expect(menu).toHaveFocus();
 
@@ -503,11 +585,10 @@ describe("Night Terminal workbench", () => {
     window.matchMedia = originalMatchMedia;
   });
 
-  it("announces rejection issues in input order and never stores browser state", async () => {
+  it("announces rejection issues in input order without persisting session state", async () => {
     const storageSpies = [
-      vi.spyOn(Storage.prototype, "setItem"),
-      vi.spyOn(Storage.prototype, "getItem"),
-      vi.spyOn(Storage.prototype, "removeItem"),
+      vi.spyOn(window.localStorage, "setItem"),
+      vi.spyOn(window.localStorage, "removeItem"),
     ];
     render(<App services={services({
       preflight: async (files) => files.map((file) => ({

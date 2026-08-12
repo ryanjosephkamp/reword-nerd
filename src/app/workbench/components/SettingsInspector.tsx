@@ -1,8 +1,16 @@
+import { useState } from "react";
 import type { ExtractionOptions, RewriteSettings, Tone, Formality, LengthPreference, OcrMode } from "../../../domain";
 import { cloneExtractionOptions } from "../../../domain";
 import { CURATED_MODEL_PROFILES, MAX_CUSTOM_REQUIREMENTS_LENGTH } from "../../../domain";
 import type { WorkbenchState } from "../contracts";
 import { selectEditableSettings } from "../selectors";
+import {
+  MAX_CUSTOM_PROFILE_LABEL_LENGTH,
+  MAX_OUTPUT_LANGUAGE_LENGTH,
+  canonicalPageSelection,
+  parseContextLimitDraft,
+  truncateUnicode,
+} from "../preferences";
 
 interface SettingsInspectorProps {
   state: WorkbenchState;
@@ -11,8 +19,9 @@ interface SettingsInspectorProps {
   onOverrideChange(field: keyof RewriteSettings, value: RewriteSettings[keyof RewriteSettings]): void;
   onProfileSelected(profileId: string): void;
   onProfileLabel(value: string): void;
-  onContextDraft(value: string, parsed: number | null): void;
+  onContextDraft(value: string, parsed: number | null | undefined): void;
   onExtractionOptionsChange(options: ExtractionOptions, reprocess: boolean): void;
+  onResetPreferences(returnFocus: HTMLButtonElement): void;
   exportPanel?: React.ReactNode;
 }
 
@@ -24,6 +33,32 @@ function title(value: string): string {
   return value === "preserve" ? "Preserve source" : value[0].toUpperCase() + value.slice(1);
 }
 
+function PageSelectionInput({ value, onValidChange }: {
+  value: ExtractionOptions["pageSelection"];
+  onValidChange(value: ExtractionOptions["pageSelection"]): void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const canonical = canonicalPageSelection(draft);
+  const invalid = canonical === undefined;
+  return <>
+    <label>PDF pages
+      <input
+        aria-invalid={invalid || undefined}
+        aria-describedby={invalid ? "page-selection-error" : undefined}
+        value={draft}
+        placeholder="all or 1-3, 7"
+        onChange={(event) => {
+          const nextDraft = event.currentTarget.value;
+          setDraft(nextDraft);
+          const nextCanonical = canonicalPageSelection(nextDraft);
+          if (nextCanonical !== undefined) onValidChange(nextCanonical);
+        }}
+      />
+    </label>
+    {invalid ? <p className="field-error" id="page-selection-error">Use all or positive ascending pages and ranges, such as 1-3, 7.</p> : null}
+  </>;
+}
+
 export function SettingsInspector(props: SettingsInspectorProps) {
   const selected = props.state.documents.find((document) => document.id === props.state.selectedDocumentId);
   const override = selected ? props.state.overrideEnabled[selected.id] : false;
@@ -32,8 +67,9 @@ export function SettingsInspector(props: SettingsInspectorProps) {
     if (selected && override) props.onOverrideChange(field, value);
     else props.onGlobalChange(field, value);
   };
-  const contextDraft = props.state.customContextDraft || props.state.workingProfile.contextWindowTokens?.toString() || "";
-  const invalidContext = contextDraft !== "" && (!/^\d+$/.test(contextDraft) || Number(contextDraft) <= 0);
+  const contextDraft = props.state.customContextDraft;
+  const parsedContext = parseContextLimitDraft(contextDraft);
+  const invalidContext = parsedContext === undefined;
   const extraction = selected?.extractionOptions ?? props.state.globalExtractionOptions;
   const extractionChange = <K extends keyof ExtractionOptions>(field: K, value: ExtractionOptions[K]) => {
     props.onExtractionOptionsChange(cloneExtractionOptions({ ...extraction, [field]: value }), Boolean(selected));
@@ -49,7 +85,13 @@ export function SettingsInspector(props: SettingsInspectorProps) {
       </select>
     </label>
     {props.state.selectedProfileId === "custom" ? <label>Model label
-      <input required value={props.state.customProfileLabel} onChange={(event) => props.onProfileLabel(event.currentTarget.value)} />
+      <input
+        required
+        aria-invalid={!props.state.customProfileLabel.trim() || undefined}
+        maxLength={MAX_CUSTOM_PROFILE_LABEL_LENGTH * 2}
+        value={props.state.customProfileLabel}
+        onChange={(event) => props.onProfileLabel(truncateUnicode(event.currentTarget.value, MAX_CUSTOM_PROFILE_LABEL_LENGTH))}
+      />
     </label> : null}
     {props.state.selectedProfileId === "custom" ? <p className="custom-profile-help">
       Use Custom model for local, self-hosted, fine-tuned, or otherwise unlisted models.
@@ -63,7 +105,7 @@ export function SettingsInspector(props: SettingsInspectorProps) {
         placeholder="Unknown"
         onChange={(event) => {
           const value = event.currentTarget.value;
-          props.onContextDraft(value, value === "" || !/^\d+$/.test(value) ? null : Number(value));
+          props.onContextDraft(value, parseContextLimitDraft(value));
         }}
       />
     </label>
@@ -84,7 +126,13 @@ export function SettingsInspector(props: SettingsInspectorProps) {
       </select>
     </label>
     <label>Output language
-      <input required value={settings.outputLanguage} onChange={(event) => change("outputLanguage", event.currentTarget.value)} />
+      <input
+        required
+        aria-invalid={!settings.outputLanguage.trim() || undefined}
+        maxLength={MAX_OUTPUT_LANGUAGE_LENGTH * 2}
+        value={settings.outputLanguage}
+        onChange={(event) => change("outputLanguage", truncateUnicode(event.currentTarget.value, MAX_OUTPUT_LANGUAGE_LENGTH))}
+      />
     </label>
     <label>Custom requirements
       <textarea
@@ -93,9 +141,9 @@ export function SettingsInspector(props: SettingsInspectorProps) {
         onChange={(event) => change("customRequirements", Array.from(event.currentTarget.value).slice(0, MAX_CUSTOM_REQUIREMENTS_LENGTH).join(""))}
       />
     </label>
-    <details className="processing-settings">
-      <summary>DOCUMENT PROCESSING</summary>
-      <p className="processing-help">Conservative defaults keep media extraction and OCR off. Changes to an uploaded file reprocess it locally.</p>
+    <fieldset className="processing-settings">
+      <legend>DOCUMENT PROCESSING</legend>
+      <p className="processing-help">Embedded images are extracted by default. PDF page capture and OCR stay off until enabled. Changes to an uploaded file reprocess it locally.</p>
       <label className="checkbox-row">
         <input type="checkbox" checked={extraction.extractEmbeddedImages} onChange={(event) => extractionChange("extractEmbeddedImages", event.currentTarget.checked)} />
         Extract embedded images
@@ -104,9 +152,13 @@ export function SettingsInspector(props: SettingsInspectorProps) {
         <input type="checkbox" checked={extraction.capturePageVisuals} onChange={(event) => extractionChange("capturePageVisuals", event.currentTarget.checked)} />
         Capture PDF page visuals
       </label>
-      {(extraction.extractEmbeddedImages || extraction.capturePageVisuals || extraction.ocrMode !== "off") ? <label>PDF pages
-        <input value={extraction.pageSelection} placeholder="all or 1-3, 7" onChange={(event) => extractionChange("pageSelection", event.currentTarget.value || "all")} />
-      </label> : null}
+      {(extraction.extractEmbeddedImages || extraction.capturePageVisuals || extraction.ocrMode !== "off") ? <>
+        <PageSelectionInput
+          key={`${selected?.id ?? "global"}:${extraction.pageSelection}`}
+          value={extraction.pageSelection}
+          onValidChange={(value) => extractionChange("pageSelection", value)}
+        />
+      </> : null}
       {extraction.capturePageVisuals ? <label>Page visual quality
         <select value={extraction.pageCaptureQuality} onChange={(event) => extractionChange("pageCaptureQuality", event.currentTarget.value as ExtractionOptions["pageCaptureQuality"])}>
           <option value="standard">Standard (conservative)</option>
@@ -129,7 +181,8 @@ export function SettingsInspector(props: SettingsInspectorProps) {
         Exclude likely decorative images
       </label>
       <p className="processing-help">OCR uses bundled English locally, is capped at 150 pages or images, and always requires review before export.</p>
-    </details>
+    </fieldset>
+    <button type="button" className="reset-preferences-button" onClick={(event) => props.onResetPreferences(event.currentTarget)}>Reset saved preferences</button>
     {props.exportPanel}
   </div>;
 }

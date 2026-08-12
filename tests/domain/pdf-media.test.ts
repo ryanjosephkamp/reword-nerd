@@ -74,14 +74,15 @@ describe("PDF visual processing", () => {
     });
   });
 
-  it("does no visual work by default while retaining textless-page warnings", async () => {
-    // This catches image extraction or page rendering becoming an implicit upload cost.
+  it("extracts embedded images by default while keeping page rendering off and retaining textless-page warnings", async () => {
+    // This catches the v0.4 embedded-image default regressing or page capture becoming an implicit upload cost.
     const fixture = adapter();
     const result = await extractPdfWithAdapter(new Uint8Array([1]), fixture.adapter);
 
-    expect(fixture.rasterCalls).toEqual([]);
+    expect(fixture.rasterCalls).toEqual([1, 2]);
     expect(fixture.renderCalls).toEqual([]);
-    expect(result.assets).toEqual([]);
+    expect(result.assets).toHaveLength(2);
+    expect(result.assets.every((asset) => asset.kind === "pdf-raster")).toBe(true);
     expect(result.warnings).toEqual(["Pages 2 do not contain selectable text."]);
   });
 });

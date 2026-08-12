@@ -8,8 +8,9 @@ workbench. It is derived only from:
 - `docs/design/references/night-terminal-desktop.png` (1586 × 992)
 - `docs/design/references/night-terminal-mobile.png` (853 × 1844)
 
-Implementation must preserve the four-stage Decompose → Rewrite → Verify →
-Final pipeline and the canonical root `prompts/` files. The references govern
+Implementation must preserve the dual One-shot/Manual contract, the four-stage
+Decompose → Rewrite → Verify → Final pipeline, and canonical root `prompts/`
+files. The references govern
 the initial workbench composition; unlisted product copy, decorative effects,
 and major component families require explicit approval.
 
@@ -102,7 +103,11 @@ colors rather than shadows.
 | Form control | full-width outlined select/textarea | same in Settings tab | default, hover, focus-visible, disabled, invalid |
 | Toggle | green compact track with `--color-text` thumb | Settings-tab equivalent | on, off, focus-visible, disabled |
 | Context meter | labelled percentage bar | stacked card-like meter | normal, warned, acknowledged |
-| Primary action | outlined green full-width action | full-width action below meter | enabled, hover, focus-visible, disabled, busy, export failure |
+| Primary action | outlined green full-width action | full-width action above persistent navigation | enabled, hover, focus-visible, disabled, busy, export failure |
+| Quick start | focus-trapped first-visit dialog; Review settings primary | contained modal with Review settings primary and Add files secondary | first visit, replay, dismiss |
+| Help | scrollable workflow/privacy guide and replay action | scrollable modal above navigation | open, close, replay |
+| Document processing | permanent Settings fieldset | independently scrollable Settings fieldset | defaults, reprocess, reset |
+| Package preview | One-shot/Manual tabs, document selector, copy/progress controls | contextual Package view with compact non-occluding controls | One-shot, Manual, stale, progress |
 | Status summary | desktop footer counts | compact inline footer | ready/review/blocked aggregate |
 
 All interactive controls need visible keyboard focus, a programmatic label,
@@ -171,8 +176,23 @@ are not replaced by this inventory.
 - `ALL CHANGES SAVED`, `v1.0.0`
 
 The version string in the visual reference is compositional sample copy. The
-current implementation renders its package version (`v0.3.0`) in that footer
+current implementation renders its package version (`v0.4.0`) in that footer
 position while preserving the same hierarchy and session-only meaning.
+
+## v0.4 interaction additions
+
+- First visit opens a focus-trapped Quick start. Help provides a permanent,
+  expanded guide and replay action; replay/dismissal does not invalidate content.
+- Empty Review explains why no editor is present and exposes **ADD FILES** through
+  the existing hidden multi-file input.
+- Document Processing is always visible. At 320, 360, 390, and 412px, Settings
+  owns an independent dynamic-viewport scroll area with bottom padding above the
+  fixed navigation, so its last controls remain reachable.
+- Package preview keeps Source/Assets/Package separate from One-shot/Manual and
+  document selection. Narrow portrait uses stacked/compact top actions that do
+  not cover the prompt being edited; Build then Download remains the export order.
+- The broader desktop/mobile composition is intentionally unchanged. These are
+  bounded workflow and portrait repairs, not a general redesign.
 
 ### Editor sample content
 

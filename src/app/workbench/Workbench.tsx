@@ -19,6 +19,8 @@ import { ExtractedTextEditor } from "./components/ExtractedTextEditor";
 import { FileQueue } from "./components/FileQueue";
 import { Header } from "./components/Header";
 import { HelpDialog } from "./components/HelpDialog";
+import { QuickStartDialog } from "./components/QuickStartDialog";
+import { ResetPreferencesDialog } from "./components/ResetPreferencesDialog";
 import { MobileTabs } from "./components/MobileTabs";
 import { PackagePreview } from "./components/PackagePreview";
 import { SettingsDrawer } from "./components/SettingsDrawer";
@@ -28,6 +30,12 @@ import { UploadDropZone } from "./components/UploadDropZone";
 import { AssetGallery } from "./components/AssetGallery";
 import { OcrReview } from "./components/OcrReview";
 import { DocumentIcon, MoreIcon } from "./components/Icons";
+import {
+  clearSavedPreferences,
+  loadSavedPreferences,
+  savePreferences,
+  snapshotPreferences,
+} from "./preferences";
 
 type ResponsiveMode = "desktop" | "tablet" | "mobile";
 
@@ -72,7 +80,11 @@ function useResponsiveMode(): ResponsiveMode {
 }
 
 export function Workbench({ services = defaultWorkbenchServices }: { services?: WorkbenchServices }) {
-  const [state, dispatch] = useReducer(workbenchReducer, undefined, createInitialWorkbenchState);
+  const [state, dispatch] = useReducer(
+    workbenchReducer,
+    undefined,
+    () => createInitialWorkbenchState(loadSavedPreferences()),
+  );
   const [busyOcrCandidate, setBusyOcrCandidate] = useState<string | null>(null);
   const mode = useResponsiveMode();
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
@@ -80,12 +92,41 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
   const parametersHeadingRef = useRef<HTMLHeadingElement>(null);
   const packageHeadingRef = useRef<HTMLHeadingElement>(null);
   const previousMobileTabRef = useRef(state.mobileTab);
+  const preferenceEffectReadyRef = useRef(false);
+  const suppressPreferenceWriteRef = useRef(false);
+  const resetPreferencesReturnFocusRef = useRef<HTMLButtonElement>(null);
   const intake = useFileIntake(state, dispatch, services);
   const editor = useReviewEditor(state, dispatch, services);
   const exporter = useExportPackage(state, dispatch, services);
   const selected = selectSelectedDocument(state);
   const counts = selectCounts(state);
   const dirty = selectDirty(state);
+  const preferenceSnapshot = useMemo(() => snapshotPreferences({
+    selectedProfileId: state.selectedProfileId,
+    customProfileLabel: state.customProfileLabel,
+    workingProfile: state.workingProfile,
+    globalSettings: state.globalSettings,
+    globalExtractionOptions: state.globalExtractionOptions,
+    tutorialSeenVersion: state.tutorialSeenVersion,
+  }), [
+    state.customProfileLabel,
+    state.globalExtractionOptions,
+    state.globalSettings,
+    state.selectedProfileId,
+    state.tutorialSeenVersion,
+    state.workingProfile,
+  ]);
+  useEffect(() => {
+    if (!preferenceEffectReadyRef.current) {
+      preferenceEffectReadyRef.current = true;
+      return;
+    }
+    if (suppressPreferenceWriteRef.current) {
+      suppressPreferenceWriteRef.current = false;
+      return;
+    }
+    savePreferences(preferenceSnapshot);
+  }, [preferenceSnapshot]);
   useBeforeUnloadWarning(dirty || state.export.status === "building" || state.export.status === "downloading");
   useEffect(() => {
     if (state.focusTarget !== "upload") return;
@@ -136,12 +177,16 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     onOverrideChange: (field: keyof RewriteSettings, value: RewriteSettings[keyof RewriteSettings]) => { if (selected) dispatch({ type: "settings/override-changed", documentId: selected.id, field, value }); },
     onProfileSelected: (profileId: string) => dispatch({ type: "profile/selected", profileId }),
     onProfileLabel: (value: string) => dispatch({ type: "profile/custom-label-changed", value }),
-    onContextDraft: (value: string, parsed: number | null) => dispatch({ type: "profile/custom-context-draft-changed", value, parsed }),
+    onContextDraft: (value: string, parsed: number | null | undefined) => dispatch({ type: "profile/custom-context-draft-changed", value, parsed }),
     onExtractionOptionsChange: (options: import("../../domain").ExtractionOptions, reprocess: boolean) => {
       if (selected && reprocess) {
         dispatch({ type: "processing/options-changed", documentId: selected.id, options });
         intake.retry(selected.id, options);
       } else dispatch({ type: "processing/global-options-changed", options });
+    },
+    onResetPreferences: (returnFocus: HTMLButtonElement) => {
+      resetPreferencesReturnFocusRef.current = returnFocus;
+      dispatch({ type: "preferences/reset-requested" });
     },
   };
   const settings = <SettingsInspector {...settingsProps} exportPanel={mode === "desktop" ? exportPanel : undefined} />;
@@ -260,14 +305,20 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
           </div>
         </div>
         <div className="preview-content">
-          {state.previewMode === "package" && state.export.builtPackage ? <PackagePreview
-            artifacts={state.export.builtPackage.artifacts}
-            selectedDocumentKey={state.previewArtifactKey}
-            onSelect={(documentKey) => dispatch({ type: "preview/artifact-selected", documentKey })}
-          /> : state.previewMode === "assets" ? <AssetGallery
+          {state.export.builtPackage ? <PackagePreview
+            key={state.export.builtRevision}
+            workbooks={state.export.builtPackage.workbooks}
+            selectedDocumentKey={state.previewDocumentKey}
+            workflow={state.previewWorkflow}
+            hidden={state.previewMode !== "package"}
+            onSelect={(documentKey) => dispatch({ type: "preview/document-selected", documentKey })}
+            onWorkflowChange={(workflow) => dispatch({ type: "preview/workflow-changed", workflow })}
+            downloadProgressCopy={services.downloadProgressCopy}
+          /> : null}
+          {state.previewMode === "assets" ? <AssetGallery
             assets={selected?.visualAssets ?? []}
             onInclusionChange={(assetId, included) => { if (selected) dispatch({ type: "visual-asset/inclusion-changed", documentId: selected.id, assetId, included }); }}
-          /> : <>
+          /> : state.previewMode === "source" ? <>
           <ExtractedTextEditor
             document={selected}
             hashPending={selected ? state.editor[selected.id]?.hashPending ?? false : false}
@@ -277,9 +328,10 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
             onRetry={() => { if (selected) intake.retry(selected.id); }}
             onRevealFiles={() => dispatch({ type: "mobile/tab-changed", tab: "files" })}
             onLatexMainFile={(mainFile) => { if (selected) dispatch({ type: "latex/main-file-selected", documentId: selected.id, mainFile }); }}
+            onAddFiles={intake.openFilePicker}
           />
           {selected ? <OcrReview candidates={selected.ocrCandidates ?? []} busyId={busyOcrCandidate} onReview={(candidateId, status, text) => void reviewOcrCandidate(candidateId, status, text)} /> : null}
-          </>}
+          </> : null}
         </div>
         {state.previewMode === "source" && context && selected ? <ContextMeter
           assessment={context}
@@ -300,12 +352,42 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     </div>
     <footer className="workbench-footer">
       <StatusSummary {...counts} />
-      <div className="saved-state" aria-label="Changes are held only for this browser session.">ALL CHANGES SAVED <span /> v0.3.0</div>
+      <div className="saved-state" aria-label="Preferences save locally; documents and contents stay in this session.">Preferences save locally; documents and contents stay in this session <span /> v0.4.0</div>
     </footer>
     <SettingsDrawer open={state.settingsDrawerOpen} onClose={() => dispatch({ type: "drawer/changed", open: false })} returnFocusRef={settingsButtonRef}>
       <SettingsInspector {...settingsProps} exportPanel={exportPanel} />
     </SettingsDrawer>
-    <HelpDialog open={state.helpDialogOpen} onClose={() => dispatch({ type: "help/changed", open: false })} returnFocusRef={helpReturnFocusRef} />
+    <HelpDialog
+      open={state.helpDialogOpen}
+      onClose={() => dispatch({ type: "help/changed", open: false })}
+      onReplayQuickStart={() => dispatch({ type: "tutorial/opened" })}
+      returnFocusRef={helpReturnFocusRef}
+    />
+    <QuickStartDialog
+      open={state.quickStartDialogOpen}
+      onReviewSettings={() => {
+        dispatch({ type: "tutorial/dismissed" });
+        openSettings();
+      }}
+      onAddFiles={() => {
+        dispatch({ type: "tutorial/dismissed" });
+        intake.openFilePicker();
+      }}
+      onDismiss={() => dispatch({ type: "tutorial/dismissed" })}
+    />
+    <ResetPreferencesDialog
+      open={state.resetPreferencesDialogOpen}
+      onCancel={() => {
+        dispatch({ type: "preferences/reset-cancelled" });
+        queueMicrotask(() => resetPreferencesReturnFocusRef.current?.focus());
+      }}
+      onConfirm={() => {
+        suppressPreferenceWriteRef.current = true;
+        clearSavedPreferences();
+        dispatch({ type: "preferences/reset-confirmed" });
+        queueMicrotask(() => resetPreferencesReturnFocusRef.current?.focus());
+      }}
+    />
     <div className="visually-hidden" aria-live="polite" aria-atomic="true">{state.liveMessage}</div>
   </main>;
 }

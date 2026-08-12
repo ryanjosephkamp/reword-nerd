@@ -1,13 +1,13 @@
 import type { DownloadResult } from "./contracts";
 
-export function initiatePromptPackageDownload(blob: Blob): DownloadResult {
+function initiateDownload(blob: Blob, filename: string): DownloadResult {
   let url: string | undefined;
   let anchor: HTMLAnchorElement | undefined;
   try {
     url = URL.createObjectURL(blob);
     anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = "reword-nerd-prompt-package.zip";
+    anchor.download = filename;
     anchor.rel = "noopener";
     anchor.hidden = true;
     document.body.append(anchor);
@@ -20,4 +20,12 @@ export function initiatePromptPackageDownload(blob: Blob): DownloadResult {
     if (url) URL.revokeObjectURL(url);
     return { ok: false, error: { code: "ARCHIVE_GENERATION_FAILED", message: "The download could not be initiated safely." } };
   }
+}
+
+export function initiatePromptPackageDownload(blob: Blob): DownloadResult {
+  return initiateDownload(blob, "reword-nerd-prompt-package.zip");
+}
+
+export function initiateWorkbookProgressDownload(html: string, filename: string): DownloadResult {
+  return initiateDownload(new Blob([html], { type: "text/html;charset=utf-8" }), filename);
 }
