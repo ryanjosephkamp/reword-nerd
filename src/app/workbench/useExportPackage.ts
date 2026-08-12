@@ -59,7 +59,7 @@ export function useExportPackage(
           reviewedExtractedText: document.extractedText,
           resolvedSettings,
           chosenProfile: { ...profile },
-          promptSet: renderPromptBundle(document.extractedText, resolvedSettings, profile, {
+          promptBundle: renderPromptBundle(document.extractedText, resolvedSettings, profile, {
             format: document.format,
             assets: (document.visualAssets ?? []).map((asset) => ({
               id: asset.id,
@@ -72,7 +72,7 @@ export function useExportPackage(
               included: asset.included,
             })),
             latexMainFile: document.latexProject?.mainFile,
-          }).manual,
+          }),
           warnings: [...document.warnings],
           contextAssessment: selectContextAssessment(state, document.id),
           reviewed: document.status === "ready" && !document.requiresReview,

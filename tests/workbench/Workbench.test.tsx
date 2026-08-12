@@ -7,17 +7,35 @@ const defaultMatchMedia = window.matchMedia;
 afterEach(() => { window.matchMedia = defaultMatchMedia; });
 
 function combinedArtifact(documentKey = "notes", name = "notes.md"): CombinedPromptArtifact {
+  const promptBlocks = [
+    { stage: "decompose" as const, title: "Decompose", content: "DECOMPOSE PROMPT\nSource text" },
+    { stage: "rewrite" as const, title: "Rewrite", content: "REWRITE PROMPT\nUse decomposition" },
+    { stage: "verify" as const, title: "Verify", content: "VERIFY PROMPT\nCheck the rewrite" },
+    { stage: "final" as const, title: "Final", content: "FINAL PROMPT\nProduce the final document" },
+  ];
   return {
     documentKey,
     originalDisplayName: name,
     runbook: {} as never,
     runbookMarkdown: "# reword-nerd prompt package\n\nRun each stage in order.",
-    promptBlocks: [
-      { stage: "decompose", title: "Decompose", content: "DECOMPOSE PROMPT\nSource text" },
-      { stage: "rewrite", title: "Rewrite", content: "REWRITE PROMPT\nUse decomposition" },
-      { stage: "verify", title: "Verify", content: "VERIFY PROMPT\nCheck the rewrite" },
-      { stage: "final", title: "Final", content: "FINAL PROMPT\nProduce the final document" },
-    ],
+    promptBundle: {
+      oneShot: "ONE-SHOT PROMPT\nSource text",
+      manual: {
+        decompose: promptBlocks[0].content,
+        rewrite: promptBlocks[1].content,
+        verify: promptBlocks[2].content,
+        final: promptBlocks[3].content,
+      },
+    },
+    promptBlocks,
+    oneShot: { prompt: "ONE-SHOT PROMPT\nSource text", markdown: "one-shot markdown", html: "<!doctype html><title>one shot</title>" },
+    manual: { promptBlocks, markdown: "manual markdown", html: "<!doctype html><title>manual</title>" },
+    combined: {
+      markdown: "combined markdown",
+      html: "<!doctype html><title>combined prompts</title>",
+      fullHtml: "<!doctype html><title>combined prompts full</title>",
+      fullHtmlStatus: "generated",
+    },
     markdown: "combined markdown",
     html: "<!doctype html><title>combined prompts</title>",
     fullHtml: "<!doctype html><title>combined prompts full</title>",
@@ -45,13 +63,16 @@ function services(overrides: Partial<WorkbenchServices> = {}): WorkbenchServices
       requiresReview: true,
     }),
     hashText: async (text) => `hash:${text}`,
-    buildPackage: async () => ({
+    buildPackage: async () => {
+      const workbooks = [combinedArtifact()];
+      return {
       ok: true,
       blob: new Blob(["zip"]),
       filename: "reword-nerd-prompt-package.zip",
       manifest: {} as never,
-      artifacts: [combinedArtifact()],
-    }),
+      workbooks,
+      artifacts: workbooks,
+    }; },
     download: () => ({ ok: true }),
     ...overrides,
   };
@@ -358,13 +379,17 @@ describe("Night Terminal workbench", () => {
 
   it("switches among per-document combined artifacts in package preview", async () => {
     const testServices = services({
-      buildPackage: async () => ({
-        ok: true,
-        blob: new Blob(["zip"]),
-        filename: "reword-nerd-prompt-package.zip",
-        manifest: {} as never,
-        artifacts: [combinedArtifact("one", "one.md"), combinedArtifact("two", "two.md")],
-      }),
+      buildPackage: async () => {
+        const workbooks = [combinedArtifact("one", "one.md"), combinedArtifact("two", "two.md")];
+        return {
+          ok: true,
+          blob: new Blob(["zip"]),
+          filename: "reword-nerd-prompt-package.zip",
+          manifest: {} as never,
+          workbooks,
+          artifacts: workbooks,
+        };
+      },
     });
     render(<App services={testServices} />);
     fireEvent.change(screen.getByLabelText("Add supported files"), {

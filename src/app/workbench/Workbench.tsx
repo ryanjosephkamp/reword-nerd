@@ -300,7 +300,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     </div>
     <footer className="workbench-footer">
       <StatusSummary {...counts} />
-      <div className="saved-state" aria-label="Changes are held only for this browser session.">ALL CHANGES SAVED <span /> v0.3.0</div>
+      <div className="saved-state" aria-label="Changes are held only for this browser session.">ALL CHANGES SAVED <span /> v0.4.0</div>
     </footer>
     <SettingsDrawer open={state.settingsDrawerOpen} onClose={() => dispatch({ type: "drawer/changed", open: false })} returnFocusRef={settingsButtonRef}>
       <SettingsInspector {...settingsProps} exportPanel={exportPanel} />

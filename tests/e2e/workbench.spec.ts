@@ -81,7 +81,7 @@ function expectedKey(fixture: BrowserFixture): string {
   return `${base}--${sha256(fixture.buffer).slice(0, 12)}`;
 }
 
-test("mixed real formats produce a complete, previewed, byte-preserving schema-v3 prompt package", async ({ page }) => {
+test("mixed real formats produce a complete, previewed, byte-preserving schema-v4 prompt package", async ({ page }) => {
   // This catches browser extraction/export drift that unit-level parser and archive adapters cannot see.
   const runtimeErrors = monitorRuntime(page);
   const docx = await createDocxFixture();
@@ -122,7 +122,7 @@ test("mixed real formats produce a complete, previewed, byte-preserving schema-v
   expect(manifestText).toBeTruthy();
   const manifest = JSON.parse(manifestText!) as {
     schemaVersion: number;
-    workflow: { stages: string[]; responseMarkers: Record<string, string> };
+    workflow: { modes: string[]; manualStages: string[]; responseMarkers: Record<string, string> };
     documents: Array<{
       key: string;
       originalDisplayName: string;
@@ -134,15 +134,20 @@ test("mixed real formats produce a complete, previewed, byte-preserving schema-v
       prompts: Record<string, { path: string; sha256: string }>;
       visualAssets: { index: { path: string }; placementMap: { path: string } };
       ocr: { path: string };
-      combined: { markdown: { path: string; sha256: string }; html: { path: string; sha256: string }; fullHtml: { status: string; path?: string } };
+      workbooks: {
+        oneShot: { markdown: { path: string; sha256: string }; html: { path: string; sha256: string } };
+        manual: { markdown: { path: string; sha256: string }; html: { path: string; sha256: string } };
+        combined: { markdown: { path: string; sha256: string }; html: { path: string; sha256: string }; fullHtml: { status: string; path?: string } };
+      };
     }>;
   };
-  expect(manifest.schemaVersion).toBe(3);
-  expect(manifest.workflow.stages).toEqual(["decompose", "rewrite", "verify", "final"]);
+  expect(manifest.schemaVersion).toBe(4);
+  expect(manifest.workflow.modes).toEqual(["one-shot", "manual"]);
+  expect(manifest.workflow.manualStages).toEqual(["decompose", "rewrite", "verify", "final"]);
   expect(Object.values(manifest.workflow.responseMarkers)).toEqual(markers);
   expect(manifest.documents).toHaveLength(4);
 
-  const expectedPaths = ["README.md", "manifest.json"];
+  const expectedPaths = ["OPEN-ME.html", "README.md", "manifest.json"];
   for (const fixture of fixtures) {
     const key = expectedKey(fixture);
     const record = manifest.documents.find((document) => document.originalDisplayName === fixture.name);
@@ -152,16 +157,21 @@ test("mixed real formats produce a complete, previewed, byte-preserving schema-v
     const documentPaths = [
       `documents/${key}/original.${extension}`,
       `documents/${key}/reviewed-extraction.md`,
+      `documents/${key}/prompts/00-one-shot.md`,
       `documents/${key}/prompts/01-decompose.md`,
       `documents/${key}/prompts/02-rewrite.md`,
       `documents/${key}/prompts/03-verify.md`,
       `documents/${key}/prompts/04-final.md`,
+      `documents/${key}/one-shot-prompt.md`,
+      `documents/${key}/one-shot-prompt.html`,
+      `documents/${key}/manual-prompts.md`,
+      `documents/${key}/manual-prompts.html`,
       `documents/${key}/combined-prompts.md`,
       `documents/${key}/combined-prompts.html`,
       `documents/${key}/assets/index.md`,
       `documents/${key}/assets/placement-map.json`,
       `documents/${key}/ocr/candidates.json`,
-      ...(record!.combined.fullHtml.status === "generated" ? [`documents/${key}/combined-prompts-full.html`] : []),
+      ...(record!.workbooks.combined.fullHtml.status === "generated" ? [`documents/${key}/combined-prompts-full.html`] : []),
     ];
     expectedPaths.push(...documentPaths);
     const original = await archive.file(record!.original.path)?.async("nodebuffer");
@@ -184,16 +194,16 @@ test("mixed real formats produce a complete, previewed, byte-preserving schema-v
       expect(prompt).toContain("===== BEGIN SOURCE DOCUMENT =====");
       expect(prompt).toContain(reviewed!);
       expect(promptRecord.sha256).toBe(sha256(prompt!));
-      if (stage !== "decompose") expect(prompt).toContain(markers[0]);
+      if (stage !== "oneShot" && stage !== "decompose") expect(prompt).toContain(markers[0]);
       if (stage === "verify" || stage === "final") expect(prompt).toContain(markers[1]);
       if (stage === "final") expect(prompt).toContain(markers[2]);
     }
-    const combinedMarkdown = await archive.file(record!.combined.markdown.path)?.async("string");
-    const combinedHtml = await archive.file(record!.combined.html.path)?.async("string");
+    const combinedMarkdown = await archive.file(record!.workbooks.combined.markdown.path)?.async("string");
+    const combinedHtml = await archive.file(record!.workbooks.combined.html.path)?.async("string");
     const runbook = await archive.file("README.md")?.async("string");
     expect(combinedMarkdown?.startsWith(runbook!)).toBe(true);
-    expect(record!.combined.markdown.sha256).toBe(sha256(combinedMarkdown!));
-    expect(record!.combined.html.sha256).toBe(sha256(combinedHtml!));
+    expect(record!.workbooks.combined.markdown.sha256).toBe(sha256(combinedMarkdown!));
+    expect(record!.workbooks.combined.html.sha256).toBe(sha256(combinedHtml!));
     expect(combinedHtml).not.toMatch(/<(?:img|link|iframe|script)\b[^>]+(?:src|href)\s*=\s*["']https?:/iu);
   }
   expect(Object.keys(archive.files).sort()).toEqual(expectedPaths.sort());
@@ -201,7 +211,7 @@ test("mixed real formats produce a complete, previewed, byte-preserving schema-v
 
   const firstRecord = manifest.documents[0];
   const firstPrompt = await archive.file(firstRecord.prompts.decompose.path)!.async("string");
-  const standaloneHtml = await archive.file(firstRecord.combined.html.path)!.async("string");
+  const standaloneHtml = await archive.file(firstRecord.workbooks.combined.html.path)!.async("string");
   await page.setContent(standaloneHtml);
   await page.evaluate(() => {
     Object.defineProperty(navigator, "clipboard", {
@@ -209,22 +219,27 @@ test("mixed real formats produce a complete, previewed, byte-preserving schema-v
       value: { writeText: (text: string) => { (window as unknown as { capturedCopy: string }).capturedCopy = text; } },
     });
   });
-  const firstCode = page.locator(".prompt-section pre code").first();
-  expect(await firstCode.textContent()).toBe(firstPrompt);
+  await page.getByRole("tab", { name: "MANUAL" }).click();
+  const firstCode = page.locator('textarea[data-prompt-stage="decompose"]');
+  expect(await firstCode.inputValue()).toBe(firstPrompt);
   await page.getByRole("button", { name: "Copy Decompose" }).click();
-  await expect(page.getByRole("status")).toHaveText("Decompose copied.");
+  await expect(page.getByRole("status")).toHaveText("Decompose prompt copied.");
   expect(await page.evaluate(() => (window as unknown as { capturedCopy: string }).capturedCopy)).toBe(firstPrompt);
+  await page.locator('textarea[data-response-stage="decompose"]').fill("Stage one response");
+  await expect(page.getByRole("button", { name: "Copy Rewrite" })).toBeEnabled();
+  await expect(page.locator('textarea[data-prompt-stage="rewrite"]')).toHaveValue(/Stage one response/);
   await page.evaluate(() => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
     Object.defineProperty(document, "execCommand", { configurable: true, value: () => true });
   });
   await page.getByRole("button", { name: "Copy Rewrite" }).click();
-  await expect(page.getByRole("status")).toHaveText("Rewrite copied.");
+  await expect(page.getByRole("status")).toHaveText("Rewrite prompt copied.");
+  await page.locator('textarea[data-response-stage="rewrite"]').fill("Stage two response");
   await page.evaluate(() => {
     Object.defineProperty(document, "execCommand", { configurable: true, value: () => false });
   });
   await page.getByRole("button", { name: "Copy Verify" }).click();
-  await expect(page.getByRole("status")).toContainText("Select the Verify prompt manually");
+  await expect(page.getByRole("status")).toContainText("The Verify prompt is selected");
   expect(runtimeErrors).toEqual([]);
 });
 

@@ -26,6 +26,7 @@ function packageResult(blob: Blob): PromptPackageResult {
     blob,
     filename: "reword-nerd-prompt-package.zip",
     manifest: {} as never,
+    workbooks: [],
     artifacts: [],
   };
 }

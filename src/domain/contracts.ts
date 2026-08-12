@@ -57,7 +57,7 @@ export interface ManifestDocumentInput {
   reviewedExtractedText: string;
   resolvedSettings: RewriteSettings;
   chosenProfile: ModelProfile;
-  promptSet: PromptSet;
+  promptBundle: PromptBundle;
   warnings: string[];
   contextAssessment: ContextAssessment;
 }

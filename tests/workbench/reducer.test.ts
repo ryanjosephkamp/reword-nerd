@@ -42,6 +42,7 @@ function builtPackage(): BuiltPromptPackage {
     blob: new Blob(["zip"]),
     filename: "reword-nerd-prompt-package.zip",
     manifest: {} as never,
+    workbooks: [],
     artifacts: [],
   };
 }

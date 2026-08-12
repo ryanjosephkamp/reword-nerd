@@ -37,11 +37,14 @@ function documentInput(): ExportDocumentInput {
       ...CURATED_MODEL_PROFILES.find((profile) => profile.id === "openai-general")!,
       workflowNote: "Use the stages in order.",
     },
-    promptSet: {
-      decompose: "stage one",
-      rewrite: "stage two",
-      verify: "stage three",
-      final: "stage four",
+    promptBundle: {
+      oneShot: "one shot",
+      manual: {
+        decompose: "stage one",
+        rewrite: "stage two",
+        verify: "stage three",
+        final: "stage four",
+      },
     },
     warnings: ["Converted safely."],
     contextAssessment: {
@@ -102,7 +105,7 @@ describe("prompt-package export", () => {
     await expect(archive.file(`documents/${record.key}/project/section.tex`)?.async("string")).resolves.toBe("Stable project text.\n");
   });
 
-  it("archives reviewed media, OCR provenance, and both companion HTML modes in schema v3", async () => {
+  it("archives reviewed media, OCR provenance, and both companion HTML modes in schema v4", async () => {
     // This catches package builds that expose figures in the UI but omit their bytes, placement, or review provenance from export.
     const { buildPromptPackage } = await import("../../src/export");
     const source = documentInput();
@@ -170,8 +173,8 @@ describe("prompt-package export", () => {
     expect(result.ok ? null : result.error).toBeNull();
     if (!result.ok) throw new Error("fixture should export");
     expect(result.manifest).toMatchObject({
-      schemaVersion: 3,
-      package: { version: "0.3.0" },
+      schemaVersion: 4,
+      package: { version: "0.4.0", format: "dual-mode-prompt-package" },
       documents: [{
         processing: {
           pageCount: 7,
@@ -186,8 +189,10 @@ describe("prompt-package export", () => {
           }, { id: "asset-decorative", included: false, decorative: true }],
         },
         ocr: { records: [{ id: "ocr-page-6", status: "accepted", reviewedTextSha256: expect.stringMatching(/^[a-f0-9]{64}$/) }] },
-        combined: {
-          fullHtml: { status: "generated", path: expect.stringMatching(/combined-prompts-full\.html$/) },
+        workbooks: {
+          combined: {
+            fullHtml: { status: "generated", path: expect.stringMatching(/combined-prompts-full\.html$/) },
+          },
         },
       }],
     });
@@ -220,7 +225,7 @@ describe("prompt-package export", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("archives a confirmed document as a schema-v3 package with byte-preserved original", async () => {
+  it("archives a confirmed document as a schema-v4 package with byte-preserved original", async () => {
     // This catches omissions or transformations of the immutable original and reviewed extraction export contract.
     const { buildPromptPackage } = await import("../../src/export");
     const source = documentInput();
@@ -230,8 +235,8 @@ describe("prompt-package export", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("fixture should export");
     expect(result.filename).toBe("reword-nerd-prompt-package.zip");
-    expect(result.manifest.schemaVersion).toBe(3);
-    expect(result.manifest.package.version).toBe("0.3.0");
+    expect(result.manifest.schemaVersion).toBe(4);
+    expect(result.manifest.package.version).toBe("0.4.0");
     expect(result.manifest.documents).toHaveLength(1);
     expect(result.manifest.documents[0]).toMatchObject({
       key: "resume-notes--ea27ac66cf6a",
@@ -245,9 +250,11 @@ describe("prompt-package export", () => {
         unicodeCodePointCount: 11,
         sha256: "411ed191751617cc2382ef551395aa32216bdc628dba78643372e96760f91f74",
       },
-      combined: {
-        markdown: { path: "documents/resume-notes--ea27ac66cf6a/combined-prompts.md" },
-        html: { path: "documents/resume-notes--ea27ac66cf6a/combined-prompts.html" },
+      workbooks: {
+        combined: {
+          markdown: { path: "documents/resume-notes--ea27ac66cf6a/combined-prompts.md" },
+          html: { path: "documents/resume-notes--ea27ac66cf6a/combined-prompts.html" },
+        },
       },
     });
 
@@ -263,8 +270,8 @@ describe("prompt-package export", () => {
     // This catches combined files omitting the runbook, changing prompt text, or introducing remote resources.
     const { buildPromptPackage } = await import("../../src/export");
     const source = documentInput();
-    source.promptSet.decompose = "stage one\n````\nembedded fence";
-    source.promptSet.rewrite = "stage two </script><img src=x onerror=alert(1)>";
+    source.promptBundle.manual.decompose = "stage one\n````\nembedded fence";
+    source.promptBundle.manual.rewrite = "stage two </script><img src=x onerror=alert(1)>";
 
     const result = await buildPromptPackage([source]);
 
@@ -276,7 +283,7 @@ describe("prompt-package export", () => {
     expect(artifact.runbook).toMatchObject({
       documentKey: result.manifest.documents[0].key,
       originalDisplayName: source.documentName,
-      package: { version: "0.3.0" },
+      package: { version: "0.4.0" },
       model: {
         id: "openai-general",
         promptStrategy: { id: "openai-chatgpt-v1", version: "2026-08-11-v1" },
@@ -288,31 +295,31 @@ describe("prompt-package export", () => {
     expect(Object.isFrozen(artifact.runbook.model)).toBe(true);
     expect(Object.isFrozen(artifact.runbook.settings)).toBe(true);
     expect(artifact.promptBlocks.map((block) => [block.stage, block.content])).toEqual([
-      ["decompose", source.promptSet.decompose],
-      ["rewrite", source.promptSet.rewrite],
-      ["verify", source.promptSet.verify],
-      ["final", source.promptSet.final],
+      ["decompose", source.promptBundle.manual.decompose],
+      ["rewrite", source.promptBundle.manual.rewrite],
+      ["verify", source.promptBundle.manual.verify],
+      ["final", source.promptBundle.manual.final],
     ]);
     expect(artifact.markdown.startsWith(artifact.runbookMarkdown)).toBe(true);
     expect(artifact.markdown).toContain("`````text\nstage one\n````\nembedded fence\n`````");
 
     const parsed = new DOMParser().parseFromString(artifact.html, "text/html");
-    expect(parsed.querySelectorAll(".prompt-section pre > code")).toHaveLength(4);
-    expect(Array.from(parsed.querySelectorAll(".prompt-section pre > code"), (node) => node.textContent)).toEqual([
-      source.promptSet.decompose,
-      source.promptSet.rewrite,
-      source.promptSet.verify,
-      source.promptSet.final,
+    expect(parsed.querySelectorAll(".prompt-section textarea[data-prompt-stage]")).toHaveLength(4);
+    expect(Array.from(parsed.querySelectorAll(".prompt-section textarea[data-prompt-stage]"), (node) => node.textContent)).toEqual([
+      source.promptBundle.manual.decompose,
+      source.promptBundle.manual.rewrite,
+      source.promptBundle.manual.verify,
+      source.promptBundle.manual.final,
     ]);
-    expect(parsed.querySelectorAll("button[data-copy-target]")).toHaveLength(4);
-    expect(parsed.querySelectorAll("script")).toHaveLength(1);
+    expect(parsed.querySelectorAll("button[data-copy-stage]")).toHaveLength(5);
+    expect(parsed.querySelectorAll("script")).toHaveLength(2);
     expect(parsed.querySelector("img")).toBeNull();
     expect(parsed.querySelector("script[src], link[href], img[src], iframe[src]")).toBeNull();
 
     const archive = await JSZip.loadAsync(result.blob, { checkCRC32: true });
     const record = result.manifest.documents[0];
-    await expect(archive.file(record.combined.markdown.path)?.async("string")).resolves.toBe(artifact.markdown);
-    await expect(archive.file(record.combined.html.path)?.async("string")).resolves.toBe(artifact.html);
+    await expect(archive.file(record.workbooks.combined.markdown.path)?.async("string")).resolves.toBe(artifact.markdown);
+    await expect(archive.file(record.workbooks.combined.html.path)?.async("string")).resolves.toBe(artifact.html);
     await expect(archive.file("README.md")?.async("string")).resolves.toBe(artifact.runbookMarkdown);
   });
 
@@ -361,7 +368,7 @@ describe("prompt-package export", () => {
       ["empty", [], "NO_DOCUMENTS"],
       ["missing reviewed text", [{ ...documentInput(), reviewedExtractedText: "" }], "INVALID_INPUT"],
       ["blank reviewed text", [{ ...documentInput(), reviewedExtractedText: " \n\t " }], "INVALID_INPUT"],
-      ["missing prompt", [{ ...documentInput(), promptSet: { ...documentInput().promptSet, final: "" } }], "INVALID_INPUT"],
+      ["missing prompt", [{ ...documentInput(), promptBundle: { ...documentInput().promptBundle, manual: { ...documentInput().promptBundle.manual, final: "" } } }], "INVALID_INPUT"],
       ["missing acknowledgement", [{ ...documentInput(), contextAssessment: { ...documentInput().contextAssessment, acknowledgmentRequired: true }, contextWarningAcknowledged: false }], "CONTEXT_ACKNOWLEDGMENT_REQUIRED"],
     ];
     for (const [, inputs, code] of invalids) {
@@ -442,7 +449,7 @@ describe("prompt-package export", () => {
       },
     });
     await digestStarted;
-    source.promptSet.decompose = "MUTATED PROMPT";
+    source.promptBundle.manual.decompose = "MUTATED PROMPT";
     source.resolvedSettings.outputLanguage = "Mutated";
     source.chosenProfile.label = "Mutated profile";
     source.warnings.push("Mutated warning");
@@ -513,17 +520,17 @@ describe("prompt-package export", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("fixture should export");
-    expect(Object.keys(result.manifest)).toEqual(["schemaVersion", "package", "archive", "workflow", "documents"]);
+    expect(Object.keys(result.manifest)).toEqual(["schemaVersion", "package", "archive", "workflow", "rootArtifacts", "documents"]);
     expect(result.manifest.workflow).toEqual({
-      mode: "manual",
-      stages: ["decompose", "rewrite", "verify", "final"],
+      modes: ["one-shot", "manual"],
+      manualStages: ["decompose", "rewrite", "verify", "final"],
       responseMarkers: markerValues,
     });
     const document = result.manifest.documents[0];
     expect(Object.keys(document)).toEqual([
       "key", "exportOrdinal", "originalDisplayName", "format", "original", "reviewedExtraction",
       "settings", "model", "contextAssessment", "contextWarningAcknowledged", "prompts", "processing",
-      "visualAssets", "ocr", "combined",
+      "visualAssets", "ocr", "workbooks",
     ]);
     expect(document.settings).toEqual(documentInput().resolvedSettings);
     expect(document.model).toEqual({
@@ -544,6 +551,13 @@ describe("prompt-package export", () => {
     expect(document.contextAssessment).toEqual({
       estimateLabel: "Estimated tokens",
       sourceTokens: 3,
+      oneShotWorkflowTokens: 1_506,
+      manualWorkflowTokens: 3_012,
+      oneShotRatio: 1_506 / 1_050_000,
+      manualRatio: 3_012 / 1_050_000,
+      oneShotOversized: false,
+      manualOversized: false,
+      oneShotWarning: false,
       workflowTokens: 3_012,
       contextWindowTokens: 1_050_000,
       ratio: 3_012 / 1_050_000,
@@ -557,41 +571,38 @@ describe("prompt-package export", () => {
     const paths = [
       document.original.path,
       document.reviewedExtraction.path,
-      ...(["decompose", "rewrite", "verify", "final"] as const).map((stage) => document.prompts[stage].path),
-      document.combined.markdown.path,
-      document.combined.html.path,
+      ...(["oneShot", "decompose", "rewrite", "verify", "final"] as const).map((stage) => document.prompts[stage].path),
+      document.workbooks.oneShot.markdown.path,
+      document.workbooks.oneShot.html.path,
+      document.workbooks.manual.markdown.path,
+      document.workbooks.manual.html.path,
+      document.workbooks.combined.markdown.path,
+      document.workbooks.combined.html.path,
       document.visualAssets.index.path,
       document.visualAssets.placementMap.path,
       document.ocr.path,
-      ...(document.combined.fullHtml.status === "generated" ? [document.combined.fullHtml.path] : []),
+      ...(document.workbooks.combined.fullHtml.status === "generated" ? [document.workbooks.combined.fullHtml.path] : []),
+      result.manifest.rootArtifacts.readme.path,
+      result.manifest.rootArtifacts.openMe.path,
     ];
     const hashes = [
       document.original.sha256,
       document.reviewedExtraction.sha256,
-      ...(["decompose", "rewrite", "verify", "final"] as const).map((stage) => document.prompts[stage].sha256),
-      document.combined.markdown.sha256,
-      document.combined.html.sha256,
+      ...(["oneShot", "decompose", "rewrite", "verify", "final"] as const).map((stage) => document.prompts[stage].sha256),
+      document.workbooks.oneShot.markdown.sha256,
+      document.workbooks.oneShot.html.sha256,
+      document.workbooks.manual.markdown.sha256,
+      document.workbooks.manual.html.sha256,
+      document.workbooks.combined.markdown.sha256,
+      document.workbooks.combined.html.sha256,
       document.visualAssets.index.sha256,
       document.visualAssets.placementMap.sha256,
       document.ocr.sha256,
-      ...(document.combined.fullHtml.status === "generated" ? [document.combined.fullHtml.sha256] : []),
+      ...(document.workbooks.combined.fullHtml.status === "generated" ? [document.workbooks.combined.fullHtml.sha256] : []),
+      result.manifest.rootArtifacts.readme.sha256,
+      result.manifest.rootArtifacts.openMe.sha256,
     ];
-    expect(Object.keys(archive.files)).toEqual([
-      "README.md",
-      document.visualAssets.index.path,
-      document.visualAssets.placementMap.path,
-      ...(document.combined.fullHtml.status === "generated" ? [document.combined.fullHtml.path] : []),
-      document.combined.html.path,
-      document.combined.markdown.path,
-      document.ocr.path,
-      document.original.path,
-      document.prompts.decompose.path,
-      document.prompts.rewrite.path,
-      document.prompts.verify.path,
-      document.prompts.final.path,
-      document.reviewedExtraction.path,
-      "manifest.json",
-    ]);
+    expect(Object.keys(archive.files)).toEqual([...paths, "manifest.json"].sort());
     for (const [index, path] of paths.entries()) {
       const bytes = await archive.file(path)?.async("uint8array");
       const digest = await crypto.subtle.digest("SHA-256", (bytes ?? new Uint8Array()).slice().buffer);
@@ -599,7 +610,7 @@ describe("prompt-package export", () => {
     }
     const runbook = await archive.file("README.md")?.async("string");
     expect(runbook).toContain(`Selected model: ${document.model.label}`);
-    expect(runbook).toContain("Context estimate: 3012; known limit: 1050000; required warning acknowledged: not required.");
+    expect(runbook).toContain("Context estimates: One-shot 1506; Manual 3012; known limit: 1050000; required Manual warning acknowledged: not required.");
     expect(runbook).toContain("Reference model: GPT-5.6 Sol");
     expect(runbook).toContain("Guidance version: 2026-08-11-v1");
     expect(runbook).toContain(JSON.stringify(document.settings));
@@ -621,7 +632,7 @@ describe("prompt-package export", () => {
     const nonBinaryRead = { ...documentInput(), original: { arrayBuffer: async () => "not binary" } as unknown as File };
     await expect(buildPromptPackage([nonBinaryRead])).resolves.toMatchObject({ ok: false, error: { code: "FILE_READ_FAILED" } });
 
-    for (const failingCall of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    for (const failingCall of Array.from({ length: 19 }, (_, index) => index + 1)) {
       let calls = 0;
       let archiveCalls = 0;
       const result = await buildPromptPackage([documentInput()], {
