@@ -1,6 +1,6 @@
 # Prompt package manifest v3
 
-Manifest schema `3` is the current `reword-nerd` `0.3.0` package contract. It
+Manifest schema `3` is the historical `reword-nerd` `0.3.0` package contract. It
 extends v2 without changing the canonical four-stage prompt order.
 
 Each document retains v2 original, reviewed extraction, prompt, settings,

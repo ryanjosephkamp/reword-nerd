@@ -1,161 +1,170 @@
 # reword-nerd
 
-`reword-nerd` is a browser workbench for preparing a reviewable, four-stage
-rewriting package from long-form documents. It keeps the source, the reviewed
-extraction, and the generated prompts together so a user can run a careful
-manual workflow with the model they choose.
+`reword-nerd` is a local-first browser workbench for turning reviewed source
+documents into portable rewriting workbooks. It extracts supported files in the
+browser, keeps the source and prompts reviewable, and always generates both a
+One-shot workflow and a four-stage Manual workflow for the model you choose.
 
-The application does not rewrite documents or contact model providers. It
-builds a local package for the user to inspect in the site before optionally
-downloading a ZIP for their chosen model.
+The application does not rewrite documents or contact model providers. Build
+creates a revision-bound ZIP and immutable workbook preview in memory; download
+remains a separate, explicit action.
 
-## Workflow
+## Workflows
 
-For each accepted document, the workbench follows this sequence:
+**One-shot** asks the model to perform Decompose, Rewrite, Verify, and Final in
+one request, returning the finished document plus a compact fidelity audit. It
+is the faster path and uses the smaller context estimate, but its intermediate
+work is not exposed for review.
 
-1. **Decompose** — identify the document's claims, structure, constraints, and
-   other meaning that must be retained.
-2. **Rewrite** — create a new version that preserves the source meaning while
-   using a different presentation.
-3. **Verify** — compare the candidate against the decomposition and record
-   any issues.
-4. **Final** — resolve recorded issues and prepare the finished version.
+**Manual** exposes the four canonical stages separately:
 
-Before the package can be built, review the extracted text for every file and
-confirm it in the workbench. You may edit an extraction before confirming it.
-The generated prompts contain explicit response markers so each stage can be
-carried into the next one.
+1. **Decompose** — identify claims, structure, facts, and constraints.
+2. **Rewrite** — produce a substantially different presentation that preserves meaning.
+3. **Verify** — compare the candidate with the decomposition and record issues.
+4. **Final** — resolve the issues and produce the finished document.
+
+Manual takes more transfers and usually more context, but it is the transparent
+fallback when One-shot exceeds a model's practical capability or when each
+intermediate response needs review. Response fields hydrate downstream prompts.
+If an upstream response changes after a downstream prompt was edited, the edit
+is preserved and marked stale until **Reapply** or **Reset** is chosen.
+
+## Use the workbench
+
+On first visit, Quick start offers **REVIEW SETTINGS** as the primary action and
+**ADD FILES** as the secondary action. Help can replay the guide. In an empty
+Review panel, **ADD FILES** opens the same multi-file picker directly.
+
+For each accepted document:
+
+1. inspect and, if needed, edit the extracted text;
+2. review extracted assets and OCR candidates;
+3. confirm the extraction;
+4. resolve any required Manual-context acknowledgement;
+5. choose **BUILD PACKAGE**;
+6. use the in-site One-shot or Manual preview, or explicitly **DOWNLOAD ZIP**.
+
+Build does not auto-download. Any source, review, asset, processing, profile, or
+rewrite-setting mutation invalidates the built Blob and workbooks together.
+Switching Source/Assets/Package, workflows, or package documents does not.
+
+**DOWNLOAD PROGRESS COPY** creates a separate standalone HTML file containing
+the current prompt edits and model responses, including optional One-shot and
+Stage 4 responses. Treat it as sensitive document material. Progress is held in
+memory only until deliberately downloaded and is discarded with its build.
 
 ## Run locally
 
-Requirements: Node.js 20.19 or later (or 22.12 or later) and npm. The browser
-suite is exercised in Chromium through Playwright.
+Requirements: Node.js 20.19 or later (or 22.12 or later), npm, and a current
+Chromium installation for the Playwright suite.
 
 ```sh
 npm install
 npm run dev
 ```
 
-Open the local Vite address printed by the development server. For a production
-preview, build first and then serve the generated files:
+For the production bundle and exact release browser path:
 
 ```sh
 npm run build
 npm run preview
+PLAYWRIGHT_USE_PREVIEW=1 npm run e2e
 ```
 
-Run the checks with:
+Run all local release checks with:
 
 ```sh
 npm run lint
 npm run typecheck
 npm test -- --run
 npm run build
-npm run e2e
+PLAYWRIGHT_USE_PREVIEW=1 npm run e2e
 ```
 
-If Chromium is not already available to Playwright, run
-`npm run install:playwright` once before the browser suite.
+Use `npm run install:playwright` once if Chromium is not installed for Playwright.
 
-## Accepted files and limits
+## Accepted files and v0.4 processing defaults
 
 The workbench accepts `.txt`, `.md`, `.markdown`, `.docx`, `.pdf`, `.tex`,
-`.ltx`, and safe `.zip` LaTeX projects.
-It admits at most 20 files, 20 MiB per file, and 100 MiB across the current
-queue. Plain text and Markdown must be valid UTF-8. PDF files must contain
-selectable text by default. Optional English OCR, embedded-image extraction,
-and PDF page captures are local, conservative, review-first features. See
-[extraction limitations](docs/extraction-limitations.md) for format-specific
-behavior.
+`.ltx`, and safe LaTeX project `.zip` files. It admits at most 20 files, 20 MiB
+per file, and 100 MiB across the queue.
 
-## Settings and context estimate
+For a new v0.4 preference state, embedded-image extraction is on and likely
+decorative images are excluded. PDF page capture, OCR, and OCR of extracted
+images are off. These are saved global processing preferences; changing them
+for an uploaded document reprocesses that document locally. Extraction remains
+bounded, conservative, and review-first. See [extraction limitations](docs/extraction-limitations.md).
 
-Choose a model-family profile and writing settings for tone, formality, length,
-output language, and custom requirements. Per-file settings can override the
-global defaults. Custom requirements preserve internal spaces and blank lines.
-The curated choices are Alibaba / Qwen, Anthropic / Claude, DeepSeek / V4 Pro,
-Google / Gemini, Meta / Muse, MiniMax / M3, Mistral / Large 3, MoonshotAI /
-Kimi, OpenAI / ChatGPT, xAI / Grok, and Z.AI / GLM. **Custom model** covers
-local, self-hosted, fine-tuned, and unlisted models with an editable label and
-context limit.
+## Settings, preferences, and context
 
-Profiles are prompt-generation strategies, not provider integrations. Every
-strategy has a dated evidence record, stable ID, independent version, reference
-model, and review date in the [model-guidance index](docs/model-guidance/README.md).
-Provider-specific layout is applied only where supported by first-party guidance;
-API-only controls are documented without being inserted into manual chat prompts.
+Choose a model-family profile and global tone, formality, length, output
+language, custom requirements, context limit, and processing options. A file
+may use session-only overrides. Profiles are prompt-generation strategies, not
+provider integrations; their dated evidence is in the [model-guidance index](docs/model-guidance/README.md).
 
-The workbench estimates the size of the complete four-stage exchange. If that
-estimate exceeds the selected context limit, the affected file requires an
-explicit acknowledgement before package generation. Editing the extracted
-text, changing the profile, or changing the limit resets that acknowledgement.
+One-shot and Manual have separate conservative context estimates. One-shot
+oversize is advisory; a Manual estimate over the selected limit requires an
+explicit per-document acknowledgement.
 
-## Build, preview, and download
+One namespaced localStorage key saves only validated global model/context,
+rewrite, processing, and tutorial preferences. Files, extracted text, assets,
+OCR, reviews, per-file overrides, prompts, responses, progress, and packages
+remain session-only. **Reset saved preferences** clears that key after
+confirmation without deleting current uploaded documents. See [privacy](docs/privacy.md).
 
-**BUILD PACKAGE** validates the current revision and creates the package in
-browser memory. It does not download anything. A successful build opens the
-Package view, where the runbook and all four prompts can be read and copied.
-For multiple documents, use the artifact selector. **DOWNLOAD ZIP** then exports
-that exact reviewed Blob. Any source, review, setting, or profile change
-invalidates the preview and requires a new build.
+## Schema-v4 ZIP layout
 
-## What the ZIP contains
+`reword-nerd-prompt-package.zip` is deterministic and has no directory entries.
+The root contains:
 
-`reword-nerd-prompt-package.zip` has deterministic ordering and one directory
-per document. Each directory includes:
+- `OPEN-ME.html` — local document and workflow entry points;
+- `README.md` — the package runbook;
+- `manifest.json` — schema `4`, hashes, provenance, paths, workflow, processing,
+  context, asset/OCR, and optional LaTeX project records.
 
-- the original uploaded file;
-- `reviewed-extraction.md`;
-- `prompts/01-decompose.md` through `prompts/04-final.md`;
-- `combined-prompts.md`, containing the complete package runbook and all four
-  exact prompts in safe four-or-more-backtick fences;
-- `combined-prompts.html`, a standalone black-on-white, no-network companion
-  with a Copy button for each exact prompt;
-- `combined-prompts-full.html` when the data-URI version stays within the
-  encoded 150 MiB cap;
-- an `assets/` catalog, placement map, and included visual bytes;
-- `ocr/candidates.json` with reviewed OCR provenance;
-- for LaTeX project ZIPs, the safely extracted project tree under `project/`.
+Every document is under `documents/<document-key>/` and includes:
 
-The archive root also contains `README.md`, a document-by-document runbook,
-and `manifest.json`. The manifest records the selected profile, resolved
-settings, strategy provenance, context assessment, warnings, archive paths,
-and SHA-256 hashes. The current contract is [manifest v3](docs/manifest-v3.md);
-[manifest v2](docs/manifest-v2.md) and [manifest v1](docs/manifest-v1.md) remain historical.
+- the original upload and `reviewed-extraction.md`;
+- `prompts/00-one-shot.md` and canonical `01-decompose.md` through `04-final.md`;
+- `one-shot-prompt.md/html` and `manual-prompts.md/html` workflow siblings;
+- `combined-prompts.md/html`, providing both workflows in one workbook;
+- `combined-prompts-full.html` when the encoded full-media form stays within
+  the 150 MiB cap;
+- asset catalog/placement files, included visual bytes, OCR provenance, and a
+  safe LaTeX project tree when applicable.
 
-## Privacy and session behavior
+Standalone HTML is escaped, keyboard accessible, responsive to 320px, free of
+remote resources and automatic storage, and supports Clipboard API plus a
+selection fallback. Lightweight HTML links only to packaged sibling assets;
+the optional full companion embeds supported media as data URLs.
 
-All validation, extraction, prompt rendering, package preview, clipboard
-operation, ZIP generation, and download preparation occur in the current
-browser session. There is no application
-backend, account system, provider request, analytics sender, or browser-storage
-write. Refreshing or closing the page clears the workbench state. Once you
-download a ZIP, its storage and handling are governed by your browser and
-operating system. See [privacy](docs/privacy.md) for the boundary in detail.
+The current contract is [manifest v4](docs/manifest-v4.md). Historical contracts
+remain available as [v3](docs/manifest-v3.md), [v2](docs/manifest-v2.md), and
+[v1](docs/manifest-v1.md).
 
-## Browser support
+## Privacy and browser support
 
-The automated browser suite currently runs in Chromium. The workbench relies
-on current browser APIs including File, Web Crypto, TextDecoder, Blob, and
-object URLs. Use a current desktop browser; support outside the tested Chromium
-environment has not yet received equivalent automated coverage.
+Validation, extraction, hashing, review, prompt rendering, preview, clipboard
+handling, ZIP creation, and progress-copy creation occur locally. There is no
+application backend, account system, provider call, telemetry, analytics, or
+runtime external dependency. Deliberately downloaded ZIP and progress files are
+then governed by the browser, operating system, and storage destination.
 
-## Publishing
-
-The repository includes a GitHub Pages workflow that validates and builds the
-site for its repository URL before deployment. A push to `main` runs lint,
-typechecking, the unit suite, and the production build, then publishes `dist/`.
-The workflow supplies `/reword-nerd/` as Vite's production base path while
-local development and preview continue to use `/`.
+Automated coverage runs in current Chromium against the built production
+preview, including desktop, tablet, 320/360/390/412px portrait, and standalone
+`file://` workbooks. The app relies on current File, Web Crypto, TextDecoder,
+Blob, object URL, Clipboard, and download APIs. Other current browsers may work,
+but do not have equivalent automated release coverage.
 
 ## Project map
 
 - [Architecture](docs/architecture.md)
-- [Model guidance](docs/model-guidance/README.md)
+- [Privacy](docs/privacy.md)
 - [Extraction limitations](docs/extraction-limitations.md)
-- [Manifest v3](docs/manifest-v3.md)
+- [Manifest v4](docs/manifest-v4.md)
 - [Directory structure](docs/directory-structure.md)
 - [Design system](docs/design-system.md)
+- [Model guidance](docs/model-guidance/README.md)
 - [Contributing](CONTRIBUTING.md)
 
 This repository provides a browser application; it does not include a Python

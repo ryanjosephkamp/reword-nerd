@@ -1,4 +1,8 @@
-# reword-nerd Website v1 Implementation Plan
+# Historical reword-nerd v1 implementation plan
+
+> Historical record only. This plan describes the original v0.1 foundation,
+> not current v0.4 capability or release status. See the repository README,
+> architecture, design system, and manifest-v4 specification for current behavior.
 
 ## Global constraints
 

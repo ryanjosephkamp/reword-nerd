@@ -5,12 +5,15 @@ header, document identity and status, page/image/OCR metrics, Source/Assets
 views, horizontal figure cards, a sticky review action, and a persistent
 Files/Review/Settings bottom command bar.
 
-The implementation preserves the existing terminal palette and desktop
-dashboard. Mobile validation covers 320, 360, 390, and 412 CSS-pixel widths,
-safe-area padding, keyboard focus, text zoom containment, real extracted-image
-thumbnails, and the complete review/build/download path. Browser comparison is
-performed in the user-selected Chromium environment against the approved
-reference. The combined 390 × 844 comparison is generated at
-`output/playwright/option3-comparison-390x844.png` during release QA. The result
-matches the target hierarchy while intentionally using the current fixture
-content and exposing Package as the third contextual view.
+The implementation preserves the terminal palette and desktop dashboard.
+Current built-preview Chromium QA covers 1586 × 992 desktop, 1024 × 768 tablet,
+and 320/360/390/412 CSS-pixel portrait widths. It asserts containment,
+independent Settings scrolling, bottom-navigation clearance, keyboard focus,
+empty Review, first-visit Quick start, One-shot preview, Manual progress, and
+explicit downloads. Generated evidence is ignored under `output/playwright/`.
+
+Release QA also opens the exported combined workbook from a real local
+`file://` path, verifies both workflow tabs, Clipboard and selection fallback,
+progress download, no storage, and no external request. Visual approval remains
+a human inspection step; automated geometry assertions do not claim pixel
+identity with the reference or that a broader redesign has been completed.
