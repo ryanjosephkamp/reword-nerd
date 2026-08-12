@@ -237,6 +237,17 @@ test("mobile Settings help remains contained at every release width and mobile N
     await assertContained(page);
     await page.screenshot({ path: `${screenshotDirectory}/settings-help-${width}x${height}.png`, animations: "disabled" });
     await popover.getByRole("button", { name: "Close setting help" }).click();
+
+    const processingHelp = settingsPanel.getByRole("button", { name: "Help about Document processing" });
+    await processingHelp.scrollIntoViewIfNeeded();
+    await processingHelp.click();
+    const processingPopover = page.getByRole("dialog", { name: "Help about Document processing" });
+    const processingBounds = await processingPopover.boundingBox();
+    expect(processingBounds!.x).toBeGreaterThanOrEqual(0);
+    expect(processingBounds!.x + processingBounds!.width).toBeLessThanOrEqual(width);
+    expect(processingBounds!.y).toBeGreaterThanOrEqual(0);
+    expect(processingBounds!.y + processingBounds!.height).toBeLessThanOrEqual(height);
+    await processingPopover.getByRole("button", { name: "Close setting help" }).click();
   }
 
   await page.getByRole("button", { name: "Menu" }).click();
