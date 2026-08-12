@@ -152,4 +152,59 @@ describe("saved preferences and onboarding UI", () => {
     expect(click).toHaveBeenCalledTimes(1);
     expect(screen.getByText(/Preferences save locally; documents and contents stay in this session/i)).toBeInTheDocument();
   });
+
+  it("keeps invalid context and page drafts out of storage and bounds saved text fields", async () => {
+    // This catches controlled inputs serializing unsafe numbers, descending page ranges, blank languages, or unbounded text.
+    window.localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      data: {
+        selectedProfileId: "custom",
+        customProfileLabel: "Local model",
+        contextWindowTokens: 4_096,
+        globalSettings: {
+          tone: "preserve",
+          formality: "preserve",
+          length: "preserve",
+          outputLanguage: "English",
+          customRequirements: "",
+        },
+        processing: {
+          extractEmbeddedImages: true,
+          pageSelection: "2-4",
+        },
+        tutorialVersion: CURRENT_TUTORIAL_VERSION,
+      },
+    }));
+    render(<App services={services()} />);
+
+    fireEvent.change(screen.getByLabelText("Context limit"), {
+      target: { value: "9007199254740992" },
+    });
+    fireEvent.change(screen.getByLabelText("PDF pages"), { target: { value: "3-1" } });
+    fireEvent.change(screen.getByLabelText("Output language"), { target: { value: "   " } });
+    fireEvent.change(screen.getByLabelText("Model label"), { target: { value: "m".repeat(205) } });
+    fireEvent.change(screen.getByLabelText("Custom requirements"), { target: { value: "r".repeat(2_001) } });
+
+    expect(screen.getByLabelText("Context limit")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("PDF pages")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Output language")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Model label")).toHaveValue("m".repeat(200));
+    expect(screen.getByLabelText("Custom requirements")).toHaveValue("r".repeat(2_000));
+
+    await waitFor(() => {
+      const saved = JSON.parse(window.localStorage.getItem(PREFERENCES_STORAGE_KEY) ?? "null") as {
+        data: {
+          contextWindowTokens?: number;
+          customProfileLabel?: string;
+          globalSettings?: { outputLanguage?: string; customRequirements?: string };
+          processing?: { pageSelection?: string };
+        };
+      };
+      expect(saved.data.contextWindowTokens).toBe(4_096);
+      expect(saved.data.processing?.pageSelection).toBe("2-4");
+      expect(saved.data.globalSettings).not.toHaveProperty("outputLanguage");
+      expect(saved.data.customProfileLabel).toBe("m".repeat(200));
+      expect(saved.data.globalSettings?.customRequirements).toBe("r".repeat(2_000));
+    });
+  });
 });

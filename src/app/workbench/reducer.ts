@@ -51,7 +51,7 @@ export type WorkbenchAction =
   | { type: "profile/selected"; profileId: string }
   | { type: "profile/context-limit-changed"; value: number | null }
   | { type: "profile/custom-label-changed"; value: string }
-  | { type: "profile/custom-context-draft-changed"; value: string; parsed: number | null }
+  | { type: "profile/custom-context-draft-changed"; value: string; parsed: number | null | undefined }
   | { type: "context/acknowledged"; documentId: string; acknowledged: boolean }
   | { type: "mobile/tab-changed"; tab: MobileTab }
   | { type: "preview/mode-changed"; mode: PreviewMode }
@@ -494,6 +494,9 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
           : state.workingProfile,
       });
     case "profile/custom-context-draft-changed":
+      if (action.parsed === undefined) {
+        return { ...state, customContextDraft: action.value };
+      }
       return changed(state, {
         customContextDraft: action.value,
         workingProfile: { ...state.workingProfile, contextWindowTokens: action.parsed },
@@ -539,7 +542,7 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
         customProfileLabel: "",
         customContextDraft: firstProfile.contextWindowTokens?.toString() ?? "",
         resetPreferencesDialogOpen: false,
-        documents: state.documents,
+        documents: clearAcknowledgments(state.documents),
       });
     case "focus/consumed":
       return { ...state, focusTarget: null };

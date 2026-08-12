@@ -177,7 +177,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     onOverrideChange: (field: keyof RewriteSettings, value: RewriteSettings[keyof RewriteSettings]) => { if (selected) dispatch({ type: "settings/override-changed", documentId: selected.id, field, value }); },
     onProfileSelected: (profileId: string) => dispatch({ type: "profile/selected", profileId }),
     onProfileLabel: (value: string) => dispatch({ type: "profile/custom-label-changed", value }),
-    onContextDraft: (value: string, parsed: number | null) => dispatch({ type: "profile/custom-context-draft-changed", value, parsed }),
+    onContextDraft: (value: string, parsed: number | null | undefined) => dispatch({ type: "profile/custom-context-draft-changed", value, parsed }),
     onExtractionOptionsChange: (options: import("../../domain").ExtractionOptions, reprocess: boolean) => {
       if (selected && reprocess) {
         dispatch({ type: "processing/options-changed", documentId: selected.id, options });

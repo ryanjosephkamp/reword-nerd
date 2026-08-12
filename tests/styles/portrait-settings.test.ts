@@ -20,4 +20,15 @@ describe("portrait Settings layout contract", () => {
     expect(contract).toMatch(/overscroll-behavior(?:-y)?:\s*contain/u);
     expect(contract).toMatch(/padding-bottom:\s*calc\([^;]*env\(safe-area-inset-bottom\)[^;]*\)/u);
   });
+
+  it("stacks every modal backdrop above the fixed mobile navigation", () => {
+    // This catches bottom tabs painting above a dialog and intercepting pointer input outside the focus trap.
+    const css = readFileSync(join(process.cwd(), "src/styles/workbench.css"), "utf8");
+    const backdrop = css.match(/\.drawer-backdrop,\s*\.dialog-backdrop\s*\{[^}]*z-index:\s*(\d+)/u);
+    const tabs = css.match(/\.mobile-tabs\s*\{[^}]*z-index:\s*(\d+)/u);
+
+    expect(backdrop?.[1]).toBeDefined();
+    expect(tabs?.[1]).toBeDefined();
+    expect(Number(backdrop?.[1])).toBeGreaterThan(Number(tabs?.[1]));
+  });
 });

@@ -1040,7 +1040,7 @@ button:disabled {
 .drawer-backdrop,
 .dialog-backdrop {
   position: fixed;
-  z-index: 10;
+  z-index: 30;
   inset: 0;
   display: flex;
   justify-content: flex-end;
