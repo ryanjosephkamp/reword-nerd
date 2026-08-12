@@ -59,12 +59,30 @@ export function useExportPackage(
           reviewedExtractedText: document.extractedText,
           resolvedSettings,
           chosenProfile: { ...profile },
-          promptSet: renderPromptSet(document.extractedText, resolvedSettings, profile),
+          promptSet: renderPromptSet(document.extractedText, resolvedSettings, profile, {
+            format: document.format,
+            assets: (document.visualAssets ?? []).map((asset) => ({
+              id: asset.id,
+              filename: asset.filename,
+              mimeType: asset.mimeType,
+              ...(asset.pageNumber ? { pageNumber: asset.pageNumber } : {}),
+              ...(asset.sourcePath ? { sourcePath: asset.sourcePath } : {}),
+              ...(asset.caption ? { caption: asset.caption } : {}),
+              ...(asset.altText ? { altText: asset.altText } : {}),
+              included: asset.included,
+            })),
+            latexMainFile: document.latexProject?.mainFile,
+          }),
           warnings: [...document.warnings],
           contextAssessment: selectContextAssessment(state, document.id),
           reviewed: document.status === "ready" && !document.requiresReview,
           contextWarningAcknowledged: document.contextWarningAcknowledged,
           uploadOrdinal: document.uploadOrdinal,
+          pageCount: document.pageCount ?? null,
+          extractionOptions: document.extractionOptions ?? state.globalExtractionOptions,
+          visualAssets: document.visualAssets ?? [],
+          ocrCandidates: document.ocrCandidates ?? [],
+          ...(document.latexProject ? { latexProject: document.latexProject } : {}),
         };
       });
       const result = await services.buildPackage(snapshot);

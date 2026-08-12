@@ -1,4 +1,15 @@
 import type { DocumentFormat } from "./contracts";
+import type { ExtractionOptions, LatexProjectMetadata, OcrCandidate, ProcessingProgress, VisualAsset } from "./media";
+import {
+  cloneExtractionOptions,
+  DEFAULT_EXTRACTION_OPTIONS,
+  MAX_VISUAL_ASSET_BYTES_PER_DOCUMENT,
+  MAX_VISUAL_ASSETS_PER_DOCUMENT,
+  MAX_OCR_PAGES,
+  selectedPages,
+} from "./media";
+import { analyzeStandaloneLatex, extractLatexProject, LatexArchiveError, validateLatexProjectArchive } from "./latex";
+import { extractMarkdownMedia } from "./markdownMedia";
 import JSZip from "jszip";
 import mammoth from "mammoth";
 import TurndownService from "turndown";
@@ -24,7 +35,10 @@ export type FileIssueCode =
   | "PDF_TEXTLESS"
   | "PDF_EXTRACTION_FAILED"
   | "FILE_READ_FAILED"
-  | "HASH_UNAVAILABLE";
+  | "HASH_UNAVAILABLE"
+  | "UNSAFE_ARCHIVE"
+  | "ARCHIVE_LIMIT_EXCEEDED"
+  | "INVALID_LATEX_PROJECT";
 
 export interface FileIssue {
   code: FileIssueCode;
@@ -59,6 +73,11 @@ export interface ExtractionResult {
   format: DocumentFormat;
   extractedText: string;
   warnings: string[];
+  pageCount?: number | null;
+  visualAssets?: VisualAsset[];
+  ocrCandidates?: OcrCandidate[];
+  extractionOptions?: ExtractionOptions;
+  latexProject?: LatexProjectMetadata;
   originalHash: string;
   extractedTextHash: string;
   requiresReview: boolean;
@@ -77,6 +96,20 @@ export interface PdfTextItem {
 
 export interface PdfPageAdapter {
   getTextContent(): Promise<{ items: readonly PdfTextItem[] }>;
+  extractRasterImages?(): Promise<readonly PdfRasterImage[]>;
+  renderToPng?(scale: number): Promise<PdfRenderedImage>;
+  cleanup?(): void | Promise<void>;
+}
+
+export interface PdfRasterImage extends PdfRenderedImage {
+  mimeType: string;
+  bounds?: { x: number; y: number; width: number; height: number };
+}
+
+export interface PdfRenderedImage {
+  bytes: Uint8Array;
+  width: number;
+  height: number;
 }
 
 export interface PdfDocumentAdapter {
@@ -107,8 +140,15 @@ export interface DocxConverterAdapter {
       includeEmbeddedStyleMap: false;
       externalFileAccess: false;
       ignoreEmptyParagraphs: false;
+      convertImage(image: DocxImageAdapter): Promise<{ src: string; alt?: string }>;
     },
   ): Promise<{ value: string; messages: readonly DocxMessage[] }>;
+}
+
+export interface DocxImageAdapter {
+  contentType: string;
+  altText?: string;
+  read(format: "base64"): Promise<string>;
 }
 
 export interface ExtractionDependencies {
@@ -116,6 +156,23 @@ export interface ExtractionDependencies {
   existingDocuments?: readonly ExistingExtractedDocument[];
   pdfAdapter?: PdfAdapter;
   docxAdapter?: DocxConverterAdapter;
+  options?: ExtractionOptions;
+  ocrAdapter?: OcrAdapter;
+  signal?: AbortSignal;
+  onProgress?: (progress: ProcessingProgress) => void;
+}
+
+export interface OcrAdapter {
+  recognize(
+    image: PdfRenderedImage,
+    context: {
+      pageNumber: number;
+      language: ExtractionOptions["ocrLanguage"];
+      signal?: AbortSignal;
+      onProgress?: (progress: number) => void;
+    },
+  ): Promise<{ text: string; confidence: number; engineVersion: string; languageHash: string }>;
+  terminate?(): void | Promise<void>;
 }
 
 const ISSUE_MESSAGES: Record<FileIssueCode, string> = {
@@ -135,6 +192,9 @@ const ISSUE_MESSAGES: Record<FileIssueCode, string> = {
   PDF_EXTRACTION_FAILED: "This PDF could not be extracted safely.",
   FILE_READ_FAILED: "This file could not be read safely.",
   HASH_UNAVAILABLE: "A browser hashing capability is unavailable.",
+  UNSAFE_ARCHIVE: "This archive contains an unsafe path, link, duplicate, or encrypted entry.",
+  ARCHIVE_LIMIT_EXCEEDED: "This archive exceeds the permitted project safety limits.",
+  INVALID_LATEX_PROJECT: "This archive is not a valid LaTeX project.",
 };
 
 function issue(code: FileIssueCode): FileIssue {
@@ -153,6 +213,11 @@ export function formatFromName(name: string): DocumentFormat | undefined {
       return "docx";
     case ".pdf":
       return "pdf";
+    case ".tex":
+    case ".ltx":
+      return "latex";
+    case ".zip":
+      return "latex-project";
     default:
       return undefined;
   }
@@ -183,7 +248,7 @@ function hasPdfSignature(bytes: Uint8Array): boolean {
 
 async function validateAdmittedBytes(format: DocumentFormat, originalBytes: ArrayBuffer): Promise<FileIssue | undefined> {
   const bytes = new Uint8Array(originalBytes);
-  if (format === "text" || format === "markdown") {
+  if (format === "text" || format === "markdown" || format === "latex") {
     let decoded: string;
     try {
       decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -203,6 +268,15 @@ async function validateAdmittedBytes(format: DocumentFormat, originalBytes: Arra
   }
   try {
     const packageData = await JSZip.loadAsync(originalBytes);
+    if (format === "latex-project") {
+      try {
+        await validateLatexProjectArchive(bytes);
+        return undefined;
+      } catch (error) {
+        if (error instanceof LatexArchiveError) return issue(error.code);
+        return issue("INVALID_LATEX_PROJECT");
+      }
+    }
     return packageData.file("[Content_Types].xml") && packageData.file("word/document.xml")
       ? undefined
       : issue("INVALID_DOCX");
@@ -267,29 +341,146 @@ async function destroyPdfResource(
 export async function extractPdfWithAdapter(
   bytes: Uint8Array,
   adapter: PdfAdapter,
-): Promise<{ text: string; warnings: string[] }> {
+  options: ExtractionOptions = cloneExtractionOptions(DEFAULT_EXTRACTION_OPTIONS),
+  hasher: HashAdapter | null = defaultHashAdapter(),
+  ocrAdapter?: OcrAdapter,
+  signal?: AbortSignal,
+  onProgress?: (progress: ProcessingProgress) => void,
+): Promise<{
+  text: string;
+  warnings: string[];
+  assets: VisualAsset[];
+  pageCount: number;
+  textlessPages: number[];
+  ocrCandidates: OcrCandidate[];
+}> {
   let loadingTask: PdfLoadingTaskAdapter | undefined;
   let document: PdfDocumentAdapter | undefined;
   try {
     loadingTask = adapter.load(bytes.slice());
     document = await loadingTask.promise;
+    const totalPages = document.numPages;
     const pageTexts: string[] = [];
     const textlessPages: number[] = [];
-    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+    const assets: VisualAsset[] = [];
+    const ocrCandidates: OcrCandidate[] = [];
+    const visualPages = new Set(selectedPages(options.pageSelection, totalPages));
+    let visualBytes = 0;
+    let limitWarningAdded = false;
+    let ocrLimitReached = false;
+    const addAsset = async (
+      candidate: PdfRenderedImage & { mimeType: string; bounds?: PdfRasterImage["bounds"] },
+      pageNumber: number,
+      kind: "pdf-raster" | "pdf-page-capture",
+      order: number,
+    ) => {
+      if (assets.length >= MAX_VISUAL_ASSETS_PER_DOCUMENT
+        || visualBytes + candidate.bytes.byteLength > MAX_VISUAL_ASSET_BYTES_PER_DOCUMENT) {
+        limitWarningAdded = true;
+        return;
+      }
+      const sha256 = await hashBytes(
+        candidate.bytes.buffer.slice(candidate.bytes.byteOffset, candidate.bytes.byteOffset + candidate.bytes.byteLength),
+        hasher,
+      );
+      const decorative = kind === "pdf-raster" && (candidate.width < 16 || candidate.height < 16);
+      assets.push({
+        id: `asset-${sha256.slice(0, 12)}-p${pageNumber}-${order + 1}`,
+        kind,
+        filename: `${kind === "pdf-page-capture" ? "page" : "figure"}-${pageNumber}-${order + 1}.png`,
+        mimeType: candidate.mimeType,
+        bytes: candidate.bytes.slice(),
+        byteCount: candidate.bytes.byteLength,
+        sha256,
+        order: assets.length,
+        pageNumber,
+        width: candidate.width,
+        height: candidate.height,
+        ...(candidate.bounds ? { bounds: { ...candidate.bounds } } : {}),
+        included: !(options.excludeDecorativeImages && decorative),
+        decorative,
+        warnings: decorative ? ["This small PDF image may be decorative; review its inclusion."] : [],
+      });
+      visualBytes += candidate.bytes.byteLength;
+    };
+    for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
       const page = await document.getPage(pageNumber);
-      const content = await page.getTextContent();
-      const pageText = content.items.map((item) => `${item.str}${item.hasEOL ? "\n" : ""}`).join("");
-      if (pageText.trim().length === 0) textlessPages.push(pageNumber);
-      pageTexts.push(`--- Page ${pageNumber} ---\n\n${pageText}`);
+      try {
+        if (signal?.aborted) throw new DOMException("Processing cancelled.", "AbortError");
+        const content = await page.getTextContent();
+        const pageText = content.items.map((item) => `${item.str}${item.hasEOL ? "\n" : ""}`).join("");
+        if (pageText.trim().length === 0) textlessPages.push(pageNumber);
+        pageTexts.push(`--- Page ${pageNumber} ---\n\n${pageText}`);
+        if (visualPages.has(pageNumber) && options.extractEmbeddedImages && page.extractRasterImages) {
+          const images = await page.extractRasterImages();
+          for (const [order, image] of images.entries()) await addAsset(image, pageNumber, "pdf-raster", order);
+        }
+        if (visualPages.has(pageNumber) && options.capturePageVisuals && page.renderToPng) {
+          const capture = await page.renderToPng(options.pageCaptureQuality === "high" ? 3 : 2);
+          await addAsset({ ...capture, mimeType: "image/png" }, pageNumber, "pdf-page-capture", 0);
+        }
+        const wantsOcr = visualPages.has(pageNumber)
+          && options.ocrMode !== "off"
+          && (options.ocrMode === "all-pages" || pageText.trim().length === 0);
+        if (wantsOcr) {
+          if (ocrCandidates.length >= MAX_OCR_PAGES) {
+            ocrLimitReached = true;
+          } else if (ocrAdapter && page.renderToPng) {
+            const image = await page.renderToPng(200 / 72);
+            const recognized = await ocrAdapter.recognize(image, {
+              pageNumber,
+              language: options.ocrLanguage,
+              signal,
+              onProgress: (fraction) => onProgress?.({
+                phase: "ocr",
+                completed: Math.min(totalPages, pageNumber - 1 + fraction),
+                total: Math.min(totalPages, MAX_OCR_PAGES),
+                message: `Recognizing page ${pageNumber}…`,
+              }),
+            });
+            if (recognized.text.trim()) {
+              ocrCandidates.push({
+                id: `ocr-page-${pageNumber}`,
+                source: { kind: "page", pageNumber },
+                text: recognized.text,
+                reviewedText: recognized.text,
+                confidence: Math.max(0, Math.min(100, recognized.confidence)),
+                status: "pending",
+                engine: "tesseract.js",
+                engineVersion: recognized.engineVersion,
+                languageCode: options.ocrLanguage.code,
+                languageHash: recognized.languageHash,
+              });
+            }
+          }
+        }
+        onProgress?.({
+          phase: options.ocrMode === "off" ? "text" : "ocr",
+          completed: pageNumber,
+          total: totalPages,
+          message: `Processed page ${pageNumber} of ${totalPages}.`,
+        });
+      } finally {
+        await page.cleanup?.();
+      }
     }
-    if (textlessPages.length === document.numPages) {
+    if (textlessPages.length === totalPages
+      && (options.ocrMode === "off" || ocrCandidates.length === 0)) {
       throw new FileExtractionError(issue("PDF_TEXTLESS"));
     }
+    const warnings = textlessPages.length > 0
+      ? [`Pages ${textlessPages.join(", ")} do not contain selectable text.`]
+      : [];
+    if (limitWarningAdded) warnings.push("The PDF visual-asset limit was reached; additional visuals were omitted.");
+    if (ocrCandidates.length > 0) warnings.push("Review every OCR candidate before confirming the extraction.");
+    if (ocrLimitReached) warnings.push(`The ${MAX_OCR_PAGES}-page OCR limit was reached; additional pages were not recognized.`);
     return {
       text: pageTexts.join("\n\n"),
-      warnings: textlessPages.length > 0
-        ? [`Pages ${textlessPages.join(", ")} do not contain selectable text.`]
-        : [],
+      warnings,
+      assets,
+      pageCount: totalPages,
+      textlessPages,
+      ocrCandidates,
     };
   } catch (error) {
     if (error instanceof FileExtractionError) throw error;
@@ -308,9 +499,15 @@ export function htmlToGfm(html: string): string {
     headingStyle: "atx",
   });
   turndown.use(gfm);
-  turndown.addRule("omit-docx-images", {
+  turndown.addRule("controlled-docx-images", {
     filter: "img",
-    replacement: () => "",
+    replacement: (_content, node) => {
+      const element = node as HTMLImageElement;
+      const source = element.getAttribute("src") ?? "";
+      if (!/^asset:asset-[a-f0-9]{12}$/.test(source)) return "";
+      const alt = (element.getAttribute("alt") ?? "").replaceAll("[", "").replaceAll("]", "").trim();
+      return `![${alt}](${source})`;
+    },
   });
   turndown.addRule("deterministic-strikethrough", {
     filter: (node) => ["DEL", "S", "STRIKE"].includes(node.nodeName),
@@ -329,8 +526,56 @@ function safeDocxWarning(message: string): string {
 export async function extractDocxWithAdapter(
   bytes: ArrayBuffer,
   adapter: DocxConverterAdapter,
-): Promise<{ markdown: string; warnings: string[] }> {
+  hasher: HashAdapter | null = defaultHashAdapter(),
+  captureImages = true,
+): Promise<{ markdown: string; warnings: string[]; assets: VisualAsset[] }> {
   try {
+    const assetsByHash = new Map<string, VisualAsset>();
+    let imageOrder = 0;
+    const convertImage = async (image: DocxImageAdapter): Promise<{ src: string; alt?: string }> => {
+      if (!captureImages) return { src: "", ...(image.altText ? { alt: image.altText } : {}) };
+      const encoded = await image.read("base64");
+      let imageBytes: Uint8Array;
+      try {
+        imageBytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+      } catch {
+        throw new FileExtractionError(issue("DOCX_CONVERSION_FAILED"));
+      }
+      const sha256 = await hashBytes(
+        imageBytes.buffer.slice(imageBytes.byteOffset, imageBytes.byteOffset + imageBytes.byteLength),
+        hasher,
+      );
+      const id = `asset-${sha256.slice(0, 12)}`;
+      if (!assetsByHash.has(sha256)) {
+        const imageExtensions: Record<string, string> = {
+          "image/png": "png",
+          "image/jpeg": "jpg",
+          "image/gif": "gif",
+          "image/webp": "webp",
+          "image/svg+xml": "svg",
+          "image/tiff": "tiff",
+        };
+        const extension = imageExtensions[image.contentType.toLowerCase()] ?? "bin";
+        assetsByHash.set(sha256, {
+          id,
+          kind: "docx-media",
+          filename: `${id}.${extension}`,
+          mimeType: image.contentType || "application/octet-stream",
+          bytes: imageBytes,
+          byteCount: imageBytes.byteLength,
+          sha256,
+          order: imageOrder,
+          altText: image.altText?.trim() || undefined,
+          included: true,
+          decorative: false,
+          warnings: extension === "svg" || extension === "tiff" || extension === "bin"
+            ? ["This DOCX image is preserved but is not rendered directly in the workbench."]
+            : [],
+        });
+        imageOrder += 1;
+      }
+      return { src: `asset:${id}`, ...(image.altText ? { alt: image.altText } : {}) };
+    };
     const result = await adapter.convertToHtml(
       { arrayBuffer: bytes },
       {
@@ -338,12 +583,14 @@ export async function extractDocxWithAdapter(
         includeEmbeddedStyleMap: false,
         externalFileAccess: false,
         ignoreEmptyParagraphs: false,
+        convertImage,
       },
     );
     if (result.messages.some((message) => message.type === "error")) {
       throw new FileExtractionError(issue("DOCX_CONVERSION_FAILED"));
     }
-    const omittedImages = result.value.match(/<img\b/gi)?.length ?? 0;
+    const omittedImages = Array.from(result.value.matchAll(/<img\b[^>]*\bsrc=["']([^"']*)["'][^>]*>/gi))
+      .filter((match) => !/^asset:asset-[a-f0-9]{12}$/.test(match[1])).length;
     const markdown = htmlToGfm(result.value);
     if (markdown.trim().length === 0) {
       throw new FileExtractionError(issue("EMPTY_CONTENT"));
@@ -352,12 +599,11 @@ export async function extractDocxWithAdapter(
       markdown,
       warnings: [
         ...result.messages.map((message) => safeDocxWarning(message.message)),
-        ...(omittedImages === 0
-          ? []
-          : [omittedImages === 1
-            ? "An embedded image was omitted from DOCX extraction."
-            : "Embedded images were omitted from DOCX extraction."]),
+        ...(omittedImages === 0 ? [] : [omittedImages === 1
+          ? "An embedded image was omitted from DOCX extraction."
+          : `${omittedImages} embedded images were omitted from DOCX extraction.`]),
       ],
+      assets: [...assetsByHash.values()],
     };
   } catch (error) {
     if (error instanceof FileExtractionError) throw error;
@@ -366,7 +612,18 @@ export async function extractDocxWithAdapter(
 }
 
 const browserDocxAdapter: DocxConverterAdapter = {
-  convertToHtml: (input, options) => mammoth.convertToHtml(input, options),
+  convertToHtml: (input, options) => {
+    const { convertImage, ...safeOptions } = options;
+    const mammothOptions = {
+      ...safeOptions,
+      convertImage: mammoth.images.imgElement(async (image) => convertImage({
+        contentType: image.contentType,
+        altText: (image as unknown as { altText?: string }).altText,
+        read: (format: "base64") => image.read(format),
+      })),
+    };
+    return mammoth.convertToHtml(input, mammothOptions);
+  },
 };
 
 export async function extractFile(
@@ -374,26 +631,111 @@ export async function extractFile(
   dependencies: ExtractionDependencies = {},
 ): Promise<ExtractionResult> {
   const hasher = dependencies.hasher ?? defaultHashAdapter();
+  const extractionOptions = cloneExtractionOptions(dependencies.options ?? DEFAULT_EXTRACTION_OPTIONS);
+  const activeOcrAdapter = extractionOptions.ocrMode === "off" && !extractionOptions.ocrExtractedAssets
+    ? undefined
+    : dependencies.ocrAdapter ?? await import("./ocrBrowser").then(({ loadBrowserOcrAdapter }) => loadBrowserOcrAdapter());
   const originalHash = await hashBytes(accepted.originalBytes, hasher);
   let extractedText: string;
   let warnings: string[] = [];
 
-  if (accepted.format === "text" || accepted.format === "markdown") {
+  let pageCount: number | null = null;
+  let visualAssets: VisualAsset[] = [];
+  let ocrCandidates: OcrCandidate[] = [];
+  let latexProject: LatexProjectMetadata | undefined;
+  if (accepted.format === "text") {
     extractedText = decodeText(accepted.originalBytes);
+  } else if (accepted.format === "markdown") {
+    const markdown = await extractMarkdownMedia(
+      decodeText(accepted.originalBytes),
+      extractionOptions.extractEmbeddedImages,
+      hasher,
+    );
+    extractedText = markdown.text;
+    warnings = markdown.warnings;
+    visualAssets = markdown.assets;
+  } else if (accepted.format === "latex") {
+    extractedText = decodeText(accepted.originalBytes);
+    warnings = analyzeStandaloneLatex(extractedText);
+  } else if (accepted.format === "latex-project") {
+    const project = await extractLatexProject(new Uint8Array(accepted.originalBytes), hasher);
+    extractedText = project.text;
+    warnings = project.warnings;
+    visualAssets = extractionOptions.extractEmbeddedImages ? project.assets : [];
+    if (!extractionOptions.extractEmbeddedImages && project.assets.length > 0) {
+      warnings = [...warnings, "LaTeX visual assets were cataloged but not extracted because image extraction is off."];
+    }
+    latexProject = project.project;
   } else if (accepted.format === "pdf") {
     const adapter = dependencies.pdfAdapter
       ? dependencies.pdfAdapter
       : await import("./pdfBrowser").then(({ loadBrowserPdfAdapter }) => loadBrowserPdfAdapter());
-    const pdf = await extractPdfWithAdapter(new Uint8Array(accepted.originalBytes), adapter);
+    const pdf = await extractPdfWithAdapter(
+      new Uint8Array(accepted.originalBytes),
+      adapter,
+      extractionOptions,
+      hasher,
+      activeOcrAdapter,
+      dependencies.signal,
+      dependencies.onProgress,
+    );
     extractedText = pdf.text;
     warnings = pdf.warnings;
+    pageCount = pdf.pageCount;
+    visualAssets = pdf.assets;
+    ocrCandidates = pdf.ocrCandidates;
   } else {
     const docx = await extractDocxWithAdapter(
       accepted.originalBytes,
       dependencies.docxAdapter ?? browserDocxAdapter,
+      hasher,
+      extractionOptions.extractEmbeddedImages,
     );
     extractedText = docx.markdown;
     warnings = docx.warnings;
+    visualAssets = docx.assets;
+  }
+
+  if (extractionOptions.ocrExtractedAssets && activeOcrAdapter) {
+    const supportedMimeTypes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+    for (const asset of visualAssets) {
+      if (ocrCandidates.length >= MAX_OCR_PAGES) {
+        warnings = [...warnings, `The ${MAX_OCR_PAGES}-item OCR limit was reached; additional visual assets were not recognized.`];
+        break;
+      }
+      if (!asset.included || !supportedMimeTypes.has(asset.mimeType)) continue;
+      const recognized = await activeOcrAdapter.recognize({
+        bytes: asset.bytes,
+        width: asset.width ?? 0,
+        height: asset.height ?? 0,
+      }, {
+        pageNumber: asset.pageNumber ?? 0,
+        language: extractionOptions.ocrLanguage,
+        signal: dependencies.signal,
+        onProgress: (fraction) => dependencies.onProgress?.({
+          phase: "ocr",
+          completed: fraction,
+          total: 1,
+          message: `Recognizing ${asset.filename}…`,
+        }),
+      });
+      if (!recognized.text.trim()) continue;
+      ocrCandidates.push({
+        id: `ocr-${asset.id}`,
+        source: { kind: "asset", assetId: asset.id },
+        text: recognized.text,
+        reviewedText: recognized.text,
+        confidence: Math.max(0, Math.min(100, recognized.confidence)),
+        status: "pending",
+        engine: "tesseract.js",
+        engineVersion: recognized.engineVersion,
+        languageCode: extractionOptions.ocrLanguage.code,
+        languageHash: recognized.languageHash,
+      });
+    }
+    if (ocrCandidates.some((candidate) => candidate.source.kind === "asset")) {
+      warnings = [...warnings, "Review every visual-asset OCR candidate before confirming the extraction."];
+    }
   }
 
   const duplicateOf = dependencies.existingDocuments?.find(
@@ -404,6 +746,11 @@ export async function extractFile(
     format: accepted.format,
     extractedText,
     warnings,
+    pageCount,
+    visualAssets,
+    ocrCandidates,
+    extractionOptions,
+    ...(latexProject ? { latexProject } : {}),
     originalHash,
     extractedTextHash: await hashBytes(new TextEncoder().encode(extractedText).buffer, hasher),
     requiresReview: true,

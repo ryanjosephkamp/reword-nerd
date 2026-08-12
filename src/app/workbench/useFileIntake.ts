@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, type ChangeEvent, type DragEvent } from "react";
 import type { WorkspaceDocument } from "../../domain";
+import { cloneExtractionOptions } from "../../domain";
 import type { WorkbenchServices, WorkbenchState } from "./contracts";
 import type { WorkbenchAction } from "./reducer";
 import { safeExtractionMessage } from "./services";
@@ -13,7 +14,8 @@ interface FileIntake {
   onDragLeave(event: DragEvent<HTMLElement>): void;
   onDragOver(event: DragEvent<HTMLElement>): void;
   onDrop(event: DragEvent<HTMLElement>): void;
-  retry(documentId: string): void;
+  retry(documentId: string, optionsOverride?: import("../../domain").ExtractionOptions): void;
+  cancel(documentId: string): void;
 }
 
 export function useFileIntake(
@@ -28,6 +30,8 @@ export function useFileIntake(
   const nextUploadOrdinalRef = useRef(0);
   const knownHashesRef = useRef(new Map<string, string>());
   const intakeQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const nextProcessingOperationRef = useRef(1);
+  const controllersRef = useRef(new Map<string, AbortController>());
   useEffect(() => {
     stateRef.current = state;
     capacityRef.current = {
@@ -45,6 +49,12 @@ export function useFileIntake(
     for (const document of state.documents) {
       if (document.originalHash && !knownHashesRef.current.has(document.originalHash)) {
         knownHashesRef.current.set(document.originalHash, document.id);
+      }
+    }
+    for (const [documentId, controller] of controllersRef.current) {
+      if (!retainedIds.has(documentId)) {
+        controller.abort();
+        controllersRef.current.delete(documentId);
       }
     }
   }, [state]);
@@ -85,6 +95,10 @@ export function useFileIntake(
         extractedText: "",
         extractedTextHash: "",
         warnings: [],
+        pageCount: null,
+        visualAssets: [],
+        ocrCandidates: [],
+        extractionOptions: cloneExtractionOptions(stateRef.current.globalExtractionOptions),
         requiresReview: true,
         settingsOverride: {},
         contextWarningAcknowledged: false,
@@ -101,11 +115,17 @@ export function useFileIntake(
     const worker = async () => {
       while (cursor < admitted.length) {
         const current = admitted[cursor++];
-        dispatch({ type: "extraction/started", batchId, documentId: current.document.id });
+        const operationId = nextProcessingOperationRef.current++;
+        const controller = new AbortController();
+        controllersRef.current.set(current.document.id, controller);
+        dispatch({ type: "extraction/started", batchId, documentId: current.document.id, operationId });
         try {
           let extraction = await services.extract(
             current.result,
             Array.from(knownHashesRef.current, ([originalHash, id]) => ({ id, originalHash })),
+            current.document.extractionOptions,
+            controller.signal,
+            (progress) => dispatch({ type: "extraction/progress", documentId: current.document.id, operationId, progress }),
           );
           const duplicateOf = extraction.duplicateOf ?? knownHashesRef.current.get(extraction.originalHash);
           if (duplicateOf) {
@@ -122,15 +142,25 @@ export function useFileIntake(
             type: "extraction/succeeded",
             batchId,
             documentId: current.document.id,
+            operationId,
             result: extraction,
           });
         } catch (error) {
+          if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+            dispatch({ type: "extraction/cancelled", documentId: current.document.id, operationId });
+            continue;
+          }
           dispatch({
             type: "extraction/failed",
             batchId,
             documentId: current.document.id,
+            operationId,
             message: safeExtractionMessage(error),
           });
+        } finally {
+          if (controllersRef.current.get(current.document.id) === controller) {
+            controllersRef.current.delete(current.document.id);
+          }
         }
       }
     };
@@ -165,27 +195,48 @@ export function useFileIntake(
     void intake(Array.from(event.dataTransfer.files));
   }, [dispatch, intake]);
 
-  const retry = useCallback((documentId: string) => {
+  const retry = useCallback((documentId: string, optionsOverride?: import("../../domain").ExtractionOptions) => {
     const document = stateRef.current.documents.find((item) => item.id === documentId);
     if (!document) return;
-    dispatch({ type: "extraction/started", batchId: document.batchId, documentId });
+    controllersRef.current.get(documentId)?.abort();
+    const operationId = nextProcessingOperationRef.current++;
+    const controller = new AbortController();
+    controllersRef.current.set(documentId, controller);
+    dispatch({ type: "extraction/started", batchId: document.batchId, documentId, operationId });
     void document.original.arrayBuffer().then((originalBytes) => services.extract(
       { accepted: true, file: document.original, format: document.format, originalBytes },
       stateRef.current.documents
         .filter((item) => item.id !== documentId && item.originalHash)
         .map((item) => ({ id: item.id, originalHash: item.originalHash })),
+      optionsOverride ?? document.extractionOptions ?? stateRef.current.globalExtractionOptions,
+      controller.signal,
+      (progress) => dispatch({ type: "extraction/progress", documentId, operationId, progress }),
     )).then((result) => dispatch({
       type: "extraction/succeeded",
       batchId: document.batchId,
       documentId,
+      operationId,
       result,
-    })).catch((error) => dispatch({
-      type: "extraction/failed",
-      batchId: document.batchId,
-      documentId,
-      message: safeExtractionMessage(error),
-    }));
+    })).catch((error) => {
+      if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+        dispatch({ type: "extraction/cancelled", documentId, operationId });
+      } else {
+        dispatch({
+          type: "extraction/failed",
+          batchId: document.batchId,
+          documentId,
+          operationId,
+          message: safeExtractionMessage(error),
+        });
+      }
+    }).finally(() => {
+      if (controllersRef.current.get(documentId) === controller) controllersRef.current.delete(documentId);
+    });
   }, [dispatch, services]);
 
-  return { inputRef, addButtonRef, openFilePicker, onInputChange, onDragEnter, onDragLeave, onDragOver, onDrop, retry };
+  const cancel = useCallback((documentId: string) => {
+    controllersRef.current.get(documentId)?.abort();
+  }, []);
+
+  return { inputRef, addButtonRef, openFilePicker, onInputChange, onDragEnter, onDragLeave, onDragOver, onDrop, retry, cancel };
 }

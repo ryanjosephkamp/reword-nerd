@@ -50,8 +50,8 @@ test("captures the approved representative workbench at all native QA viewports"
   ] as const) {
     await page.setViewportSize({ width, height });
     if (width < 768) {
-      await page.getByRole("tab", { name: "PREVIEW" }).click();
-      await expect(page.getByRole("tab", { name: "PREVIEW" })).toHaveAttribute("aria-selected", "true");
+      await page.getByRole("tab", { name: "REVIEW" }).click();
+      await expect(page.getByRole("tab", { name: "REVIEW" })).toHaveAttribute("aria-selected", "true");
     }
     await assertViewportContained(page);
     await page.screenshot({ path: `${screenshotDirectory}/${name}`, fullPage: false, animations: "disabled" });
@@ -71,20 +71,15 @@ test("captures the built package preview without responsive clipping", async ({ 
     ["package-mobile-320x720.png", 320, 720],
   ] as const) {
     await page.setViewportSize({ width, height });
-    if (width < 768) await page.getByRole("tab", { name: "PREVIEW" }).click();
+    if (width < 768) await page.getByRole("tab", { name: "REVIEW" }).click();
     await assertViewportContained(page);
     const copyDecompose = page.getByRole("button", { name: /COPY.*DECOMPOSE/ });
-    const download = page.getByRole("button", { name: "DOWNLOAD ZIP" });
     await expect(copyDecompose).toHaveCount(1);
-    await expect(download).toHaveCount(1);
     await page.screenshot({ path: `${screenshotDirectory}/${name}`, fullPage: false, animations: "disabled" });
     await copyDecompose.scrollIntoViewIfNeeded();
     await expect(copyDecompose).toBeVisible();
     await assertViewportContained(page);
     await page.screenshot({ path: `${screenshotDirectory}/${name.replace("package-", "package-copy-")}`, fullPage: false, animations: "disabled" });
-    if (width < 768) {
-      await download.scrollIntoViewIfNeeded();
-      await expect(download).toBeVisible();
-    }
+    if (width < 768) await expect(page.getByRole("tab", { name: "SETTINGS" })).toBeVisible();
   }
 });

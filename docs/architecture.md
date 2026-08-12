@@ -22,8 +22,10 @@ File API / drop event
 
 The workbench accepts the files selected in the browser and first enforces
 format and queue limits. Text and Markdown are strictly decoded as UTF-8.
-DOCX content is converted locally to reviewable Markdown, and PDFs are read
-locally through the PDF parser's worker. The extraction layer computes
+DOCX content is converted locally to reviewable Markdown, PDFs are read through
+the local parser worker, and TeX/project ZIP sources are analyzed without
+execution. Optional visual extraction, page capture, and English OCR are
+explicit, bounded, local, and review-first. The extraction layer computes
 SHA-256 digests with Web Crypto, records safe warnings, and rejects files that
 cannot provide reviewable content.
 
@@ -61,12 +63,12 @@ delimiters without changing canonical stage semantics or markers.
 It creates a document key from a normalized name and source digest, builds all
 required per-document files, builds both combined companions from one immutable
 structured artifact, and records their SHA-256 hashes and strategy provenance
-in schema v2.
+in schema v3, including visual placement, OCR, and LaTeX project provenance.
 The archive uses deterministic entry ordering, a fixed timestamp, and fixed
 metadata so equivalent inputs create equivalent archive contents.
 
-Original uploads are stored without compression; generated Markdown, HTML, and
-JSON entries use DEFLATE level 9. JSZip produces a browser `Blob`. The accepted
+Original uploads and media are stored without compression; generated Markdown,
+HTML, and JSON entries use DEFLATE level 9. zip.js produces a browser `Blob`. The accepted
 Blob and structured artifacts remain revision-bound in memory for preview. An
 explicit download uses an object URL only long enough to trigger the browser
 download; any content, review, profile, or settings mutation invalidates it.
@@ -84,5 +86,5 @@ download; any content, review, profile, or settings mutation invalidates it.
 | `tests/` | Unit, component, archive, and Playwright browser coverage. |
 
 See [privacy](privacy.md), [model guidance](model-guidance/README.md),
-[extraction limitations](extraction-limitations.md), and [manifest v2](manifest-v2.md)
+[extraction limitations](extraction-limitations.md), and [manifest v3](manifest-v3.md)
 for the corresponding boundaries and current data contract.

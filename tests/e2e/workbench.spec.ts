@@ -81,7 +81,7 @@ function expectedKey(fixture: BrowserFixture): string {
   return `${base}--${sha256(fixture.buffer).slice(0, 12)}`;
 }
 
-test("mixed real formats produce a complete, previewed, byte-preserving schema-v2 prompt package", async ({ page }) => {
+test("mixed real formats produce a complete, previewed, byte-preserving schema-v3 prompt package", async ({ page }) => {
   // This catches browser extraction/export drift that unit-level parser and archive adapters cannot see.
   const runtimeErrors = monitorRuntime(page);
   const docx = await createDocxFixture();
@@ -132,10 +132,12 @@ test("mixed real formats produce a complete, previewed, byte-preserving schema-v
       settings: { tone: string; length: string };
       model: { promptStrategy: { id: string; version: string; referenceModel: string; reviewedAt: string } };
       prompts: Record<string, { path: string; sha256: string }>;
-      combined: { markdown: { path: string; sha256: string }; html: { path: string; sha256: string } };
+      visualAssets: { index: { path: string }; placementMap: { path: string } };
+      ocr: { path: string };
+      combined: { markdown: { path: string; sha256: string }; html: { path: string; sha256: string }; fullHtml: { status: string; path?: string } };
     }>;
   };
-  expect(manifest.schemaVersion).toBe(2);
+  expect(manifest.schemaVersion).toBe(3);
   expect(manifest.workflow.stages).toEqual(["decompose", "rewrite", "verify", "final"]);
   expect(Object.values(manifest.workflow.responseMarkers)).toEqual(markers);
   expect(manifest.documents).toHaveLength(4);
@@ -156,6 +158,10 @@ test("mixed real formats produce a complete, previewed, byte-preserving schema-v
       `documents/${key}/prompts/04-final.md`,
       `documents/${key}/combined-prompts.md`,
       `documents/${key}/combined-prompts.html`,
+      `documents/${key}/assets/index.md`,
+      `documents/${key}/assets/placement-map.json`,
+      `documents/${key}/ocr/candidates.json`,
+      ...(record!.combined.fullHtml.status === "generated" ? [`documents/${key}/combined-prompts-full.html`] : []),
     ];
     expectedPaths.push(...documentPaths);
     const original = await archive.file(record!.original.path)?.async("nodebuffer");
@@ -339,7 +345,7 @@ test("keyboard navigation, modal focus, live state, removal focus, and reduced m
   await openWorkbench(page);
   await upload(page, [textFixture, markdownFixture]);
   await waitForExtracted(page, markdownFixture, "stable Markdown fact");
-  const previewTab = page.getByRole("tab", { name: "PREVIEW" });
+  const previewTab = page.getByRole("tab", { name: "REVIEW" });
   await previewTab.focus();
   await page.keyboard.press("ArrowLeft");
   const filesTab = page.getByRole("tab", { name: "FILES" });
@@ -401,6 +407,8 @@ test("keyboard navigation, modal focus, live state, removal focus, and reduced m
   await retainedConfirm.focus();
   await page.keyboard.press("Enter");
   await expect(page.locator("[aria-live='polite']")).toHaveText("Review complete");
+  await previewTab.focus();
+  await page.keyboard.press("Enter");
   const build = page.getByRole("button", { name: "BUILD PACKAGE" });
   await expect(build).toBeEnabled();
   await build.focus();

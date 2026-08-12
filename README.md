@@ -59,10 +59,12 @@ If Chromium is not already available to Playwright, run
 
 ## Accepted files and limits
 
-The workbench accepts `.txt`, `.md`, `.markdown`, `.docx`, and `.pdf` files.
+The workbench accepts `.txt`, `.md`, `.markdown`, `.docx`, `.pdf`, `.tex`,
+`.ltx`, and safe `.zip` LaTeX projects.
 It admits at most 20 files, 20 MiB per file, and 100 MiB across the current
 queue. Plain text and Markdown must be valid UTF-8. PDF files must contain
-selectable text; the workbench does not perform OCR. See
+selectable text by default. Optional English OCR, embedded-image extraction,
+and PDF page captures are local, conservative, review-first features. See
 [extraction limitations](docs/extraction-limitations.md) for format-specific
 behavior.
 
@@ -108,13 +110,18 @@ per document. Each directory includes:
 - `combined-prompts.md`, containing the complete package runbook and all four
   exact prompts in safe four-or-more-backtick fences;
 - `combined-prompts.html`, a standalone black-on-white, no-network companion
-  with a Copy button for each exact prompt.
+  with a Copy button for each exact prompt;
+- `combined-prompts-full.html` when the data-URI version stays within the
+  encoded 150 MiB cap;
+- an `assets/` catalog, placement map, and included visual bytes;
+- `ocr/candidates.json` with reviewed OCR provenance;
+- for LaTeX project ZIPs, the safely extracted project tree under `project/`.
 
 The archive root also contains `README.md`, a document-by-document runbook,
 and `manifest.json`. The manifest records the selected profile, resolved
 settings, strategy provenance, context assessment, warnings, archive paths,
-and SHA-256 hashes. The current contract is [manifest v2](docs/manifest-v2.md);
-[manifest v1](docs/manifest-v1.md) remains historical.
+and SHA-256 hashes. The current contract is [manifest v3](docs/manifest-v3.md);
+[manifest v2](docs/manifest-v2.md) and [manifest v1](docs/manifest-v1.md) remain historical.
 
 ## Privacy and session behavior
 
@@ -146,7 +153,7 @@ local development and preview continue to use `/`.
 - [Architecture](docs/architecture.md)
 - [Model guidance](docs/model-guidance/README.md)
 - [Extraction limitations](docs/extraction-limitations.md)
-- [Manifest v2](docs/manifest-v2.md)
+- [Manifest v3](docs/manifest-v3.md)
 - [Directory structure](docs/directory-structure.md)
 - [Design system](docs/design-system.md)
 - [Contributing](CONTRIBUTING.md)

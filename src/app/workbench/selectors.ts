@@ -72,6 +72,12 @@ export function selectFirstExportBlocker(state: WorkbenchState): string | null {
   if (state.documents.some((document) => document.extractedText.trim().length === 0)) {
     return "Extracted text cannot be blank. Add text or remove the file.";
   }
+  if (state.documents.some((document) => document.ocrCandidates?.some((candidate) => candidate.status === "pending"))) {
+    return "Review every OCR candidate before export.";
+  }
+  if (state.documents.some((document) => document.format === "latex-project" && !document.latexProject?.mainFile)) {
+    return "Select the main LaTeX file before export.";
+  }
   if (state.documents.some((document) => document.status === "needs-review" || document.requiresReview)) {
     return "Review extracted content before export";
   }

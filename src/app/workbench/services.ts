@@ -11,7 +11,12 @@ const encoder = new TextEncoder();
 
 export const defaultWorkbenchServices: WorkbenchServices = {
   preflight: (files, capacity) => preflightFiles(files, capacity),
-  extract: (accepted, existingDocuments) => extractFile(accepted, { existingDocuments }),
+  extract: (accepted, existingDocuments, options, signal, onProgress) => extractFile(accepted, {
+    existingDocuments,
+    options,
+    signal,
+    onProgress,
+  }),
   hashText: (text) => hashBytes(encoder.encode(text).buffer),
   buildPackage: (inputs) => buildPromptPackage(inputs),
   download: (blob) => initiatePromptPackageDownload(blob),

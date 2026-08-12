@@ -22,9 +22,11 @@ reword-nerd/
 │   ├── extraction-limitations.md
 │   ├── manifest-v1.md
 │   ├── manifest-v2.md
+│   ├── manifest-v3.md
 │   ├── model-guidance/             # dated provider research + runtime parity
 │   ├── design-principles.md
 │   ├── design-system.md
+│   ├── design-qa.md
 │   └── design/references/          # approved visual references
 ├── src/
 │   ├── app/

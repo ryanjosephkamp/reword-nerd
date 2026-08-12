@@ -1,8 +1,15 @@
 import type { ContextAssessment } from "./context";
 import type { ModelProfile } from "./profiles";
 import type { RewriteSettings, SettingsOverride } from "./settings";
+import type {
+  ExtractionOptions,
+  LatexProjectMetadata,
+  OcrCandidate,
+  ProcessingProgress,
+  VisualAsset,
+} from "./media";
 
-export type DocumentFormat = "text" | "markdown" | "docx" | "pdf";
+export type DocumentFormat = "text" | "markdown" | "docx" | "pdf" | "latex" | "latex-project";
 export type DocumentStatus = "queued" | "extracting" | "needs-review" | "ready" | "blocked" | "error";
 
 export interface PromptSet {
@@ -21,8 +28,16 @@ export interface WorkspaceDocument {
   format: DocumentFormat;
   status: DocumentStatus;
   extractedText: string;
+  baseExtractedText?: string;
   extractedTextHash: string;
   warnings: string[];
+  pageCount?: number | null;
+  visualAssets?: VisualAsset[];
+  ocrCandidates?: OcrCandidate[];
+  extractionOptions?: ExtractionOptions;
+  latexProject?: LatexProjectMetadata;
+  processingProgress?: ProcessingProgress;
+  processingOperationId?: number;
   requiresReview: boolean;
   duplicateOf?: string;
   settingsOverride: SettingsOverride;

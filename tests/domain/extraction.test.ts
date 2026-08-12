@@ -377,12 +377,14 @@ describe("DOCX conversion", () => {
       },
     });
 
-    expect(optionsSeen).toEqual([{
+    expect(optionsSeen).toHaveLength(1);
+    expect(optionsSeen[0]).toMatchObject({
       styleMap: [],
       includeEmbeddedStyleMap: false,
       externalFileAccess: false,
       ignoreEmptyParagraphs: false,
-    }]);
+    });
+    expect((optionsSeen[0] as { convertImage?: unknown }).convertImage).toBeTypeOf("function");
     expect(result.markdown).toBe("## Converted");
     expect(result.warnings).toHaveLength(1);
     expect(result.warnings[0]).toMatch(/^DOCX conversion warning:/);
@@ -407,8 +409,8 @@ describe("DOCX conversion", () => {
     }
   });
 
-  it("omits embedded DOCX images from Markdown and warns when text remains", async () => {
-    // This catches data-image or binary references entering prompts instead of a bounded review warning.
+  it("omits uncontrolled DOCX image markup from Markdown and warns when text remains", async () => {
+    // This catches converter-bypassing data images entering prompts instead of a bounded review warning.
     const extraction = await import("../../src/domain/extraction");
     const result = await extraction.extractDocxWithAdapter(encoder.encode("docx").buffer, {
       convertToHtml: async () => ({

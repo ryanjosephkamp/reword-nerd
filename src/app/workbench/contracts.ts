@@ -9,9 +9,11 @@ import type {
 import type { DownloadResult, ExportDocumentInput, PromptPackageResult } from "../../export";
 import type { ModelProfile } from "../../domain/profiles";
 import type { RewriteSettings } from "../../domain/settings";
+import type { ExtractionOptions } from "../../domain/media";
+import type { ProcessingProgress } from "../../domain/media";
 
 export type MobileTab = "files" | "preview" | "settings";
-export type PreviewMode = "source" | "package";
+export type PreviewMode = "source" | "assets" | "package";
 export type BuiltPromptPackage = Extract<PromptPackageResult, { ok: true }>;
 
 export interface WorkbenchDocument extends WorkspaceDocument {
@@ -34,6 +36,7 @@ export interface WorkbenchState {
   documents: WorkbenchDocument[];
   selectedDocumentId: string | null;
   globalSettings: RewriteSettings;
+  globalExtractionOptions: ExtractionOptions;
   selectedProfileId: string;
   workingProfile: ModelProfile;
   customProfileLabel: string;
@@ -69,6 +72,9 @@ export interface WorkbenchServices {
   extract(
     accepted: PreflightAccepted,
     existingDocuments: readonly ExistingExtractedDocument[],
+    options?: ExtractionOptions,
+    signal?: AbortSignal,
+    onProgress?: (progress: ProcessingProgress) => void,
   ): Promise<ExtractionResult>;
   hashText(text: string): Promise<string>;
   buildPackage(inputs: readonly ExportDocumentInput[]): Promise<PromptPackageResult>;

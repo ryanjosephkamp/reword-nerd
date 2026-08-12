@@ -2,7 +2,7 @@ import decomposeTemplate from "../../prompts/01_decompose.md?raw";
 import rewriteTemplate from "../../prompts/02_rewrite.md?raw";
 import verifyTemplate from "../../prompts/03_verify.md?raw";
 import finalTemplate from "../../prompts/04_final.md?raw";
-import type { PromptSet } from "../domain/contracts";
+import type { DocumentFormat, PromptSet } from "../domain/contracts";
 import type {
   ModelProfile,
   PromptDelimiterStyle,
@@ -41,7 +41,54 @@ function artifact(name: string, contents: string, delimiterStyle: PromptDelimite
   return `===== BEGIN ${name} =====\n${contents}${separator}===== END ${name} =====`;
 }
 
-function sharedContext(settings: RewriteSettings, profile: ModelProfile, stage: PromptStage): string {
+export interface PromptAssetContext {
+  id: string;
+  filename: string;
+  mimeType: string;
+  pageNumber?: number;
+  sourcePath?: string;
+  caption?: string;
+  altText?: string;
+  included: boolean;
+}
+
+export interface PromptDocumentContext {
+  format: DocumentFormat;
+  assets: readonly PromptAssetContext[];
+  latexMainFile?: string | null;
+}
+
+const assetStageGuidance: Record<PromptStage, string> = {
+  decompose: "For this stage, inventory every included visual asset, its caption or description, the claim it supports, its source location, and any placement uncertainty.",
+  rewrite: "For this stage, place each required visual asset near the rewritten discussion it supports and preserve stable asset identifiers and figure references.",
+  verify: "For this stage, verify every included asset is referenced correctly, captions remain faithful, and no unsupported visual claim was introduced.",
+  final: "For this stage, repair missing or incorrect visual placement. Propose a clearly identified description only when the source supplied no caption or alt text.",
+};
+
+function documentFidelityContext(context: PromptDocumentContext, stage: PromptStage): string {
+  const included = context.assets.filter((asset) => asset.included);
+  const catalog = included.length === 0
+    ? "No extracted visual assets are included."
+    : included.map((asset) => [
+      asset.id,
+      asset.filename,
+      asset.sourcePath ? `source ${asset.sourcePath}` : undefined,
+      asset.pageNumber ? `page ${asset.pageNumber}` : undefined,
+      asset.caption ? `caption ${asset.caption}` : undefined,
+      asset.altText ? `alt ${asset.altText}` : "description missing",
+    ].filter(Boolean).join(" | ")).join("\n");
+  const latex = context.format === "latex" || context.format === "latex-project"
+    ? `\n\n## LaTeX Fidelity Contract\nPreserve LaTeX preambles, macros, math, citations, labels, references, paths, and figure environments unless an explicit requirement says otherwise. Main file: ${context.latexMainFile ?? "standalone or not yet selected"}. For a multi-file response, emit one safe block per rewritten TeX source using exactly:\n<<<FILE relative/path.tex>>>\nrewritten source\n<<<END FILE>>>\nDo not rewrite bibliography or binary asset bytes.`
+    : "";
+  return `## Visual Asset Workflow\n${assetStageGuidance[stage]}\nAttach the packaged files manually when the selected model interface supports image input. Otherwise use this catalog and the reviewed OCR text.\n\n${artifact("VISUAL ASSET CATALOG", catalog, "markdown")}${latex}`;
+}
+
+function sharedContext(
+  settings: RewriteSettings,
+  profile: ModelProfile,
+  stage: PromptStage,
+  documentContext?: PromptDocumentContext,
+): string {
   const customRequirements = settings.customRequirements || "None.";
   return `## Model Workflow
 Selected model: ${profile.label}
@@ -58,7 +105,7 @@ Tone: ${toneLabel(settings.tone)}
 Formality: ${formalityLabel(settings.formality)}
 Length: ${lengthLabel(settings.length)}
 Output language: ${settings.outputLanguage}
-${artifact("CUSTOM REQUIREMENTS", customRequirements, profile.promptStrategy.delimiterStyle)}`;
+${artifact("CUSTOM REQUIREMENTS", customRequirements, profile.promptStrategy.delimiterStyle)}${documentContext ? `\n\n${documentFidelityContext(documentContext, stage)}` : ""}`;
 }
 
 function promptForStage(
@@ -78,6 +125,7 @@ export function renderPromptSet(
   sourceText: string,
   settings: RewriteSettings,
   profile: ModelProfile,
+  documentContext?: PromptDocumentContext,
 ): PromptSet {
   const delimiterStyle = profile.promptStrategy.delimiterStyle;
   const source = artifact("SOURCE DOCUMENT", sourceText, delimiterStyle);
@@ -86,9 +134,9 @@ export function renderPromptSet(
   const verification = artifact("STAGE 3 VERIFICATION", responseMarkers.verify, delimiterStyle);
 
   return {
-    decompose: promptForStage("decompose", sharedContext(settings, profile, "decompose"), [source], profile),
-    rewrite: promptForStage("rewrite", sharedContext(settings, profile, "rewrite"), [source, decomposition], profile),
-    verify: promptForStage("verify", sharedContext(settings, profile, "verify"), [source, decomposition, rewrite], profile),
-    final: promptForStage("final", sharedContext(settings, profile, "final"), [source, decomposition, rewrite, verification], profile),
+    decompose: promptForStage("decompose", sharedContext(settings, profile, "decompose", documentContext), [source], profile),
+    rewrite: promptForStage("rewrite", sharedContext(settings, profile, "rewrite", documentContext), [source, decomposition], profile),
+    verify: promptForStage("verify", sharedContext(settings, profile, "verify", documentContext), [source, decomposition, rewrite], profile),
+    final: promptForStage("final", sharedContext(settings, profile, "final", documentContext), [source, decomposition, rewrite, verification], profile),
   };
 }

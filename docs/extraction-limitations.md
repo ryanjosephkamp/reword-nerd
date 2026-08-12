@@ -1,41 +1,51 @@
 # Extraction limitations
 
-The workbench extracts text so that it can be reviewed and used in the manual
-prompt package. Extraction is not a guarantee that a document's visual layout,
-embedded media, annotations, or every semantic feature is represented exactly.
-Review the extracted text before confirming it.
+The workbench extracts source material for human review and a manual prompt
+package. It cannot guarantee exact visual layout, reading order, caption
+association, or semantic recovery. Confirm text, assets, and OCR before export.
 
 ## Accepted formats
 
 | Format | Local handling | Important limitation |
 | --- | --- | --- |
 | `.txt` | Strict UTF-8 decode | Invalid UTF-8, NUL-containing, and empty content is rejected. |
-| `.md`, `.markdown` | Strict UTF-8 decode | The source is preserved as text; review any Markdown syntax that matters. |
-| `.docx` | OOXML validation, then local DOCX-to-HTML-to-Markdown conversion | Embedded images are omitted and produce a warning. Complex layouts and Word-specific features may not convert cleanly. |
-| `.pdf` | Text-layer extraction through the local PDF parser | Scanned or image-only PDFs cannot be reviewed because OCR is not provided. |
+| `.md`, `.markdown` | Strict UTF-8; optional inline raster data-image extraction | External URLs are never fetched. Data-image bytes stay excluded unless enabled. |
+| `.docx` | OOXML validation and local DOCX-to-Markdown conversion | Optional embedded-image extraction is best effort. Complex Word layout can drift. |
+| `.pdf` | Text layer; optional raster extraction, page capture, and OCR | PDF image operators and reading order are best effort. Review every asset and OCR candidate. |
+| `.tex`, `.ltx` | Strict UTF-8 and non-executing LaTeX analysis | No compilation, shell escape, macro execution, or remote dependency resolution occurs. |
+| `.zip` | Safe LaTeX project inspection and extraction | Only bounded, traversal-free, non-encrypted, non-link projects containing TeX are accepted. |
 
-## PDF behavior
+## PDF and OCR
 
-The PDF signature is checked before parsing. Password-protected, invalid,
-corrupt, parser-failed, and textless PDFs receive a safe blocked state. A
-textless PDF is not treated as a usable extraction even if it has visible page
-images. Remove the blocked file or replace it with a selectable-text version
-to continue exporting other documents.
+The PDF signature is checked before parsing. Password-protected, invalid, and
+corrupt files are blocked. Textless PDFs are blocked unless OCR is explicitly
+enabled. Embedded-image extraction is best effort because figures may be masks,
+fragments, or composited operators. Page capture is the higher-fidelity visual
+fallback. Page selection accepts `all` or ranges such as `1-3, 7`.
 
-## DOCX behavior
+OCR is off by default. Version 0.3.0 bundles English, runs Tesseract.js locally,
+caps recognition at 150 pages or extracted images, and produces editable
+candidates. OCR is never merged automatically: every candidate must be accepted
+or omitted before confirmation and export.
 
-DOCX files must be valid OOXML packages containing the expected Word parts.
-The converter does not fetch external files. Embedded images are deliberately
-omitted from the extracted Markdown and recorded as a warning. Check headings,
-lists, tables, tracked changes, footnotes, citations, equations, hyperlinks,
-and formatting that carry meaning before confirmation.
+## DOCX, Markdown, and LaTeX
 
-## File and queue limits
+DOCX conversion never fetches external files. Images are omitted by default;
+when enabled, supported bytes are deduplicated and referenced by stable asset
+IDs. Review tables, equations, footnotes, tracked changes, and complex layout.
+Markdown external image URLs remain source text only; supported inline raster
+data images may be extracted when enabled.
 
-- 20 files in a workbench session;
-- 20 MiB for an individual file;
-- 100 MiB across the accepted queue.
+LaTeX sources are preserved. Project ZIPs are limited to 500 entries, 25 MiB
+per entry, 100 MiB uncompressed total, and a 100:1 compression ratio. Traversal
+paths, links, duplicate names, encrypted entries, and archives without TeX are
+rejected. Main-file ambiguity, missing dependencies, and cycles remain visible.
+The workbench never compiles or executes LaTeX.
 
-The workbench rejects unsupported, empty, unreadable, or over-limit files
-without sending them elsewhere. A rejection or blocked extraction for one file
-does not invalidate already reviewed files.
+## Limits
+
+- 20 files, 20 MiB per file, and 100 MiB accepted input per session;
+- 200 visual assets and 100 MiB generated visual bytes per document;
+- 300 MiB generated media per exported package;
+- lightweight HTML inlines supported raster assets only through 128 KiB each;
+- the optional full HTML companion is omitted above an estimated 150 MiB.

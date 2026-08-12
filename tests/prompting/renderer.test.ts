@@ -136,4 +136,38 @@ describe("four-stage prompt rendering", () => {
     expect(promptSet.decompose).toContain("===== BEGIN CUSTOM REQUIREMENTS =====\nNone.\n===== END CUSTOM REQUIREMENTS =====");
     expect(promptSet.final).toContain("Selected model: Custom model");
   });
+
+  it("adds stage-specific figure placement and LaTeX fidelity instructions without altering canonical tasks", async () => {
+    // This catches assets being exported without prompting the model to inventory, place, verify, and preserve them.
+    const prompting = await import("../../src/prompting/renderPromptSet");
+    const settings = await import("../../src/domain/settings");
+    const profiles = await import("../../src/domain/profiles");
+    const profile = profiles.CURATED_MODEL_PROFILES.find((item) => item.id === "openai-general")!;
+    const context = {
+      format: "latex-project" as const,
+      assets: [{
+        id: "asset-figure1",
+        filename: "figure-1.png",
+        mimeType: "image/png",
+        pageNumber: 4,
+        sourcePath: "figures/figure-1.png",
+        caption: "Measured and predicted affinity",
+        altText: undefined,
+        included: true,
+      }],
+      latexMainFile: "main.tex",
+    };
+
+    const prompts = prompting.renderPromptSet("Source", settings.DEFAULT_SETTINGS, profile, context);
+
+    expect(prompts.decompose).toContain("inventory every included visual asset");
+    expect(prompts.rewrite).toContain("place each required visual asset near the rewritten discussion");
+    expect(prompts.verify).toContain("verify every included asset is referenced");
+    expect(prompts.final).toContain("repair missing or incorrect visual placement");
+    for (const prompt of Object.values(prompts)) {
+      expect(prompt).toContain("asset-figure1 | figure-1.png | source figures/figure-1.png | page 4");
+      expect(prompt).toContain("Preserve LaTeX preambles, macros, math, citations, labels, references, paths, and figure environments");
+      expect(prompt).toContain("<<<FILE relative/path.tex>>>");
+    }
+  });
 });

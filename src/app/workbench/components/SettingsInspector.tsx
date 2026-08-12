@@ -1,4 +1,5 @@
-import type { RewriteSettings, Tone, Formality, LengthPreference } from "../../../domain";
+import type { ExtractionOptions, RewriteSettings, Tone, Formality, LengthPreference, OcrMode } from "../../../domain";
+import { cloneExtractionOptions } from "../../../domain";
 import { CURATED_MODEL_PROFILES, MAX_CUSTOM_REQUIREMENTS_LENGTH } from "../../../domain";
 import type { WorkbenchState } from "../contracts";
 import { selectEditableSettings } from "../selectors";
@@ -11,6 +12,7 @@ interface SettingsInspectorProps {
   onProfileSelected(profileId: string): void;
   onProfileLabel(value: string): void;
   onContextDraft(value: string, parsed: number | null): void;
+  onExtractionOptionsChange(options: ExtractionOptions, reprocess: boolean): void;
   exportPanel?: React.ReactNode;
 }
 
@@ -32,6 +34,10 @@ export function SettingsInspector(props: SettingsInspectorProps) {
   };
   const contextDraft = props.state.customContextDraft || props.state.workingProfile.contextWindowTokens?.toString() || "";
   const invalidContext = contextDraft !== "" && (!/^\d+$/.test(contextDraft) || Number(contextDraft) <= 0);
+  const extraction = selected?.extractionOptions ?? props.state.globalExtractionOptions;
+  const extractionChange = <K extends keyof ExtractionOptions>(field: K, value: ExtractionOptions[K]) => {
+    props.onExtractionOptionsChange(cloneExtractionOptions({ ...extraction, [field]: value }), Boolean(selected));
+  };
   return <div className="settings-fields">
     {selected ? <label className="toggle-label">PER-FILE OVERRIDE
       <input type="checkbox" role="switch" checked={override} onChange={(event) => props.onOverrideEnabled(event.currentTarget.checked)} />
@@ -87,6 +93,43 @@ export function SettingsInspector(props: SettingsInspectorProps) {
         onChange={(event) => change("customRequirements", Array.from(event.currentTarget.value).slice(0, MAX_CUSTOM_REQUIREMENTS_LENGTH).join(""))}
       />
     </label>
+    <details className="processing-settings">
+      <summary>DOCUMENT PROCESSING</summary>
+      <p className="processing-help">Conservative defaults keep media extraction and OCR off. Changes to an uploaded file reprocess it locally.</p>
+      <label className="checkbox-row">
+        <input type="checkbox" checked={extraction.extractEmbeddedImages} onChange={(event) => extractionChange("extractEmbeddedImages", event.currentTarget.checked)} />
+        Extract embedded images
+      </label>
+      <label className="checkbox-row">
+        <input type="checkbox" checked={extraction.capturePageVisuals} onChange={(event) => extractionChange("capturePageVisuals", event.currentTarget.checked)} />
+        Capture PDF page visuals
+      </label>
+      {(extraction.extractEmbeddedImages || extraction.capturePageVisuals || extraction.ocrMode !== "off") ? <label>PDF pages
+        <input value={extraction.pageSelection} placeholder="all or 1-3, 7" onChange={(event) => extractionChange("pageSelection", event.currentTarget.value || "all")} />
+      </label> : null}
+      {extraction.capturePageVisuals ? <label>Page visual quality
+        <select value={extraction.pageCaptureQuality} onChange={(event) => extractionChange("pageCaptureQuality", event.currentTarget.value as ExtractionOptions["pageCaptureQuality"])}>
+          <option value="standard">Standard (conservative)</option>
+          <option value="high">High</option>
+        </select>
+      </label> : null}
+      <label>OCR
+        <select value={extraction.ocrMode} onChange={(event) => extractionChange("ocrMode", event.currentTarget.value as OcrMode)}>
+          <option value="off">Off</option>
+          <option value="textless-pages">Textless PDF pages</option>
+          <option value="all-pages">All selected PDF pages</option>
+        </select>
+      </label>
+      <label className="checkbox-row">
+        <input type="checkbox" checked={extraction.ocrExtractedAssets} disabled={!extraction.extractEmbeddedImages} onChange={(event) => extractionChange("ocrExtractedAssets", event.currentTarget.checked)} />
+        OCR extracted raster images
+      </label>
+      <label className="checkbox-row">
+        <input type="checkbox" checked={extraction.excludeDecorativeImages} onChange={(event) => extractionChange("excludeDecorativeImages", event.currentTarget.checked)} />
+        Exclude likely decorative images
+      </label>
+      <p className="processing-help">OCR uses bundled English locally, is capped at 150 pages or images, and always requires review before export.</p>
+    </details>
     {props.exportPanel}
   </div>;
 }

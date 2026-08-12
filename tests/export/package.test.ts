@@ -60,6 +60,144 @@ function documentInput(): ExportDocumentInput {
 }
 
 describe("prompt-package export", () => {
+  it("exports a reviewed LaTeX project tree under its document namespace", async () => {
+    // This catches preserving only the uploaded ZIP while omitting the safe, AI-usable project tree promised by schema v3.
+    const { buildPromptPackage } = await import("../../src/export");
+    const { extractFile, preflightFiles } = await import("../../src/domain");
+    const project = new JSZip();
+    project.file("main.tex", "\\documentclass{article}\n\\begin{document}\n\\input{section}\n\\end{document}\n");
+    project.file("section.tex", "Stable project text.\n");
+    const projectBytes = await project.generateAsync({ type: "uint8array" });
+    const original = upload("paper.zip", projectBytes);
+    const admitted = (await preflightFiles([original]))[0];
+    if (!admitted.accepted) throw new Error("safe fixture should be admitted");
+    const extraction = await extractFile(admitted);
+    const source = documentInput();
+    Object.assign(source, {
+      documentName: "paper.zip",
+      documentFormat: "latex-project",
+      original,
+      reviewedExtractedText: extraction.extractedText,
+      latexProject: extraction.latexProject,
+      visualAssets: extraction.visualAssets,
+      ocrCandidates: extraction.ocrCandidates,
+      extractionOptions: extraction.extractionOptions,
+    });
+
+    const result = await buildPromptPackage([source]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("safe LaTeX project should export");
+    const record = result.manifest.documents[0];
+    expect(record.latexProject).toMatchObject({ mainFile: "main.tex", projectRoot: `documents/${record.key}/project` });
+    const archive = await JSZip.loadAsync(result.blob);
+    await expect(archive.file(`documents/${record.key}/project/main.tex`)?.async("string")).resolves.toContain("\\documentclass{article}");
+    await expect(archive.file(`documents/${record.key}/project/section.tex`)?.async("string")).resolves.toBe("Stable project text.\n");
+  });
+
+  it("archives reviewed media, OCR provenance, and both companion HTML modes in schema v3", async () => {
+    // This catches package builds that expose figures in the UI but omit their bytes, placement, or review provenance from export.
+    const { buildPromptPackage } = await import("../../src/export");
+    const source = documentInput();
+    const assetBytes = new Uint8Array([137, 80, 78, 71, 4, 3, 2, 1]);
+    source.documentFormat = "pdf";
+    Object.assign(source, {
+      pageCount: 7,
+      extractionOptions: {
+        extractEmbeddedImages: true,
+        capturePageVisuals: true,
+        pageSelection: "all",
+        pageCaptureQuality: "standard",
+        ocrMode: "textless-pages",
+        ocrExtractedAssets: false,
+        ocrLanguage: { kind: "bundled", code: "eng", label: "English" },
+        excludeDecorativeImages: true,
+      },
+      visualAssets: [{
+        id: "asset-figure-one",
+        kind: "pdf-raster",
+        filename: "figure-one.png",
+        mimeType: "image/png",
+        bytes: assetBytes,
+        byteCount: assetBytes.byteLength,
+        sha256: "placeholder-revalidated-at-export",
+        order: 0,
+        pageNumber: 4,
+        width: 640,
+        height: 480,
+        bounds: { x: 0.1, y: 0.2, width: 0.7, height: 0.5 },
+        caption: "Measured and predicted affinity",
+        included: true,
+        decorative: false,
+        warnings: [],
+      }, {
+        id: "asset-decorative",
+        kind: "pdf-raster",
+        filename: "decorative.png",
+        mimeType: "image/png",
+        bytes: new Uint8Array([137, 80, 78, 71, 0]),
+        byteCount: 5,
+        sha256: "placeholder-revalidated-at-export",
+        order: 1,
+        pageNumber: 4,
+        included: false,
+        decorative: true,
+        warnings: ["Likely decorative."],
+      }],
+      ocrCandidates: [{
+        id: "ocr-page-6",
+        source: { kind: "page", pageNumber: 6 },
+        text: "raw OCR",
+        reviewedText: "reviewed OCR",
+        confidence: 89,
+        status: "accepted",
+        engine: "tesseract.js",
+        engineVersion: "7.0.0",
+        languageCode: "eng",
+        languageHash: "language-hash",
+      }],
+    });
+
+    const result = await buildPromptPackage([source]);
+
+    expect(result.ok ? null : result.error).toBeNull();
+    if (!result.ok) throw new Error("fixture should export");
+    expect(result.manifest).toMatchObject({
+      schemaVersion: 3,
+      package: { version: "0.3.0" },
+      documents: [{
+        processing: {
+          pageCount: 7,
+          options: { extractEmbeddedImages: true, ocrMode: "textless-pages" },
+        },
+        visualAssets: {
+          records: [{
+            id: "asset-figure-one",
+            path: expect.stringMatching(/\/assets\/asset-figure-one\.png$/),
+            pageNumber: 4,
+            sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+          }, { id: "asset-decorative", included: false, decorative: true }],
+        },
+        ocr: { records: [{ id: "ocr-page-6", status: "accepted", reviewedTextSha256: expect.stringMatching(/^[a-f0-9]{64}$/) }] },
+        combined: {
+          fullHtml: { status: "generated", path: expect.stringMatching(/combined-prompts-full\.html$/) },
+        },
+      }],
+    });
+    const record = result.manifest.documents[0];
+    const archive = await JSZip.loadAsync(result.blob, { checkCRC32: true });
+    expect(Array.from(await archive.file(record.visualAssets.records[0].path!)?.async("uint8array") ?? [])).toEqual(Array.from(assetBytes));
+    expect(record.visualAssets.records[1].path).toBeUndefined();
+    expect(Object.keys(archive.files).some((path) => path.includes("asset-decorative"))).toBe(false);
+    await expect(archive.file(record.visualAssets.index.path)?.async("string")).resolves.toContain("asset-figure-one");
+    await expect(archive.file(record.visualAssets.placementMap.path)?.async("string")).resolves.toContain('"pageNumber": 4');
+    await expect(archive.file(record.ocr.path)?.async("string")).resolves.toContain("reviewed OCR");
+    const artifact = result.artifacts[0] as typeof result.artifacts[number] & { fullHtml?: string };
+    expect(artifact.html).toContain("Visual assets");
+    expect(artifact.fullHtml).toContain("data:image/png;base64,");
+    expect(artifact.fullHtml).not.toMatch(/https?:\/\//);
+  });
+
   it.each(CURATED_MODEL_PROFILES)("accepts the $label profile family at the package boundary", async (profile) => {
     const { buildPromptPackage } = await import("../../src/export");
     const source = documentInput();
@@ -75,7 +213,7 @@ describe("prompt-package export", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("archives a confirmed document as a schema-v2 package with byte-preserved original", async () => {
+  it("archives a confirmed document as a schema-v3 package with byte-preserved original", async () => {
     // This catches omissions or transformations of the immutable original and reviewed extraction export contract.
     const { buildPromptPackage } = await import("../../src/export");
     const source = documentInput();
@@ -85,8 +223,8 @@ describe("prompt-package export", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("fixture should export");
     expect(result.filename).toBe("reword-nerd-prompt-package.zip");
-    expect(result.manifest.schemaVersion).toBe(2);
-    expect(result.manifest.package.version).toBe("0.2.0");
+    expect(result.manifest.schemaVersion).toBe(3);
+    expect(result.manifest.package.version).toBe("0.3.0");
     expect(result.manifest.documents).toHaveLength(1);
     expect(result.manifest.documents[0]).toMatchObject({
       key: "resume-notes--ea27ac66cf6a",
@@ -131,7 +269,7 @@ describe("prompt-package export", () => {
     expect(artifact.runbook).toMatchObject({
       documentKey: result.manifest.documents[0].key,
       originalDisplayName: source.documentName,
-      package: { version: "0.2.0" },
+      package: { version: "0.3.0" },
       model: {
         id: "openai-general",
         promptStrategy: { id: "openai-chatgpt-v1", version: "2026-08-11-v1" },
@@ -377,7 +515,8 @@ describe("prompt-package export", () => {
     const document = result.manifest.documents[0];
     expect(Object.keys(document)).toEqual([
       "key", "exportOrdinal", "originalDisplayName", "format", "original", "reviewedExtraction",
-      "settings", "model", "contextAssessment", "contextWarningAcknowledged", "prompts", "combined",
+      "settings", "model", "contextAssessment", "contextWarningAcknowledged", "prompts", "processing",
+      "visualAssets", "ocr", "combined",
     ]);
     expect(document.settings).toEqual(documentInput().resolvedSettings);
     expect(document.model).toEqual({
@@ -406,6 +545,10 @@ describe("prompt-package export", () => {
       ...(["decompose", "rewrite", "verify", "final"] as const).map((stage) => document.prompts[stage].path),
       document.combined.markdown.path,
       document.combined.html.path,
+      document.visualAssets.index.path,
+      document.visualAssets.placementMap.path,
+      document.ocr.path,
+      ...(document.combined.fullHtml.status === "generated" ? [document.combined.fullHtml.path] : []),
     ];
     const hashes = [
       document.original.sha256,
@@ -413,11 +556,19 @@ describe("prompt-package export", () => {
       ...(["decompose", "rewrite", "verify", "final"] as const).map((stage) => document.prompts[stage].sha256),
       document.combined.markdown.sha256,
       document.combined.html.sha256,
+      document.visualAssets.index.sha256,
+      document.visualAssets.placementMap.sha256,
+      document.ocr.sha256,
+      ...(document.combined.fullHtml.status === "generated" ? [document.combined.fullHtml.sha256] : []),
     ];
     expect(Object.keys(archive.files)).toEqual([
       "README.md",
+      document.visualAssets.index.path,
+      document.visualAssets.placementMap.path,
+      ...(document.combined.fullHtml.status === "generated" ? [document.combined.fullHtml.path] : []),
       document.combined.html.path,
       document.combined.markdown.path,
+      document.ocr.path,
       document.original.path,
       document.prompts.decompose.path,
       document.prompts.rewrite.path,

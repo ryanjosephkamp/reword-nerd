@@ -1,7 +1,13 @@
 import type { KeyboardEvent } from "react";
 import type { MobileTab } from "../contracts";
+import { FolderIcon, ReviewIcon, SettingsIcon } from "./Icons";
 
 const tabs: MobileTab[] = ["files", "preview", "settings"];
+const tabContent = {
+  files: { label: "FILES", Icon: FolderIcon },
+  preview: { label: "REVIEW", Icon: ReviewIcon },
+  settings: { label: "SETTINGS", Icon: SettingsIcon },
+} as const;
 
 export function MobileTabs({ active, onChange }: { active: MobileTab; onChange(tab: MobileTab): void }) {
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, tab: MobileTab) => {
@@ -18,7 +24,9 @@ export function MobileTabs({ active, onChange }: { active: MobileTab; onChange(t
   };
   return <nav className="mobile-tabs" aria-label="Workbench panels">
     <div role="tablist" aria-orientation="horizontal">
-      {tabs.map((tab) => <button
+      {tabs.map((tab) => {
+        const { Icon, label } = tabContent[tab];
+        return <button
         type="button"
         role="tab"
         id={`tab-${tab}`}
@@ -28,7 +36,8 @@ export function MobileTabs({ active, onChange }: { active: MobileTab; onChange(t
         key={tab}
         onClick={() => onChange(tab)}
         onKeyDown={(event) => onKeyDown(event, tab)}
-      >{tab.toUpperCase()}</button>)}
+      ><Icon /><span>{label}</span></button>;
+      })}
     </div>
   </nav>;
 }
