@@ -1,7 +1,7 @@
 import { useReducer } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { WorkspaceDocument } from "../../src/domain";
-import type { ExportDocumentInput, PromptPackageResult } from "../../src/export";
+import type { DocumentWorkbook, ExportDocumentInput, PromptPackageResult } from "../../src/export";
 import type { WorkbenchServices } from "../../src/app/workbench/contracts";
 import {
   createInitialWorkbenchState,
@@ -20,14 +20,15 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-function packageResult(blob: Blob): PromptPackageResult {
+function packageResult(blob: Blob, documentKey = "current"): PromptPackageResult {
+  const workbooks = [{ documentKey, originalDisplayName: `${documentKey}.md` } as DocumentWorkbook];
   return {
     ok: true,
     blob,
     filename: "reword-nerd-prompt-package.zip",
     manifest: {} as never,
-    workbooks: [],
-    artifacts: [],
+    workbooks,
+    artifacts: workbooks,
   };
 }
 
@@ -120,7 +121,7 @@ function ExportHarness({ services }: { services: WorkbenchServices }) {
     <output data-testid="dirty">{String(selectDirty(state))}</output>
     <output data-testid="revision">{state.revision}</output>
     <output data-testid="last-exported-revision">{state.lastExportedRevision}</output>
-    <output data-testid="artifact-count">{state.export.builtPackage?.artifacts.length ?? 0}</output>
+    <output data-testid="workbook-key">{state.export.builtPackage?.workbooks[0]?.documentKey ?? "none"}</output>
   </>;
 }
 
@@ -135,6 +136,7 @@ function testServices(
     hashText: async () => "unused",
     buildPackage,
     download,
+    downloadProgressCopy: () => ({ ok: true }),
   };
 }
 
@@ -187,9 +189,10 @@ describe("useExportPackage operation guards", () => {
       fireEvent.click(screen.getByRole("button", { name: button }));
       if (finishReview) fireEvent.click(screen.getByRole("button", { name: "Finish review" }));
 
-      await act(async () => staleBuild.resolve(packageResult(staleBlob)));
+      await act(async () => staleBuild.resolve(packageResult(staleBlob, "obsolete")));
 
       expect(download).not.toHaveBeenCalled();
+      expect(screen.getByTestId("workbook-key")).toHaveTextContent("none");
       expect(screen.getByTestId("dirty")).toHaveTextContent("true");
       expect(screen.getByTestId("last-exported-revision").textContent).not.toBe(
         screen.getByTestId("revision").textContent,
@@ -200,6 +203,7 @@ describe("useExportPackage operation guards", () => {
 
       expect(download).not.toHaveBeenCalled();
       expect(buildPackage).toHaveBeenCalledTimes(2);
+      expect(screen.getByTestId("workbook-key")).toHaveTextContent("current");
       assertCurrent(buildPackage.mock.calls[1][0][0]);
       expect(screen.getByTestId("dirty")).toHaveTextContent("true");
 

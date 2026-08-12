@@ -14,6 +14,7 @@ import type { ProcessingProgress } from "../../domain/media";
 
 export type MobileTab = "files" | "preview" | "settings";
 export type PreviewMode = "source" | "assets" | "package";
+export type PackageWorkflow = "one-shot" | "manual";
 export type BuiltPromptPackage = Extract<PromptPackageResult, { ok: true }>;
 
 export interface WorkbenchDocument extends WorkspaceDocument {
@@ -44,7 +45,8 @@ export interface WorkbenchState {
   overrideEnabled: Record<string, boolean>;
   mobileTab: MobileTab;
   previewMode: PreviewMode;
-  previewArtifactKey: string | null;
+  previewWorkflow: PackageWorkflow;
+  previewDocumentKey: string | null;
   settingsDrawerOpen: boolean;
   helpDialogOpen: boolean;
   quickStartDialogOpen: boolean;
@@ -82,5 +84,6 @@ export interface WorkbenchServices {
   hashText(text: string): Promise<string>;
   buildPackage(inputs: readonly ExportDocumentInput[]): Promise<PromptPackageResult>;
   download(blob: Blob): DownloadResult;
+  downloadProgressCopy(html: string, filename: string): DownloadResult;
   createDocumentId(): string;
 }

@@ -306,9 +306,13 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
         </div>
         <div className="preview-content">
           {state.previewMode === "package" && state.export.builtPackage ? <PackagePreview
-            artifacts={state.export.builtPackage.artifacts}
-            selectedDocumentKey={state.previewArtifactKey}
-            onSelect={(documentKey) => dispatch({ type: "preview/artifact-selected", documentKey })}
+            key={state.export.builtRevision}
+            workbooks={state.export.builtPackage.workbooks}
+            selectedDocumentKey={state.previewDocumentKey}
+            workflow={state.previewWorkflow}
+            onSelect={(documentKey) => dispatch({ type: "preview/document-selected", documentKey })}
+            onWorkflowChange={(workflow) => dispatch({ type: "preview/workflow-changed", workflow })}
+            downloadProgressCopy={services.downloadProgressCopy}
           /> : state.previewMode === "assets" ? <AssetGallery
             assets={selected?.visualAssets ?? []}
             onInclusionChange={(assetId, included) => { if (selected) dispatch({ type: "visual-asset/inclusion-changed", documentId: selected.id, assetId, included }); }}

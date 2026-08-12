@@ -1,5 +1,6 @@
 import { cloneExtractionOptions, DEFAULT_EXTRACTION_OPTIONS, DEFAULT_SETTINGS, type WorkspaceDocument } from "../../src/domain";
 import type { BuiltPromptPackage } from "../../src/app/workbench/contracts";
+import type { DocumentWorkbook } from "../../src/export";
 import {
   createInitialWorkbenchState,
   workbenchReducer,
@@ -36,14 +37,19 @@ function document(
   };
 }
 
-function builtPackage(): BuiltPromptPackage {
+function workbook(documentKey: string): DocumentWorkbook {
+  return { documentKey, originalDisplayName: `${documentKey}.md` } as DocumentWorkbook;
+}
+
+function builtPackage(documentKeys: readonly string[] = ["alpha"]): BuiltPromptPackage {
+  const workbooks = documentKeys.map(workbook);
   return {
     ok: true,
     blob: new Blob(["zip"]),
     filename: "reword-nerd-prompt-package.zip",
     manifest: {} as never,
-    workbooks: [],
-    artifacts: [],
+    workbooks,
+    artifacts: workbooks,
   };
 }
 
@@ -390,6 +396,14 @@ describe("workbench reducer", () => {
     expect(state.export.status).toBe("ready");
     expect(selectDirty(state)).toBe(true);
     expect(state.export.builtPackage?.blob).toBeInstanceOf(Blob);
+    expect(state).toMatchObject({
+      previewMode: "package",
+      previewWorkflow: "one-shot",
+      previewDocumentKey: "alpha",
+    });
+
+    state = workbenchReducer(state, { type: "preview/workflow-changed", workflow: "manual" });
+    expect(state).toMatchObject({ previewMode: "package", previewWorkflow: "manual", previewDocumentKey: "alpha" });
 
     state = workbenchReducer(state, { type: "export/download-started", revision: exportedRevision });
     state = workbenchReducer(state, { type: "export/download-succeeded", revision: exportedRevision });
@@ -404,6 +418,54 @@ describe("workbench reducer", () => {
     });
     expect(selectDirty(state)).toBe(true);
     expect(state.export.builtPackage).toBeUndefined();
+    expect(state).toMatchObject({
+      previewMode: "source",
+      previewWorkflow: "one-shot",
+      previewDocumentKey: null,
+    });
+  });
+
+  it("keeps tutorial state out of package invalidation and rejects stale download completion", () => {
+    let state = createInitialWorkbenchState();
+    state = workbenchReducer(state, {
+      type: "intake/accepted",
+      batchId: "batch-a",
+      documents: [{ document: document("alpha"), uploadOrdinal: 0 }],
+    });
+    const builtRevision = state.revision;
+    state = workbenchReducer(state, { type: "export/started", operationId: 1, revision: builtRevision });
+    state = workbenchReducer(state, {
+      type: "export/package-built",
+      builtPackage: builtPackage(["alpha", "beta"]),
+      operationId: 1,
+      revision: builtRevision,
+    });
+    state = workbenchReducer(state, { type: "preview/workflow-changed", workflow: "manual" });
+    state = workbenchReducer(state, { type: "preview/document-selected", documentKey: "beta" });
+    const packageBeforeTutorial = state.export.builtPackage;
+
+    state = workbenchReducer(state, { type: "tutorial/dismissed" });
+
+    expect(state.export.builtPackage).toBe(packageBeforeTutorial);
+    expect(state).toMatchObject({
+      previewMode: "package",
+      previewWorkflow: "manual",
+      previewDocumentKey: "beta",
+    });
+
+    state = workbenchReducer(state, { type: "export/download-started", revision: builtRevision });
+    state = workbenchReducer(state, {
+      type: "context/acknowledged",
+      documentId: "alpha",
+      acknowledged: false,
+    });
+    const invalidated = state;
+    state = workbenchReducer(state, { type: "export/download-succeeded", revision: builtRevision });
+
+    expect(state).toBe(invalidated);
+    expect(state.export.builtPackage).toBeUndefined();
+    expect(state.lastExportedRevision).not.toBe(builtRevision);
+    expect(selectDirty(state)).toBe(true);
   });
 
   it("starts with the Task 2 defaults without sharing mutable settings", () => {

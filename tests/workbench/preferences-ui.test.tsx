@@ -30,6 +30,7 @@ function services(): WorkbenchServices {
       error: { code: "ARCHIVE_GENERATION_FAILED" as const, message: "unused" },
     }),
     download: () => ({ ok: true }),
+    downloadProgressCopy: () => ({ ok: true }),
   };
 }
 

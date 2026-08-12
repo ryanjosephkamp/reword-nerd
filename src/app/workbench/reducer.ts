@@ -11,7 +11,7 @@ import {
   type ProcessingProgress,
   type WorkspaceDocument,
 } from "../../domain";
-import type { BuiltPromptPackage, MobileTab, PreviewMode, WorkbenchDocument, WorkbenchState } from "./contracts";
+import type { BuiltPromptPackage, MobileTab, PackageWorkflow, PreviewMode, WorkbenchDocument, WorkbenchState } from "./contracts";
 import { CURRENT_TUTORIAL_VERSION, type SavedPreferencesPatch } from "./preferences";
 
 type IntakeDocument = { document: WorkspaceDocument; uploadOrdinal: number };
@@ -55,7 +55,8 @@ export type WorkbenchAction =
   | { type: "context/acknowledged"; documentId: string; acknowledged: boolean }
   | { type: "mobile/tab-changed"; tab: MobileTab }
   | { type: "preview/mode-changed"; mode: PreviewMode }
-  | { type: "preview/artifact-selected"; documentKey: string }
+  | { type: "preview/workflow-changed"; workflow: PackageWorkflow }
+  | { type: "preview/document-selected"; documentKey: string }
   | { type: "drawer/changed"; open: boolean }
   | { type: "help/changed"; open: boolean }
   | { type: "tutorial/opened" }
@@ -105,7 +106,8 @@ export function createInitialWorkbenchState(preferences: SavedPreferencesPatch |
     overrideEnabled: {},
     mobileTab: "files",
     previewMode: "source",
-    previewArtifactKey: null,
+    previewWorkflow: "one-shot",
+    previewDocumentKey: null,
     settingsDrawerOpen: false,
     helpDialogOpen: false,
     quickStartDialogOpen: preferences?.tutorialVersion !== CURRENT_TUTORIAL_VERSION,
@@ -128,7 +130,8 @@ function changed(state: WorkbenchState, patch: Partial<WorkbenchState>): Workben
     revision: state.revision + 1,
     export: { status: "idle", safeMessage: "" },
     previewMode: "source",
-    previewArtifactKey: null,
+    previewWorkflow: "one-shot",
+    previewDocumentKey: null,
   };
 }
 
@@ -514,9 +517,12 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
     case "preview/mode-changed":
       if (action.mode === "package" && !state.export.builtPackage) return state;
       return { ...state, previewMode: action.mode };
-    case "preview/artifact-selected":
-      if (!state.export.builtPackage?.artifacts.some((artifact) => artifact.documentKey === action.documentKey)) return state;
-      return { ...state, previewArtifactKey: action.documentKey };
+    case "preview/workflow-changed":
+      if (!state.export.builtPackage || state.previewMode !== "package") return state;
+      return { ...state, previewWorkflow: action.workflow };
+    case "preview/document-selected":
+      if (!state.export.builtPackage?.workbooks.some((workbook) => workbook.documentKey === action.documentKey)) return state;
+      return { ...state, previewDocumentKey: action.documentKey };
     case "drawer/changed":
       return { ...state, settingsDrawerOpen: action.open };
     case "help/changed":
@@ -569,7 +575,8 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
         },
         mobileTab: "preview",
         previewMode: "package",
-        previewArtifactKey: action.builtPackage.artifacts[0]?.documentKey ?? null,
+        previewWorkflow: "one-shot",
+        previewDocumentKey: action.builtPackage.workbooks[0]?.documentKey ?? null,
         focusTarget: "package-preview",
         liveMessage: "Package ready.",
       };

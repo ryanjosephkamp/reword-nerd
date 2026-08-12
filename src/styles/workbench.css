@@ -327,6 +327,55 @@ button:disabled {
   padding: 24px;
 }
 
+.package-preview-controls {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: grid;
+  gap: 12px;
+  margin: -24px -24px 22px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-canvas);
+}
+
+.package-top-actions,
+.package-workflow-tabs,
+.package-prompt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.package-top-actions button,
+.package-workflow-tabs button,
+.package-prompt-actions button {
+  min-height: 40px;
+  padding: 7px 11px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.package-top-actions button {
+  border-color: var(--color-ready);
+  color: var(--color-ready);
+}
+
+.package-workflow-tabs {
+  margin-bottom: 20px;
+}
+
+.package-workflow-tabs button {
+  min-width: 116px;
+  color: var(--color-muted);
+}
+
+.package-workflow-tabs button[aria-selected="true"] {
+  border-color: var(--color-ready);
+  color: var(--color-ready);
+  background: var(--color-surface);
+}
+
 .package-preview h3,
 .package-preview h4 {
   margin: 0;
@@ -342,7 +391,6 @@ button:disabled {
   display: grid;
   max-width: 420px;
   gap: 7px;
-  margin-bottom: 20px;
   color: var(--color-muted);
   font-size: 12px;
 }
@@ -354,7 +402,8 @@ button:disabled {
 }
 
 .runbook-preview,
-.prompt-preview-block {
+.prompt-preview-block,
+.package-assets {
   margin-bottom: 24px;
   border: 1px solid var(--color-border);
   background: var(--color-surface);
@@ -383,6 +432,73 @@ button:disabled {
   border-color: var(--color-ready);
   color: var(--color-ready);
   font-size: 11px;
+}
+
+.prompt-preview-block > label {
+  display: block;
+  margin: 14px 16px 7px;
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.prompt-preview-block > textarea {
+  display: block;
+  width: calc(100% - 32px);
+  min-height: 150px;
+  margin: 0 16px 16px;
+  resize: vertical;
+  padding: 13px;
+  color: var(--color-text);
+  background: var(--color-canvas);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.prompt-preview-block > textarea[id*="response"] {
+  min-height: 116px;
+}
+
+.package-prompt-actions {
+  padding: 0 16px 4px;
+}
+
+.package-prerequisite,
+.package-stale {
+  margin: 12px 16px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.package-prerequisite {
+  color: var(--color-muted);
+}
+
+.package-stale {
+  padding-left: 10px;
+  border-left: 3px solid var(--color-review);
+  color: var(--color-review);
+  font-weight: 700;
+}
+
+.package-assets > h4 {
+  padding: 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.package-assets ul {
+  margin: 0;
+  padding: 16px 34px;
+  line-height: 1.6;
+}
+
+.package-copy-status {
+  min-height: 1.5em;
+  margin: 0;
+  color: var(--color-ready);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .package-preview pre {
@@ -1872,6 +1988,37 @@ button:disabled {
 
   .package-preview {
     padding: 14px;
+  }
+
+  .package-preview-controls {
+    margin: -14px -14px 20px;
+    padding: 14px;
+  }
+
+  .package-top-actions,
+  .package-prompt-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .package-top-actions button,
+  .package-prompt-actions button {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .package-workflow-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .package-workflow-tabs button {
+    min-width: 0;
+  }
+
+  .prompt-preview-block > textarea {
+    min-height: 180px;
+    font-size: 14px;
   }
 
   .context-meter {

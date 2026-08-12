@@ -139,7 +139,7 @@ describe("saved preference adapter", () => {
         contextWarningAcknowledged: true,
       }],
       overrideEnabled: { "secret-document": true },
-      previewArtifactKey: "secret-artifact",
+      previewDocumentKey: "secret-document-key",
     };
 
     const serialized = encodeSavedPreferences(snapshotPreferences(state));
