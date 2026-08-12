@@ -124,8 +124,8 @@ export interface ManifestDocumentRecord {
 }
 
 export interface PromptPackageManifest {
-  schemaVersion: 4;
-  package: { name: "reword-nerd"; version: "0.4.0"; format: "dual-mode-prompt-package" };
+  schemaVersion: 5;
+  package: { name: "reword-nerd"; version: "0.5.0"; format: "dual-mode-prompt-package" };
   archive: {
     entryOrder: "lexicographic-code-unit-ascending";
     timestamp: "1980-01-01T00:00:00.000Z";
@@ -158,6 +158,34 @@ export interface CombinedPromptRunbook {
   responseMarkers: PromptPackageManifest["workflow"]["responseMarkers"];
 }
 
+export type RunbookInline =
+  | Readonly<{ type: "text"; value: string }>
+  | Readonly<{ type: "code"; value: string }>
+  | Readonly<{ type: "link"; label: string; href: string }>;
+
+export type RunbookBlock =
+  | Readonly<{ type: "heading"; depth: 1 | 2; content: readonly RunbookInline[] }>
+  | Readonly<{ type: "paragraph"; content: readonly RunbookInline[] }>
+  | Readonly<{ type: "table"; headers: readonly string[]; rows: readonly (readonly RunbookInline[])[] }>
+  | Readonly<{ type: "list"; ordered: boolean; items: readonly (readonly RunbookInline[])[] }>
+  | Readonly<{ type: "code-block"; language?: string; value: string }>;
+
+export interface RunbookDocument {
+  type: "runbook-document";
+  blocks: readonly RunbookBlock[];
+}
+
+export interface DocumentWorkbookPaths {
+  readme: string;
+  oneShotMarkdown: string;
+  oneShotHtml: string;
+  manualMarkdown: string;
+  manualHtml: string;
+  combinedMarkdown: string;
+  combinedHtml: string;
+  combinedFullHtml?: string;
+}
+
 export type WorkbookResponseStage = "oneShot" | PromptStage;
 
 export interface WorkbookPromptState {
@@ -186,7 +214,11 @@ export interface DocumentWorkbook {
   documentKey: string;
   originalDisplayName: string;
   runbook: Readonly<CombinedPromptRunbook>;
+  /** Semantic source for v0.5+ workbooks. */
+  runbookDocument?: Readonly<RunbookDocument>;
   runbookMarkdown: string;
+  /** Immutable canonical archive paths for v0.5+ workbooks. */
+  paths?: Readonly<DocumentWorkbookPaths>;
   promptBundle: Readonly<PromptBundle>;
   promptBlocks: readonly Readonly<CombinedPromptBlock>[];
   oneShot: Readonly<{ prompt: string; markdown: string; html: string }>;

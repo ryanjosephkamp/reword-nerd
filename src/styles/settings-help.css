@@ -1,0 +1,163 @@
+.settings-help-field {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--color-text);
+  font-size: 14px;
+}
+
+.settings-help-label-row,
+.settings-help-legend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.settings-help-label-row > label,
+.settings-help-label-row > span {
+  flex: 1;
+}
+
+.settings-help-field.toggle-label {
+  display: grid;
+  min-height: 54px;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  gap: 0;
+  align-items: center;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.settings-help-field.toggle-label .settings-help-label-row {
+  display: contents;
+}
+
+.settings-help-field.toggle-label .settings-help-trigger {
+  justify-self: end;
+  margin-right: 56px;
+}
+
+.settings-help-field.toggle-label .toggle-track {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.processing-settings > .settings-help-field {
+  font-size: 13px;
+}
+
+.processing-settings {
+  position: relative;
+}
+
+.processing-settings > .settings-help-popover {
+  top: auto;
+  bottom: calc(100% - 8px);
+}
+
+.processing-settings > .settings-help-field.checkbox-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.processing-settings > .settings-help-field.checkbox-row .settings-help-label-row {
+  display: contents;
+}
+
+.processing-settings > .settings-help-field.checkbox-row input {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.processing-settings > .settings-help-field.checkbox-row label {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.processing-settings > .settings-help-field.checkbox-row .settings-help-trigger {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.processing-settings > .settings-help-field.checkbox-row .settings-help-popover {
+  grid-column: 1 / -1;
+}
+
+.settings-help-trigger,
+.settings-help-close {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border-color: var(--color-border);
+  color: var(--color-muted);
+}
+
+.settings-help-trigger {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.settings-help-trigger:hover,
+.settings-help-trigger[aria-expanded="true"],
+.settings-help-close:hover {
+  border-color: var(--color-ready);
+  color: var(--color-ready);
+}
+
+.settings-help-popover {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + 6px);
+  right: 0;
+  width: min(22rem, calc(100vw - 32px));
+  max-height: min(15rem, calc(100vh - 32px));
+  overflow: auto;
+  padding: 12px 38px 12px 12px;
+  border: 1px solid var(--color-ready);
+  border-radius: 3px;
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  box-shadow: 0 10px 24px rgb(0 0 0 / 35%);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.settings-help-popover p {
+  margin: 0;
+}
+
+.settings-help-close {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.settings-help-legend-row {
+  width: 100%;
+}
+
+@media (max-width: 767px) {
+  .settings-help-popover {
+    position: fixed;
+    top: 50%;
+    right: 16px;
+    bottom: auto;
+    left: 16px;
+    width: auto;
+    max-height: min(15rem, calc(100vh - 32px));
+    transform: translateY(-50%);
+  }
+}

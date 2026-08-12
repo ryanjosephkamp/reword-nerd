@@ -28,9 +28,10 @@ and major component families require explicit approval.
 | `--color-review` | `#f2b84b` | Review warning and pending-review state |
 | `--color-blocked` | `#ff667a` | Blocked/error state |
 
-No gradients, glows, or color substitutions are permitted. Borders are crisp,
-low-contrast rules; emphasis comes from hierarchy and the approved semantic
-colors rather than shadows.
+No CSS gradients, glows, or color substitutions are permitted in interface
+chrome. Borders are crisp, low-contrast rules; emphasis comes from hierarchy
+and the approved semantic colors rather than shadows. The supplied raster logo
+is approved brand artwork rather than an interface-surface effect.
 
 ## Typography and spacing
 
@@ -57,7 +58,7 @@ colors rather than shadows.
 
 - The desktop frame fills the viewport with a fixed header and footer.
 - Header: brand at left; centered `LOCAL SESSION` and `Files stay in this
-  browser`; compact utility icon buttons at right.
+  browser`; compact New session, Settings, Help, and Info icon buttons at right.
 - Main region: three columns. Files occupies about 24%, extracted-text preview
   about 50%, and parameters about 26%. Columns are separated with one-pixel
   `--color-border` rules.
@@ -67,7 +68,9 @@ colors rather than shadows.
 - Preview: heading row, amber review warning, one file tab, a line-numbered
   text editor, and a bottom metrics/context-meter strip.
 - Parameters: a per-file-override toggle, labelled selects, a labelled
-  textarea, then the large primary export action and privacy reassurance.
+  textarea, document processing, contextual help disclosures, then the large
+  primary export action and privacy reassurance. The desktop gear may collapse
+  this panel; Preview fills the freed width while Files retains its width.
 - Footer: file-status summary at left; saved state and version at right.
 
 ### Mobile workbench
@@ -104,10 +107,13 @@ colors rather than shadows.
 | Toggle | green compact track with `--color-text` thumb | Settings-tab equivalent | on, off, focus-visible, disabled |
 | Context meter | labelled percentage bar | stacked card-like meter | normal, warned, acknowledged |
 | Primary action | outlined green full-width action | full-width action above persistent navigation | enabled, hover, focus-visible, disabled, busy, export failure |
-| Quick start | focus-trapped first-visit dialog; Review settings primary | contained modal with Review settings primary and Add files secondary | first visit, replay, dismiss |
-| Help | scrollable workflow/privacy guide and replay action | scrollable modal above navigation | open, close, replay |
+| Quick start | focus-trapped first-visit dialog, local overview video, Review settings primary | contained modal with poster/transcript fallback and Add files secondary | first visit, replay, dismiss, reduced motion |
+| Help | scrollable chapter guide with lazy local Settings/Review/Package videos | scrollable modal above navigation | open, close, chapter switch, replay |
+| Info | branded version/product/creator dialog | opened from mobile utility disclosure | open, close, deliberate external navigation |
+| Settings help | question-mark hover/focus preview that pins on click | question-mark tap disclosure | preview, pinned, outside/Escape/X dismissal |
+| New session | header restart action and confirmation | mobile utility action and confirmation | open, cancel, confirm, busy invalidation |
 | Document processing | permanent Settings fieldset | independently scrollable Settings fieldset | defaults, reprocess, reset |
-| Package preview | One-shot/Manual tabs, document selector, copy/progress controls | contextual Package view with compact non-occluding controls | One-shot, Manual, stale, progress |
+| Package preview | RUNBOOK/ONE-SHOT/MANUAL tabs, document selector, copy/progress controls | contextual Package view with compact non-occluding controls | Runbook default, One-shot, Manual, stale, progress |
 | Status summary | desktop footer counts | compact inline footer | ready/review/blocked aggregate |
 
 All interactive controls need visible keyboard focus, a programmatic label,
@@ -125,6 +131,8 @@ text baseline in file rows.
 | outlined folder | file/open workspace utility |
 | outlined gear | settings utility |
 | circled question mark | help utility |
+| circled i | product and creator information |
+| counterclockwise arrow | confirmed new-session action |
 | plus | add files |
 | document/page | DOCX or general document |
 | markdown document | Markdown file |
@@ -176,23 +184,61 @@ are not replaced by this inventory.
 - `ALL CHANGES SAVED`, `v1.0.0`
 
 The version string in the visual reference is compositional sample copy. The
-current implementation renders its package version (`v0.4.0`) in that footer
+current implementation renders its package version (`v0.5.0`) in that footer
 position while preserving the same hierarchy and session-only meaning.
 
-## v0.4 interaction additions
+## v0.5 interaction additions
 
-- First visit opens a focus-trapped Quick start. Help provides a permanent,
-  expanded guide and replay action; replay/dismissal does not invalidate content.
+- First visit opens a focus-trapped Quick start with a non-autoplaying local
+  overview. Help provides Settings, Review, and Package chapters, local videos,
+  transcripts, and replay. Reduced motion replaces playback with static posters.
+- Quick start, Help, Info, Settings drawer, Reset saved preferences, and New
+  session share one modal overlay contract. X, Escape, and direct backdrop
+  activation dismiss; internal controls do not. Focus stays contained and
+  returns to the initiating control.
+- Every visible and conditional Settings control has a reusable question-mark
+  disclosure. Hover/focus previews guidance; click or tap pins one surface per
+  inspector until X, Escape, or outside activation dismisses it.
 - Empty Review explains why no editor is present and exposes **ADD FILES** through
   the existing hidden multi-file input.
 - Document Processing is always visible. At 320, 360, 390, and 412px, Settings
   owns an independent dynamic-viewport scroll area with bottom padding above the
   fixed navigation, so its last controls remain reachable.
-- Package preview keeps Source/Assets/Package separate from One-shot/Manual and
+- Package preview keeps Source/Assets/Package separate from
+  Runbook/One-shot/Manual and
   document selection. Narrow portrait uses stacked/compact top actions that do
   not cover the prompt being edited; Build then Download remains the export order.
-- The broader desktop/mobile composition is intentionally unchanged. These are
-  bounded workflow and portrait repairs, not a general redesign.
+- Runbook is selected after build and renders semantic package guidance. Prompt
+  tabs contain only editable prompt/response work. The sticky document-name row
+  sits below the toolbar with its divider separated from the filename.
+- Desktop Settings is visible by default and collapses without invalidating a
+  package or losing progress. Tablet keeps its drawer and mobile keeps its
+  Settings destination.
+- New session warns before clearing documents, extraction/review state, workbook
+  progress, and the package; confirmed reset preserves global saved Settings and
+  returns focus to Add files. Reset saved preferences retains its opposite scope.
+
+### Settings-help copy contract
+
+| Setting | Guidance scope |
+| --- | --- |
+| Per-file override | Replaces global rewrite values for the selected document; model profile and context limit remain global. |
+| Model profile | Applies dated family-specific prompt structure without contacting a provider. |
+| Model label | Names a local, self-hosted, fine-tuned, or unlisted Custom model in metadata. |
+| Context limit | Drives separate One-shot and Manual size estimates and warnings. |
+| Tone | Preserve source, academic, professional, technical, or plain. |
+| Formality | Preserve source, standard, or formal register. |
+| Length | Preserve source length, make it more concise, or expand it. |
+| Output language | Requests a final language or preserves the source language. |
+| Custom requirements | Adds up to 2,000 code points of extra constraints verbatim to prompts. |
+| Document processing | Controls local extraction and reprocesses an uploaded document when changed. |
+| Extract embedded images | Recovers supported figures/media for review and optional packaging. |
+| Capture PDF page visuals | Renders selected pages when separate layout/media recovery is insufficient. |
+| PDF pages | Limits page extraction, capture, and OCR to all pages or selected ranges. |
+| Page visual quality | Standard favors size/speed; High favors sharpness. |
+| OCR | Off, textless selected PDF pages, or all selected pages; bundled English OCR requires review. |
+| OCR extracted raster images | Also recognizes recovered raster assets when image extraction is enabled. |
+| Exclude likely decorative images | Uses conservative size/type heuristics; Assets remains the review authority. |
 
 ### Editor sample content
 
@@ -220,7 +266,7 @@ position while preserving the same hierarchy and session-only meaning.
 - `BUILD PACKAGE`
 - `3 files • 2 ready • 1 review`
 
-## Interaction model for later implementation
+## Implemented interaction model
 
 - Files are added through the add-file affordance or a drop zone; queue status
   changes are surfaced in the file item and status summary.

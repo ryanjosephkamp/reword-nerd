@@ -10,7 +10,7 @@ import {
 import type { WorkbenchState } from "./contracts";
 
 export const PREFERENCES_STORAGE_KEY = "reword-nerd:preferences:v1";
-export const CURRENT_TUTORIAL_VERSION = "0.4";
+export const CURRENT_TUTORIAL_VERSION = "0.5";
 export const MAX_CUSTOM_PROFILE_LABEL_LENGTH = 200;
 export const MAX_OUTPUT_LANGUAGE_LENGTH = 200;
 const PREFERENCES_SCHEMA_VERSION = 1 as const;

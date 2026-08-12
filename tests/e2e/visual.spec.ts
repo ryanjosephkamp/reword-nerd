@@ -21,7 +21,7 @@ async function assertViewportContained(page: Page) {
 test("captures the approved representative workbench at all native QA viewports", async ({ page }) => {
   // This catches responsive clipping and supplies fixed-size evidence for composition review.
   mkdirSync(screenshotDirectory, { recursive: true });
-  await page.goto("/");
+  await page.goto("./");
   await page.getByRole("dialog", { name: "Quick start" }).getByRole("button", { name: "Close quick start" }).click();
   await page.getByLabel("Add supported files").setInputFiles([asPayload(textFixture), asPayload(markdownFixture)]);
   const fileOptions = page.getByRole("listbox", { name: "Uploaded files" }).getByRole("option");
@@ -31,7 +31,7 @@ test("captures the approved representative workbench at all native QA viewports"
   await page.getByRole("button", { name: "Confirm review" }).click();
   await fileOptions.filter({ hasText: markdownFixture.name }).click();
   await expect(page.getByLabel(`Extracted text for ${markdownFixture.name}`)).toHaveValue(/stable Markdown fact/);
-  await page.getByLabel("Tone").selectOption("academic");
+  await page.getByLabel("Tone", { exact: true }).selectOption("academic");
 
   const palette = await page.evaluate(() => {
     const style = getComputedStyle(document.documentElement);
@@ -69,20 +69,35 @@ test("captures the approved representative workbench at all native QA viewports"
 });
 
 test("captures the built package preview without responsive clipping", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("./");
   await page.getByRole("dialog", { name: "Quick start" }).getByRole("button", { name: "Close quick start" }).click();
   await page.getByLabel("Add supported files").setInputFiles([asPayload(textFixture)]);
   await expect(page.getByLabel(`Extracted text for ${textFixture.name}`)).toHaveValue(/launch code is 314/);
   await page.getByRole("button", { name: "Confirm review" }).click();
   await page.getByRole("button", { name: "BUILD PACKAGE" }).click();
   await expect(page.getByRole("heading", { name: "PACKAGE PREVIEW" })).toBeFocused();
+  await expect(page.getByRole("tab", { name: "RUNBOOK" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { name: "reword-nerd prompt package" })).toBeVisible();
 
   for (const [name, width, height] of [
     ["package-desktop-1586x992.png", 1586, 992],
+    ["package-mobile-412x915.png", 412, 915],
+    ["package-mobile-390x844.png", 390, 844],
+    ["package-mobile-360x800.png", 360, 800],
     ["package-mobile-320x720.png", 320, 720],
   ] as const) {
     await page.setViewportSize({ width, height });
     if (width < 768) await page.getByRole("tab", { name: "REVIEW" }).click();
+    const runbookTab = page.getByRole("tab", { name: "RUNBOOK" });
+    if (await runbookTab.getAttribute("aria-selected") !== "true") await runbookTab.click();
+    await page.locator(".package-preview").evaluate((element) => { element.scrollTop = 0; });
+    const filenameGeometry = await page.evaluate(() => {
+      const heading = document.querySelector<HTMLElement>(".package-document-heading h3")!.getBoundingClientRect();
+      const sticky = document.querySelector<HTMLElement>(".package-sticky-header")!.getBoundingClientRect();
+      return { separation: sticky.bottom - heading.bottom, titleBottom: heading.bottom, divider: sticky.bottom };
+    });
+    expect(filenameGeometry.titleBottom).toBeLessThan(filenameGeometry.divider);
+    expect(filenameGeometry.separation).toBeGreaterThanOrEqual(12);
     await assertViewportContained(page);
     const oneShotCopy = page.getByRole("button", { name: "COPY ONE-SHOT PROMPT" });
     await expect(oneShotCopy).toHaveCount(1);
@@ -114,7 +129,7 @@ test("captures the built package preview without responsive clipping", async ({ 
 test("captures first visit, empty Review, and reachable Settings bottom at portrait QA widths", async ({ page }) => {
   mkdirSync(screenshotDirectory, { recursive: true });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
+  await page.goto("./");
   await page.screenshot({ path: `${screenshotDirectory}/quick-start-390x844.png`, fullPage: false, animations: "disabled" });
   await page.getByRole("dialog", { name: "Quick start" }).getByRole("button", { name: "Close quick start" }).click();
   await page.getByRole("tab", { name: "REVIEW" }).click();

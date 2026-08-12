@@ -1,6 +1,6 @@
 {
   "name": "reword-nerd",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -34,6 +34,7 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.62.1",
+    "@remotion/cli": "4.0.506",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.2",
     "@types/node": "26.2.0",
@@ -45,6 +46,7 @@
     "eslint-plugin-react-refresh": "0.5.3",
     "globals": "17.9.0",
     "jsdom": "30.0.1",
+    "remotion": "4.0.506",
     "typescript": "5.9.3",
     "typescript-eslint": "8.66.0",
     "vite": "8.2.1",

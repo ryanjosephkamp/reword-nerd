@@ -17,6 +17,9 @@ allowlist and may contain only:
 
 Corrupt, unsupported, oversized, or unknown fields are ignored or replaced with
 safe defaults. Reset saved preferences removes this one key after confirmation.
+**NEW SESSION** does not remove or rewrite it: that command clears the current
+in-memory work while keeping validated global preferences and the tutorial
+record.
 
 The key never contains source files, extracted text, assets, OCR text, review
 state, per-file overrides, generated prompts, model responses, workbook
@@ -31,9 +34,22 @@ or a service worker for workbench state.
 - There is no application backend or account system.
 - Selected files are not uploaded to a model provider.
 - There is no analytics, telemetry, remote font, remote library, or runtime
-  external request. Bundled PDF/OCR assets may be requested from the same app
-  origin when those local features are used.
+  request that sends document data off-device. Bundled PDF/OCR assets, the logo,
+  Help posters, and Help videos may be requested from the same app origin when
+  those local features are used.
 - A model profile is descriptive prompt metadata only; it creates no connection.
+
+The Info dialog offers exactly four deliberate external navigation
+destinations:
+
+- `https://github.com/ryanjosephkamp/reword-nerd`
+- `https://github.com/ryanjosephkamp/`
+- `https://ryanjosephkamp.github.io`
+- `https://github.com/sponsors/ryanjosephkamp`
+
+These links open only after user activation with `noopener noreferrer`. They
+are navigation choices, not application requests, and no document content is
+attached to them.
 
 The static host receives ordinary requests for application files, not selected
 documents. Browser extensions, device management, local development servers,
@@ -56,6 +72,10 @@ They make no external request and never save automatically. Lightweight files
 refer only to packaged sibling assets; full files use bounded data URLs. Copy
 uses the Clipboard API when available and otherwise selects the visible prompt
 for browser/manual copy. Downloaded progress stays in that downloaded file only.
+
+The branded logo, favicons, tutorial posters, and demo video files are
+application assets. Package creation does not copy them into the ZIP or any
+downloaded progress workbook.
 
 Opening or pasting a workbook into a model is a separate user action governed
 by that provider's terms, privacy settings, and account controls.

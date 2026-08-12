@@ -1,6 +1,7 @@
 import { cloneExtractionOptions, DEFAULT_EXTRACTION_OPTIONS, DEFAULT_SETTINGS, type WorkspaceDocument } from "../../src/domain";
 import type { BuiltPromptPackage } from "../../src/app/workbench/contracts";
 import type { DocumentWorkbook } from "../../src/export";
+import { CURRENT_TUTORIAL_VERSION } from "../../src/app/workbench/preferences";
 import {
   createInitialWorkbenchState,
   workbenchReducer,
@@ -54,6 +55,114 @@ function builtPackage(documentKeys: readonly string[] = ["alpha"]): BuiltPromptP
 }
 
 describe("workbench reducer", () => {
+  it("starts with the desktop Settings panel expanded without making the session dirty", () => {
+    // This catches the desktop inspector starting collapsed or view-only state changing export revision.
+    let state = createInitialWorkbenchState();
+    expect(state.desktopSettingsExpanded).toBe(true);
+    expect(selectDirty(state)).toBe(false);
+
+    state = workbenchReducer(state, { type: "desktop/settings-expanded", expanded: false });
+    expect(state.desktopSettingsExpanded).toBe(false);
+    expect(state.revision).toBe(0);
+    expect(selectDirty(state)).toBe(false);
+  });
+
+  it("opens only one overlay and cancels the prior surface", () => {
+    // This catches independently managed dialogs stacking and trapping focus twice.
+    let state = createInitialWorkbenchState({ tutorialVersion: CURRENT_TUTORIAL_VERSION });
+    expect(state.activeOverlay).toBeNull();
+
+    state = workbenchReducer(state, { type: "overlay/opened", overlay: "help" });
+    expect(state.activeOverlay).toBe("help");
+    state = workbenchReducer(state, { type: "overlay/opened", overlay: "info" });
+    expect(state.activeOverlay).toBe("info");
+    state = workbenchReducer(state, { type: "overlay/closed" });
+    expect(state.activeOverlay).toBeNull();
+  });
+
+  it("starts a clean new session while preserving global preferences", () => {
+    // This catches New session wiping saved preferences or leaving recoverable document/package state behind.
+    let state = createInitialWorkbenchState({
+      selectedProfileId: "custom",
+      customProfileLabel: "Local 14B",
+      contextWindowTokens: 32_768,
+      globalSettings: { ...DEFAULT_SETTINGS, tone: "technical", customRequirements: "Keep citations." },
+      processing: { ...DEFAULT_EXTRACTION_OPTIONS, capturePageVisuals: true },
+      tutorialVersion: CURRENT_TUTORIAL_VERSION,
+    });
+    state = workbenchReducer(state, {
+      type: "intake/accepted",
+      batchId: "batch-a",
+      documents: [{ document: document("alpha"), uploadOrdinal: 0 }],
+    });
+    const builtRevision = state.revision;
+    state = workbenchReducer(state, { type: "export/started", operationId: 9, revision: builtRevision });
+    state = workbenchReducer(state, {
+      type: "export/package-built",
+      operationId: 9,
+      revision: builtRevision,
+      builtPackage: builtPackage(),
+    });
+    state = workbenchReducer(state, { type: "session/reset-requested" });
+    expect(state.activeOverlay).toBe("new-session");
+
+    state = workbenchReducer(state, { type: "session/reset-confirmed" });
+    expect(state.documents).toEqual([]);
+    expect(state.selectedDocumentId).toBeNull();
+    expect(state.overrideEnabled).toEqual({});
+    expect(state.editor).toEqual({});
+    expect(state.intake).toEqual({ dragging: false, activeBatchId: null, issues: [] });
+    expect(state.export.builtPackage).toBeUndefined();
+    expect(state.previewMode).toBe("source");
+    expect(state.previewDocumentKey).toBeNull();
+    expect(state.mobileTab).toBe("files");
+    expect(state.focusTarget).toBe("upload");
+    expect(state.liveMessage).toBe("New session ready. Settings kept.");
+    expect(state.workingProfile.contextWindowTokens).toBe(32_768);
+    expect(state.customProfileLabel).toBe("Local 14B");
+    expect(state.globalSettings).toMatchObject({ tone: "technical", customRequirements: "Keep citations." });
+    expect(state.globalExtractionOptions.capturePageVisuals).toBe(true);
+    expect(state.tutorialSeenVersion).toBe(CURRENT_TUTORIAL_VERSION);
+    expect(state.lastExportedRevision).toBe(state.revision);
+    expect(selectDirty(state)).toBe(false);
+  });
+
+  it("rejects late async completions after a new session generation begins", () => {
+    // This catches stale extraction and package operations repopulating a reset session.
+    let state = createInitialWorkbenchState({ tutorialVersion: CURRENT_TUTORIAL_VERSION });
+    state = workbenchReducer(state, {
+      type: "intake/accepted",
+      batchId: "batch-a",
+      documents: [{ document: document("alpha", "extracting"), uploadOrdinal: 0 }],
+    });
+    const staleRevision = state.revision;
+    state = workbenchReducer(state, { type: "export/started", operationId: 4, revision: staleRevision });
+    state = workbenchReducer(state, { type: "session/reset-confirmed" });
+    const cleanState = state;
+
+    state = workbenchReducer(state, {
+      type: "extraction/succeeded",
+      batchId: "batch-a",
+      documentId: "alpha",
+      result: {
+        format: "markdown",
+        extractedText: "late",
+        warnings: [],
+        pageCount: null,
+        originalHash: "late-original",
+        extractedTextHash: "late-text",
+        requiresReview: true,
+      },
+    });
+    state = workbenchReducer(state, {
+      type: "export/package-built",
+      operationId: 4,
+      revision: staleRevision,
+      builtPackage: builtPackage(),
+    });
+    expect(state).toBe(cleanState);
+  });
+
   it("uses the v0.4 media defaults and invalidates reviewed media when options change", () => {
     // This catches embedded-image extraction becoming default-off, optional OCR becoming implicit, or reviewed media surviving changed inputs.
     let state = createInitialWorkbenchState();
@@ -398,7 +507,7 @@ describe("workbench reducer", () => {
     expect(state.export.builtPackage?.blob).toBeInstanceOf(Blob);
     expect(state).toMatchObject({
       previewMode: "package",
-      previewWorkflow: "one-shot",
+      previewWorkflow: "runbook",
       previewDocumentKey: "alpha",
     });
 
@@ -420,7 +529,7 @@ describe("workbench reducer", () => {
     expect(state.export.builtPackage).toBeUndefined();
     expect(state).toMatchObject({
       previewMode: "source",
-      previewWorkflow: "one-shot",
+      previewWorkflow: "runbook",
       previewDocumentKey: null,
     });
   });

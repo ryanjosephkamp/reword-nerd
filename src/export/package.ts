@@ -10,7 +10,9 @@ import {
   type VisualAsset,
 } from "../domain";
 import type { ModelFamily } from "../domain/profiles";
+import { readSafeLatexProjectFiles } from "../domain/latex";
 import { responseMarkers } from "../prompting/renderPromptSet";
+import { APP_VERSION } from "../version";
 import type {
   ArchiveAdapter,
   ExportDependencies,
@@ -21,8 +23,8 @@ import type {
   PromptPackageResult,
 } from "./contracts";
 import { extensionForFormat, isSafeArchivePath, normalizeDocumentBase, stableCompare } from "./paths";
-import { createDocumentWorkbook } from "./artifacts";
-import { readSafeLatexProjectFiles } from "../domain/latex";
+import { createDocumentWorkbook, escapeMarkdownText } from "./artifacts";
+import { createRunbookDocument, serializeRunbookMarkdown } from "./runbook";
 
 const textEncoder = new TextEncoder();
 const fixedDate = new Date(Date.UTC(1980, 0, 1));
@@ -455,18 +457,18 @@ function pathsFor(key: string, format: ExportDocumentInput["documentFormat"]): R
   return {
     original: `${root}/original.${extension}`,
     reviewedExtraction: `${root}/reviewed-extraction.md`,
-    oneShot: `${root}/prompts/00-one-shot.md`,
-    decompose: `${root}/prompts/01-decompose.md`,
-    rewrite: `${root}/prompts/02-rewrite.md`,
-    verify: `${root}/prompts/03-verify.md`,
-    final: `${root}/prompts/04-final.md`,
-    oneShotMarkdown: `${root}/one-shot-prompt.md`,
-    oneShotHtml: `${root}/one-shot-prompt.html`,
-    manualMarkdown: `${root}/manual-prompts.md`,
-    manualHtml: `${root}/manual-prompts.html`,
-    combinedMarkdown: `${root}/combined-prompts.md`,
-    combinedHtml: `${root}/combined-prompts.html`,
-    combinedFullHtml: `${root}/combined-prompts-full.html`,
+    oneShot: `${root}/one-shot/00-one-shot.md`,
+    decompose: `${root}/manual-prompts/01-decompose.md`,
+    rewrite: `${root}/manual-prompts/02-rewrite.md`,
+    verify: `${root}/manual-prompts/03-verify.md`,
+    final: `${root}/manual-prompts/04-final.md`,
+    oneShotMarkdown: `${root}/one-shot/one-shot-prompt.md`,
+    oneShotHtml: `${root}/one-shot/one-shot-prompt.html`,
+    manualMarkdown: `${root}/manual-prompts/manual-prompts.md`,
+    manualHtml: `${root}/manual-prompts/manual-prompts.html`,
+    combinedMarkdown: `${root}/combined-prompts/combined-prompts.md`,
+    combinedHtml: `${root}/combined-prompts/combined-prompts.html`,
+    combinedFullHtml: `${root}/combined-prompts/combined-prompts-full.html`,
     assetIndex: `${root}/assets/index.md`,
     placementMap: `${root}/assets/placement-map.json`,
     ocrCandidates: `${root}/ocr/candidates.json`,
@@ -558,14 +560,14 @@ function manifestFor(prepared: readonly PreparedDocument[]): PromptPackageManife
         combined: {
           markdown: { path: paths.combinedMarkdown, sha256: "" },
           html: { path: paths.combinedHtml, sha256: "" },
-          fullHtml: { status: "not-generated", reason: "encoded-size-limit" },
+          fullHtml: { status: "generated", path: paths.combinedFullHtml, sha256: "" },
         },
       },
     };
   });
   return {
-    schemaVersion: 4,
-    package: { name: "reword-nerd", version: "0.4.0", format: "dual-mode-prompt-package" },
+    schemaVersion: 5,
+    package: { name: "reword-nerd", version: APP_VERSION, format: "dual-mode-prompt-package" },
     archive: {
       entryOrder: "lexicographic-code-unit-ascending",
       timestamp: fixedTimestamp,
@@ -583,46 +585,6 @@ function manifestFor(prepared: readonly PreparedDocument[]): PromptPackageManife
     },
     documents,
   };
-}
-
-function createRunbook(manifest: PromptPackageManifest): string {
-  const lines = [
-    "# reword-nerd prompt package",
-    "",
-    "This package supports local One-shot and Manual rewriting workflows. It was generated locally and makes no provider call.",
-    "Open OPEN-ME.html for immediate document entry points. No exported HTML makes network requests or stores document data automatically.",
-    "",
-    "| Document key | Original | One-shot | Manual | Combined | Full HTML |",
-    "| --- | --- | --- | --- | --- | --- |",
-    ...manifest.documents.map((document) => `| ${document.key} | ${document.original.path} | ${document.workbooks.oneShot.html.path} | ${document.workbooks.manual.html.path} | ${document.workbooks.combined.html.path} | ${document.workbooks.combined.fullHtml.status === "generated" ? document.workbooks.combined.fullHtml.path : "Not generated: encoded size limit"} |`),
-  ];
-  for (const document of manifest.documents) {
-    lines.push(
-      "",
-      `## ${document.key}`,
-      `Selected model: ${document.model.label}`,
-      `Reference model: ${document.model.promptStrategy.referenceModel}`,
-      `Guidance version: ${document.model.promptStrategy.version}`,
-      `Workflow note: ${document.model.workflowNote}`,
-      `Resolved settings: ${JSON.stringify(document.settings)}`,
-      `Context estimates: One-shot ${document.contextAssessment.oneShotWorkflowTokens}; Manual ${document.contextAssessment.manualWorkflowTokens}; known limit: ${document.contextAssessment.contextWindowTokens ?? "unknown"}; required Manual warning acknowledged: ${document.contextAssessment.acknowledgmentRequired ? (document.contextWarningAcknowledged ? "yes" : "no") : "not required"}.`,
-      `Reviewed extraction: ${document.reviewedExtraction.path}`,
-      `Canonical Manual prompts: ${document.prompts.decompose.path}; ${document.prompts.rewrite.path}; ${document.prompts.verify.path}; ${document.prompts.final.path}.`,
-      `Visual assets: ${document.visualAssets.records.filter((asset) => asset.included).length} included, ${document.visualAssets.records.filter((asset) => !asset.included).length} omitted; OCR records: ${document.ocr.records.length}; page count: ${document.processing.pageCount ?? "not applicable"}.`,
-      "When the model interface supports image input, attach included assets using the filenames in assets/index.md. Otherwise provide the asset catalog and reviewed OCR text. Preserve every stable asset ID and place each figure near the relevant rewritten discussion.",
-      `One-shot flow: copy ${document.prompts.oneShot.path} into a new conversation. Expect only the marked final document and compact fidelity audit; intermediate reasoning remains internal.`,
-      "Manual flow: start a new conversation; run Stage 1; copy its response into the Stage 1 marker in Stage 2; run Stage 2; fill both prior markers in Stage 3; run Stage 3; fill all three markers in Stage 4; run Stage 4; review the final output.",
-      `Stage 1 marker: ${manifest.workflow.responseMarkers.stage1}`,
-      `Stage 2 marker: ${manifest.workflow.responseMarkers.stage2}`,
-      `Stage 3 marker: ${manifest.workflow.responseMarkers.stage3}`,
-    );
-  }
-  lines.push(
-    "",
-    "Replace only the response markers and keep instruction/source blocks intact.",
-    "",
-  );
-  return lines.join("\n");
 }
 
 function escapeHtml(value: string): string {
@@ -779,7 +741,7 @@ export async function buildPromptPackage(
         "",
         ...(includedAssets.length === 0
           ? ["No extracted visual assets are included."]
-          : record.visualAssets.records.filter((asset) => asset.included).map((asset) => `- **${asset.id}** — ${asset.path}; ${asset.sourcePath ? `source ${asset.sourcePath}` : asset.pageNumber ? `page ${asset.pageNumber}` : "document"}; caption: ${asset.caption ?? "not supplied"}; alt text: ${asset.altText ?? "not supplied"}`)),
+          : record.visualAssets.records.filter((asset) => asset.included).map((asset) => `- **${escapeMarkdownText(asset.id)}** — ${escapeMarkdownText(asset.path ?? "unavailable")}; ${asset.sourcePath ? `source ${escapeMarkdownText(asset.sourcePath)}` : asset.pageNumber ? `page ${asset.pageNumber}` : "document"}; caption: ${escapeMarkdownText(asset.caption ?? "not supplied")}; alt text: ${escapeMarkdownText(asset.altText ?? "not supplied")}`)),
         "",
       ].join("\n");
       const placementMap = `${JSON.stringify(record.visualAssets.records.map((asset) => ({
@@ -843,22 +805,41 @@ export async function buildPromptPackage(
   );
   if (generatedMediaBytes > MAX_GENERATED_MEDIA_BYTES_PER_PACKAGE) return failure("INVALID_INPUT");
 
-  const provisionalRunbook = createRunbook(manifest);
-  for (const [index, document] of prepared.entries()) {
-    const paths = pathsFor(document.key, document.input.documentFormat);
-    const provisional = createDocumentWorkbook(manifest, index, provisionalRunbook, document.input.promptBundle, artifactAssets[index]);
-    manifest.documents[index].workbooks.combined.fullHtml = provisional.combined.fullHtml
-      ? { status: "generated", path: paths.combinedFullHtml, sha256: "" }
-      : { status: "not-generated", reason: "encoded-size-limit" };
+  let runbookDocument = createRunbookDocument(manifest);
+  let runbook = serializeRunbookMarkdown(runbookDocument);
+  let workbooks = prepared.map((document, index) => createDocumentWorkbook(
+    manifest,
+    index,
+    runbookDocument,
+    document.input.promptBundle,
+    artifactAssets[index],
+  ));
+  for (let iteration = 0; iteration <= prepared.length; iteration += 1) {
+    let statusChanged = false;
+    for (const [index, workbook] of workbooks.entries()) {
+      const status = manifest.documents[index].workbooks.combined.fullHtml;
+      if (status.status === "generated" && !workbook.combined.fullHtml) {
+        manifest.documents[index].workbooks.combined.fullHtml = { status: "not-generated", reason: "encoded-size-limit" };
+        statusChanged = true;
+      }
+    }
+    if (!statusChanged) break;
+    runbookDocument = createRunbookDocument(manifest);
+    runbook = serializeRunbookMarkdown(runbookDocument);
+    workbooks = prepared.map((document, index) => createDocumentWorkbook(
+      manifest,
+      index,
+      runbookDocument,
+      document.input.promptBundle,
+      artifactAssets[index],
+    ));
   }
-  const runbook = createRunbook(manifest);
   const openMe = createOpenMe(manifest);
-  const workbooks = [];
   try {
     for (const [index, document] of prepared.entries()) {
       const paths = pathsFor(document.key, document.input.documentFormat);
       const record = manifest.documents[index];
-      const workbook = createDocumentWorkbook(manifest, index, runbook, document.input.promptBundle, artifactAssets[index]);
+      const workbook = workbooks[index];
       record.workbooks.oneShot.markdown.sha256 = await hashBytes(textEncoder.encode(workbook.oneShot.markdown).buffer, dependencies.hasher);
       record.workbooks.oneShot.html.sha256 = await hashBytes(textEncoder.encode(workbook.oneShot.html).buffer, dependencies.hasher);
       record.workbooks.manual.markdown.sha256 = await hashBytes(textEncoder.encode(workbook.manual.markdown).buffer, dependencies.hasher);
@@ -870,7 +851,6 @@ export async function buildPromptPackage(
       } else if (!workbook.combined.fullHtml) {
         record.workbooks.combined.fullHtml = { status: "not-generated", reason: "encoded-size-limit" };
       }
-      workbooks.push(workbook);
       entries.push(
         { path: paths.oneShotMarkdown, data: workbook.oneShot.markdown, stored: false },
         { path: paths.oneShotHtml, data: workbook.oneShot.html, stored: false },

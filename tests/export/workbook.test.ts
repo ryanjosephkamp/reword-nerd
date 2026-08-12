@@ -77,9 +77,9 @@ async function sha256(bytes: Uint8Array): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-describe("v4 workbook package", () => {
+describe("v5 workbook package", () => {
   it("emits the full dual-mode suite with exact prompt parity and hashes every generated artifact", async () => {
-    // This catches a v4 package that drops a workflow companion, alters canonical prompt bytes, or records stale hashes.
+    // This catches a v5 package that drops a workflow companion, alters canonical prompt bytes, or records stale hashes.
     const { buildPromptPackage } = await import("../../src/export");
     const input = documentInput();
     const result = await buildPromptPackage([input]);
@@ -87,8 +87,8 @@ describe("v4 workbook package", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("fixture should export");
     expect(result.manifest).toMatchObject({
-      schemaVersion: 4,
-      package: { name: "reword-nerd", version: "0.4.0", format: "dual-mode-prompt-package" },
+      schemaVersion: 5,
+      package: { name: "reword-nerd", version: "0.5.0", format: "dual-mode-prompt-package" },
       workflow: {
         modes: ["one-shot", "manual"],
         manualStages: ["decompose", "rewrite", "verify", "final"],
@@ -105,7 +105,7 @@ describe("v4 workbook package", () => {
       ...input.promptBundle.manual,
     };
 
-    expect(document.prompts.oneShot.path).toMatch(/\/prompts\/00-one-shot\.md$/);
+    expect(document.prompts.oneShot.path).toMatch(/\/one-shot\/00-one-shot\.md$/);
     for (const [stage, expected] of Object.entries(expectedPromptBytes) as Array<[keyof typeof expectedPromptBytes, string]>) {
       const bytes = await archive.file(document.prompts[stage].path)?.async("uint8array");
       expect(new TextDecoder().decode(bytes)).toBe(expected);
@@ -190,7 +190,7 @@ describe("v4 workbook package", () => {
     expect(Object.isFrozen(changed.manual.prompts.rewrite)).toBe(true);
   });
 
-  it("escapes hostile content, exposes exactly two accessible workflow tabs, and makes no network or storage request", async () => {
+  it("escapes hostile content, exposes three accessible workbook tabs, and makes no network or storage request", async () => {
     // This catches prompt or filename injection and accidental persistence/network code in exported workbooks.
     const { buildPromptPackage } = await import("../../src/export");
     const input = documentInput('Bad </title><script id="pwn">alert(1)</script>.txt');
@@ -201,7 +201,7 @@ describe("v4 workbook package", () => {
     const html = result.workbooks[0].combined.html;
     const parsed = new DOMParser().parseFromString(html, "text/html");
 
-    expect(Array.from(parsed.querySelectorAll('[role="tab"]'), (node) => node.textContent)).toEqual(["ONE-SHOT", "MANUAL"]);
+    expect(Array.from(parsed.querySelectorAll('[role="tab"]'), (node) => node.textContent)).toEqual(["README", "ONE-SHOT", "MANUAL"]);
     expect(parsed.querySelector("#pwn, img[src='x']")).toBeNull();
     expect(parsed.querySelectorAll("script[src], link[href], iframe[src], object[data]")).toHaveLength(0);
     expect(parsed.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute("content")).toContain("connect-src 'none'");
@@ -332,9 +332,10 @@ describe("v4 workbook package", () => {
       expect(document.getElementById("panel-manual")?.hidden).toBe(false);
 
       manual.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
-      expect(document.activeElement).toBe(oneShot);
-      expect(oneShot.getAttribute("aria-selected")).toBe("true");
-      oneShot.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
+      const readme = document.querySelector<HTMLButtonElement>('[data-workflow-tab="readme"]')!;
+      expect(document.activeElement).toBe(readme);
+      expect(readme.getAttribute("aria-selected")).toBe("true");
+      readme.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
       expect(document.activeElement).toBe(manual);
       manual.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
       expect(document.activeElement).toBe(oneShot);
@@ -397,7 +398,7 @@ describe("v4 workbook package", () => {
     expect(workbook.visualAssets[0].packagedPath).toBe(canonicalPath);
     const progressHtml = renderWorkbookProgressHtml(workbook, createWorkbookProgress(workbook));
     const parsed = new DOMParser().parseFromString(progressHtml, "text/html");
-    expect(parsed.querySelector(".asset-card a")?.getAttribute("href")).toBe("assets/asset-safe.png");
+    expect(parsed.querySelector(".asset-card a")?.getAttribute("href")).toBe("../assets/asset-safe.png");
     expect(progressHtml).not.toContain("../wrong display name.png\"");
   });
 });

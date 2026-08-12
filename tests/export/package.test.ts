@@ -105,7 +105,7 @@ describe("prompt-package export", () => {
     await expect(archive.file(`documents/${record.key}/project/section.tex`)?.async("string")).resolves.toBe("Stable project text.\n");
   });
 
-  it("archives reviewed media, OCR provenance, and both companion HTML modes in schema v4", async () => {
+  it("archives reviewed media, OCR provenance, and both companion HTML modes in schema v5", async () => {
     // This catches package builds that expose figures in the UI but omit their bytes, placement, or review provenance from export.
     const { buildPromptPackage } = await import("../../src/export");
     const source = documentInput();
@@ -173,8 +173,8 @@ describe("prompt-package export", () => {
     expect(result.ok ? null : result.error).toBeNull();
     if (!result.ok) throw new Error("fixture should export");
     expect(result.manifest).toMatchObject({
-      schemaVersion: 4,
-      package: { version: "0.4.0", format: "dual-mode-prompt-package" },
+      schemaVersion: 5,
+      package: { version: "0.5.0", format: "dual-mode-prompt-package" },
       documents: [{
         processing: {
           pageCount: 7,
@@ -210,6 +210,46 @@ describe("prompt-package export", () => {
     expect(artifact.fullHtml).not.toMatch(/https?:\/\//);
   });
 
+  it("keeps hostile filenames and visual metadata inert in generated Markdown", async () => {
+    const { buildPromptPackage } = await import("../../src/export");
+    const source = documentInput();
+    source.documentName = "bad\n# heading [leave](https://evil.test).txt";
+    Object.assign(source, {
+      visualAssets: [{
+        id: "asset-[leave](https://evil.test)",
+        kind: "pdf-raster",
+        filename: "figure.png",
+        mimeType: "image/png",
+        bytes: new Uint8Array([137, 80, 78, 71]),
+        byteCount: 4,
+        sha256: "placeholder",
+        order: 0,
+        sourcePath: "source\n<img src=https://evil.test/x>",
+        caption: "[remote](https://evil.test)\n# injected",
+        altText: "<img src=https://evil.test/x>",
+        included: true,
+        decorative: false,
+        warnings: [],
+      }],
+    });
+
+    const result = await buildPromptPackage([source]);
+    if (!result.ok) throw new Error("fixture should export");
+    const archive = await JSZip.loadAsync(result.blob, { checkCRC32: true });
+    const record = result.manifest.documents[0];
+    const index = await archive.file(record.visualAssets.index.path)?.async("string") ?? "";
+    const combined = await archive.file(record.workbooks.combined.markdown.path)?.async("string") ?? "";
+
+    expect(index).not.toContain("](https://evil.test)");
+    expect(index).toContain("\\<img");
+    expect(index).not.toMatch(/(?:^|[^\\])<img/u);
+    expect(index).not.toMatch(/\n# injected/u);
+    expect(combined).not.toContain("](https://evil.test)");
+    expect(combined).not.toContain("\n# heading");
+    expect(record.originalDisplayName).toBe(source.documentName);
+    expect(record.visualAssets.records[0].caption).toBe("[remote](https://evil.test)\n# injected");
+  });
+
   it.each(CURATED_MODEL_PROFILES)("accepts the $label profile family at the package boundary", async (profile) => {
     const { buildPromptPackage } = await import("../../src/export");
     const source = documentInput();
@@ -225,7 +265,7 @@ describe("prompt-package export", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("archives a confirmed document as a schema-v4 package with byte-preserved original", async () => {
+  it("archives a confirmed document as a schema-v5 package with byte-preserved original", async () => {
     // This catches omissions or transformations of the immutable original and reviewed extraction export contract.
     const { buildPromptPackage } = await import("../../src/export");
     const source = documentInput();
@@ -235,8 +275,8 @@ describe("prompt-package export", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("fixture should export");
     expect(result.filename).toBe("reword-nerd-prompt-package.zip");
-    expect(result.manifest.schemaVersion).toBe(4);
-    expect(result.manifest.package.version).toBe("0.4.0");
+    expect(result.manifest.schemaVersion).toBe(5);
+    expect(result.manifest.package.version).toBe("0.5.0");
     expect(result.manifest.documents).toHaveLength(1);
     expect(result.manifest.documents[0]).toMatchObject({
       key: "resume-notes--ea27ac66cf6a",
@@ -252,8 +292,8 @@ describe("prompt-package export", () => {
       },
       workbooks: {
         combined: {
-          markdown: { path: "documents/resume-notes--ea27ac66cf6a/combined-prompts.md" },
-          html: { path: "documents/resume-notes--ea27ac66cf6a/combined-prompts.html" },
+          markdown: { path: "documents/resume-notes--ea27ac66cf6a/combined-prompts/combined-prompts.md" },
+          html: { path: "documents/resume-notes--ea27ac66cf6a/combined-prompts/combined-prompts.html" },
         },
       },
     });
@@ -283,7 +323,7 @@ describe("prompt-package export", () => {
     expect(artifact.runbook).toMatchObject({
       documentKey: result.manifest.documents[0].key,
       originalDisplayName: source.documentName,
-      package: { version: "0.4.0" },
+      package: { version: "0.5.0" },
       model: {
         id: "openai-general",
         promptStrategy: { id: "openai-chatgpt-v1", version: "2026-08-11-v1" },
@@ -621,7 +661,8 @@ describe("prompt-package export", () => {
       expect(runbook).toContain(document.prompts[stage].path);
     }
     for (const marker of Object.values(markerValues)) expect(runbook).toContain(marker);
-    expect(runbook).toContain("start a new conversation; run Stage 1; copy its response into the Stage 1 marker in Stage 2; run Stage 2; fill both prior markers in Stage 3; run Stage 3; fill all three markers in Stage 4; run Stage 4; review the final output.");
+    expect(runbook).toContain("1. Start a new conversation and run Stage 1.");
+    expect(runbook).toContain("4. Fill all three markers, run Stage 4, and review the final output.");
   });
 
   it("maps each external read/hash/archive failure without constructing a partial package", async () => {

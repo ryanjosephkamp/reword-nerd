@@ -114,6 +114,14 @@ button:disabled {
   min-height: 0;
 }
 
+.workbench-grid.settings-collapsed {
+  grid-template-columns: 24% 76%;
+}
+
+.workbench-grid.settings-collapsed .preview-panel {
+  grid-column: 2;
+}
+
 .files-panel,
 .preview-panel,
 .parameters-panel {
@@ -327,16 +335,30 @@ button:disabled {
   padding: 24px;
 }
 
-.package-preview-controls {
+.package-sticky-header {
   position: sticky;
   z-index: 2;
   top: 0;
-  display: grid;
-  gap: 12px;
   margin: -24px -24px 22px;
-  padding: 16px 24px;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-canvas);
+}
+
+.package-preview-controls {
+  display: grid;
+  gap: 12px;
+  padding: 16px 24px 12px;
+}
+
+.package-document-heading {
+  min-height: 48px;
+  padding: 12px 24px 14px;
+}
+
+.package-document-heading h3 {
+  color: var(--color-ready);
+  font-size: 18px;
+  overflow-wrap: anywhere;
 }
 
 .package-top-actions,
@@ -381,12 +403,6 @@ button:disabled {
   margin: 0;
 }
 
-.package-preview > h3 {
-  margin-bottom: 22px;
-  color: var(--color-ready);
-  font-size: 18px;
-}
-
 .artifact-selector {
   display: grid;
   max-width: 420px;
@@ -409,14 +425,12 @@ button:disabled {
   background: var(--color-surface);
 }
 
-.runbook-preview > h4,
 .prompt-preview-block > header {
   min-height: 44px;
   padding: 0 14px;
   border-bottom: 1px solid var(--color-border);
 }
 
-.runbook-preview > h4,
 .prompt-preview-block > header {
   display: flex;
   align-items: center;
@@ -491,6 +505,70 @@ button:disabled {
   margin: 0;
   padding: 16px 34px;
   line-height: 1.6;
+}
+
+.rich-runbook {
+  padding: 22px;
+  color: var(--color-text);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.65;
+}
+
+.rich-runbook > :first-child {
+  margin-top: 0;
+}
+
+.rich-runbook h4,
+.rich-runbook h5 {
+  margin: 28px 0 10px;
+  color: var(--color-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.rich-runbook h4 {
+  font-size: 22px;
+}
+
+.rich-runbook h5 {
+  color: var(--color-ready);
+  font-size: 17px;
+}
+
+.rich-runbook p {
+  margin: 0 0 14px;
+}
+
+.rich-runbook code {
+  padding: 2px 5px;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  background: var(--color-canvas);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+.rich-runbook a {
+  color: var(--color-ready);
+}
+
+.rich-runbook-table {
+  max-width: 100%;
+  margin: 18px 0 24px;
+  overflow-x: auto;
+}
+
+.rich-runbook table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.rich-runbook th,
+.rich-runbook td {
+  padding: 9px 11px;
+  border: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: top;
 }
 
 .package-copy-status {
@@ -1337,8 +1415,10 @@ button:disabled {
 
   .session-copy,
   .folder-button,
+  .restart-button,
   .settings-button,
   .help-button,
+  .info-button,
   .workbench-footer {
     display: none;
   }
@@ -1993,10 +2073,17 @@ button:disabled {
     padding: 14px;
   }
 
-  .package-preview-controls {
+  .package-sticky-header {
     position: static;
     margin: -14px -14px 20px;
+  }
+
+  .package-preview-controls {
     padding: 14px;
+  }
+
+  .package-document-heading {
+    padding: 12px 14px 14px;
   }
 
   .package-top-actions,
@@ -2017,11 +2104,17 @@ button:disabled {
 
   .package-workflow-tabs {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .package-workflow-tabs button {
     min-width: 0;
+    padding-inline: 5px;
+  }
+
+  .rich-runbook {
+    padding: 16px;
+    font-size: 14px;
   }
 
   .prompt-preview-block > textarea {

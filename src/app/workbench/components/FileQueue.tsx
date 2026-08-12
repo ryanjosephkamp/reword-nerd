@@ -20,12 +20,36 @@ interface FileQueueProps {
 
 export function FileQueue(props: FileQueueProps) {
   const rows = useRef(new Map<string, HTMLButtonElement>());
+  const menuButtons = useRef(new Map<string, HTMLButtonElement>());
+  const menuRef = useRef<HTMLDivElement>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   useEffect(() => {
     if (!props.focusTarget?.startsWith("document:")) return;
     rows.current.get(props.focusTarget.slice(9))?.focus();
     props.onFocusConsumed();
   }, [props]);
+  useEffect(() => {
+    if (!openMenuId) return;
+    const outside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!menuRef.current?.contains(target) && !menuButtons.current.get(openMenuId)?.contains(target)) {
+        setOpenMenuId(null);
+      }
+    };
+    const escape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      const returnFocus = menuButtons.current.get(openMenuId);
+      setOpenMenuId(null);
+      returnFocus?.focus();
+    };
+    document.addEventListener("mousedown", outside);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("mousedown", outside);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [openMenuId]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     let next: number;
@@ -63,12 +87,13 @@ export function FileQueue(props: FileQueueProps) {
           type="button"
           className="row-menu"
           aria-label={`File actions for ${document.name}`}
-          aria-haspopup="menu"
+          aria-haspopup="true"
           aria-expanded={openMenuId === document.id}
+          ref={(node) => { if (node) menuButtons.current.set(document.id, node); else menuButtons.current.delete(document.id); }}
           onClick={() => setOpenMenuId((current) => current === document.id ? null : document.id)}
         ><MoreIcon /></button>
-        {openMenuId === document.id ? <div className="file-actions-menu" role="menu">
-          <button type="button" role="menuitem" onClick={() => { setOpenMenuId(null); props.onRemove(document.id); }}>Remove file</button>
+        {openMenuId === document.id ? <div className="file-actions-menu" aria-label={`Actions for ${document.name}`} ref={menuRef}>
+          <button type="button" onClick={() => { setOpenMenuId(null); props.onRemove(document.id); }}>Remove file</button>
         </div> : null}
       </div>;
     })}

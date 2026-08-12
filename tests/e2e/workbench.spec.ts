@@ -33,7 +33,7 @@ function monitorRuntime(page: Page) {
 }
 
 async function openWorkbench(page: Page) {
-  await page.goto("/");
+  await page.goto("./");
   await expect(page.getByRole("main", { name: "reword_nerd workbench" })).toBeVisible();
   const quickStart = page.getByRole("dialog", { name: "Quick start" });
   if (await quickStart.isVisible()) await quickStart.getByRole("button", { name: "Close quick start" }).click();
@@ -87,7 +87,7 @@ function expectedKey(fixture: BrowserFixture): string {
   return `${base}--${sha256(fixture.buffer).slice(0, 12)}`;
 }
 
-test("mixed real formats produce a complete, previewed, byte-preserving schema-v4 prompt package", async ({ page }) => {
+test("mixed real formats produce a complete, previewed, byte-preserving schema-v5 prompt package", async ({ page }) => {
   // This catches browser extraction/export drift that unit-level parser and archive adapters cannot see.
   const runtimeErrors = monitorRuntime(page);
   const docx = await createDocxFixture();
@@ -109,11 +109,11 @@ test("mixed real formats produce a complete, previewed, byte-preserving schema-v
   await waitForExtracted(page, pdf, "Stable PDF fact");
   await confirmSelected(page);
 
-  await page.getByLabel("Tone").selectOption("academic");
-  await page.getByLabel("Custom requirements").fill("  Preserve  exact spacing.\n\nKeep the blank line.  ");
+  await page.getByLabel("Tone", { exact: true }).selectOption("academic");
+  await page.getByLabel("Custom requirements", { exact: true }).fill("  Preserve  exact spacing.\n\nKeep the blank line.  ");
   await selectDocument(page, pdf.name);
   await page.getByRole("switch", { name: /PER-FILE OVERRIDE/i }).check();
-  await page.getByLabel("Length").selectOption("concise");
+  await page.getByLabel("Length", { exact: true }).selectOption("concise");
   const reviewedValues = new Map<string, string>();
   for (const fixture of fixtures) {
     await selectDocument(page, fixture.name);
@@ -147,7 +147,7 @@ test("mixed real formats produce a complete, previewed, byte-preserving schema-v
       };
     }>;
   };
-  expect(manifest.schemaVersion).toBe(4);
+  expect(manifest.schemaVersion).toBe(5);
   expect(manifest.workflow.modes).toEqual(["one-shot", "manual"]);
   expect(manifest.workflow.manualStages).toEqual(["decompose", "rewrite", "verify", "final"]);
   expect(Object.values(manifest.workflow.responseMarkers)).toEqual(markers);
@@ -163,21 +163,21 @@ test("mixed real formats produce a complete, previewed, byte-preserving schema-v
     const documentPaths = [
       `documents/${key}/original.${extension}`,
       `documents/${key}/reviewed-extraction.md`,
-      `documents/${key}/prompts/00-one-shot.md`,
-      `documents/${key}/prompts/01-decompose.md`,
-      `documents/${key}/prompts/02-rewrite.md`,
-      `documents/${key}/prompts/03-verify.md`,
-      `documents/${key}/prompts/04-final.md`,
-      `documents/${key}/one-shot-prompt.md`,
-      `documents/${key}/one-shot-prompt.html`,
-      `documents/${key}/manual-prompts.md`,
-      `documents/${key}/manual-prompts.html`,
-      `documents/${key}/combined-prompts.md`,
-      `documents/${key}/combined-prompts.html`,
+      `documents/${key}/one-shot/00-one-shot.md`,
+      `documents/${key}/one-shot/one-shot-prompt.md`,
+      `documents/${key}/one-shot/one-shot-prompt.html`,
+      `documents/${key}/manual-prompts/01-decompose.md`,
+      `documents/${key}/manual-prompts/02-rewrite.md`,
+      `documents/${key}/manual-prompts/03-verify.md`,
+      `documents/${key}/manual-prompts/04-final.md`,
+      `documents/${key}/manual-prompts/manual-prompts.md`,
+      `documents/${key}/manual-prompts/manual-prompts.html`,
+      `documents/${key}/combined-prompts/combined-prompts.md`,
+      `documents/${key}/combined-prompts/combined-prompts.html`,
       `documents/${key}/assets/index.md`,
       `documents/${key}/assets/placement-map.json`,
       `documents/${key}/ocr/candidates.json`,
-      ...(record!.workbooks.combined.fullHtml.status === "generated" ? [`documents/${key}/combined-prompts-full.html`] : []),
+      ...(record!.workbooks.combined.fullHtml.status === "generated" ? [`documents/${key}/combined-prompts/combined-prompts-full.html`] : []),
     ];
     expectedPaths.push(...documentPaths);
     const original = await archive.file(record!.original.path)?.async("nodebuffer");
@@ -280,7 +280,7 @@ test("oversized-context acknowledgment unlocks export and resets when the source
   await waitForExtracted(page, textFixture, "launch code is 314");
   await confirmSelected(page);
   const build = page.getByRole("button", { name: "BUILD PACKAGE" });
-  const contextLimit = page.getByLabel("Context limit");
+  const contextLimit = page.getByLabel("Context limit", { exact: true });
   await contextLimit.fill("1");
   await expect(page.getByText("Estimated workflow context exceeds the selected profile.")).toBeVisible();
   const acknowledgment = page.getByLabel("I understand and want to include this file.");
@@ -391,7 +391,7 @@ test("keyboard navigation, modal focus, live state, removal focus, and reduced m
   const menu = page.getByRole("button", { name: "Menu" });
   await menu.focus();
   await page.keyboard.press("Enter");
-  const help = page.getByRole("menuitem", { name: "Help" });
+  const help = page.getByLabel("Mobile utilities").getByRole("button", { name: "Help", exact: true });
   await help.focus();
   await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog", { name: "Help and workflow guide" });
@@ -418,7 +418,7 @@ test("keyboard navigation, modal focus, live state, removal focus, and reduced m
   const actions = page.getByRole("button", { name: `File actions for ${markdownFixture.name}` });
   await actions.focus();
   await page.keyboard.press("Enter");
-  const remove = page.getByRole("menuitem", { name: "Remove file" });
+  const remove = page.getByLabel(`Actions for ${markdownFixture.name}`).getByRole("button", { name: "Remove file" });
   await remove.focus();
   await page.keyboard.press("Enter");
   const retained = fileOptions(page).filter({ hasText: textFixture.name });
@@ -445,7 +445,7 @@ test("keyboard navigation, modal focus, live state, removal focus, and reduced m
 });
 
 test("first visit onboarding is trapped, saved in one key, replayable, and package-neutral", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("./");
   const quickStart = page.getByRole("dialog", { name: "Quick start" });
   await expect(quickStart).toBeFocused();
   const reviewSettings = quickStart.getByRole("button", { name: "REVIEW SETTINGS" });
@@ -464,7 +464,7 @@ test("first visit onboarding is trapped, saved in one key, replayable, and packa
   expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([preferencesKey]);
   expect(await page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? "null"), preferencesKey)).toMatchObject({
     version: 1,
-    data: { tutorialVersion: "0.4" },
+    data: { tutorialVersion: "0.5" },
   });
 
   await upload(page, [textFixture]);
@@ -474,7 +474,7 @@ test("first visit onboarding is trapped, saved in one key, replayable, and packa
   await expect(page.getByRole("heading", { name: "PACKAGE PREVIEW" })).toBeFocused();
   await expect(page.getByRole("button", { name: "DOWNLOAD ZIP" })).toBeEnabled();
 
-  await page.getByRole("button", { name: "Help" }).click();
+  await page.getByRole("button", { name: "Help", exact: true }).click();
   const help = page.getByRole("dialog", { name: "Help and workflow guide" });
   await help.getByRole("button", { name: "REPLAY QUICK START" }).click();
   await expect(quickStart).toBeVisible();
@@ -485,7 +485,7 @@ test("first visit onboarding is trapped, saved in one key, replayable, and packa
 });
 
 test("empty Review explains the state and opens the shared multi-file picker", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("./");
   await page.getByRole("dialog", { name: "Quick start" }).getByRole("button", { name: "Close quick start" }).click();
   const emptyReview = page.getByLabel("No selected file");
   await expect(emptyReview).toContainText("Add a supported file to review its extracted text before building a prompt package.");
@@ -505,7 +505,8 @@ test("in-site package progress hydrates, survives navigation, downloads, and res
 
   await page.getByRole("button", { name: "BUILD PACKAGE" }).click();
   await expect(page.getByRole("heading", { name: "PACKAGE PREVIEW" })).toBeFocused();
-  await expect(page.getByRole("tab", { name: "ONE-SHOT" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "RUNBOOK" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { name: "reword-nerd prompt package" })).toBeVisible();
   expect(downloads).toEqual([]);
 
   await page.getByRole("tab", { name: "MANUAL" }).click();
@@ -536,7 +537,7 @@ test("in-site package progress hydrates, survives navigation, downloads, and res
   expect(progressHtml).toContain("Browser analysis two");
   expect(progressHtml).not.toMatch(/<(?:img|link|iframe|script)\b[^>]+(?:src|href)\s*=\s*["']https?:/iu);
 
-  await page.getByLabel("Tone").selectOption("academic");
+  await page.getByLabel("Tone", { exact: true }).selectOption("academic");
   await expect(page.getByRole("button", { name: "PACKAGE", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "DOWNLOAD ZIP" })).toBeDisabled();
   await page.getByRole("button", { name: "BUILD PACKAGE" }).click();
@@ -548,8 +549,8 @@ test("in-site package progress hydrates, survives navigation, downloads, and res
   const archive = await JSZip.loadAsync(await downloadBytes(await zipPending), { checkCRC32: true });
   expect(archive.file("OPEN-ME.html")).not.toBeNull();
   expect(JSON.parse(await archive.file("manifest.json")!.async("string"))).toMatchObject({
-    schemaVersion: 4,
-    package: { format: "dual-mode-prompt-package", version: "0.4.0" },
+    schemaVersion: 5,
+    package: { format: "dual-mode-prompt-package", version: "0.5.0" },
   });
 });
 
@@ -594,14 +595,21 @@ test("standalone file workbook supports both workflows, copy paths, and progress
     }
   });
   await standalone.goto(pathToFileURL(standalonePath).href);
-  await expect(standalone.getByRole("tab", { name: "ONE-SHOT" })).toHaveAttribute("aria-selected", "true");
+  const readmeTab = standalone.getByRole("tab", { name: "README" });
+  await expect(readmeTab).toHaveAttribute("aria-selected", "true");
+  await expect(standalone.getByRole("heading", { name: "reword-nerd prompt package" })).toBeVisible();
+  await expect(standalone.getByRole("table")).toBeVisible();
   await expect(standalone.getByRole("button", { name: "COPY ONE-SHOT PROMPT" })).toBeVisible();
   await expect(standalone.getByRole("button", { name: "COPY CURRENT MANUAL PROMPT" })).toBeVisible();
   await standalone.getByRole("button", { name: "COPY ONE-SHOT PROMPT" }).click();
   await expect(standalone.getByRole("status")).toHaveText("One-shot prompt copied.");
   expect(await standalone.evaluate(() => (window as unknown as { capturedCopy?: string }).capturedCopy)).toContain("Stable text fact");
 
+  await readmeTab.focus();
+  await standalone.keyboard.press("ArrowRight");
   const oneShotTab = standalone.getByRole("tab", { name: "ONE-SHOT" });
+  await expect(oneShotTab).toBeFocused();
+  await expect(oneShotTab).toHaveAttribute("aria-selected", "true");
   await oneShotTab.focus();
   await standalone.keyboard.press("ArrowRight");
   const manualTab = standalone.getByRole("tab", { name: "MANUAL" });

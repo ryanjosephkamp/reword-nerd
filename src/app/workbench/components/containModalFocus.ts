@@ -6,6 +6,7 @@ const focusableSelector = [
   "input:not([disabled])",
   "select:not([disabled])",
   "textarea:not([disabled])",
+  "video[controls]",
   "[tabindex]:not([tabindex='-1'])",
 ].join(",");
 

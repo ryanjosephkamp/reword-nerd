@@ -5,9 +5,9 @@ cannot guarantee visual layout, reading order, caption association, equation
 semantics, or complete media recovery. Confirm text, assets, and OCR before
 export.
 
-## v0.4 processing defaults
+## v0.5 processing defaults
 
-For a new session with no valid v0.4 saved preference, **Extract embedded
+For a new session with no valid v0.5 saved preference, **Extract embedded
 images** is on and **Exclude likely decorative images** is on. PDF page capture,
 OCR, and OCR of extracted raster images are off. Once saved, validated global
 processing preferences take precedence over these new-state defaults.
@@ -34,7 +34,7 @@ figures may be masks, fragments, or composite operators; page capture is the
 higher-fidelity opt-in fallback. Page selection accepts `all` or positive ranges
 such as `1-3, 7`.
 
-Version 0.4.0 bundles English OCR and runs Tesseract.js locally. Recognition is
+Version 0.5.0 bundles English OCR and runs Tesseract.js locally. Recognition is
 capped at 150 selected pages or extracted images and always produces editable
 candidates. OCR is never merged automatically; every candidate must be accepted
 or omitted before confirmation and export.

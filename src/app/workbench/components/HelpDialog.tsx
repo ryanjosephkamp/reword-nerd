@@ -1,6 +1,12 @@
-import { useEffect, useRef } from "react";
-import { CloseIcon } from "./Icons";
-import { containModalFocus } from "./containModalFocus";
+import { useState } from "react";
+import { DemoVideo, type DemoVideoId } from "./DemoVideo";
+import { ModalShell } from "./ModalShell";
+
+const chapters = [
+  { id: "settings" as const, title: "Settings", description: "Choose a model profile, verify its context limit, set rewrite preferences, and decide which local processing options the document needs." },
+  { id: "review" as const, title: "Review", description: "Inspect and correct extracted text, keep only the visual assets you need, review OCR candidates, and confirm the document." },
+  { id: "package" as const, title: "Package", description: "Build locally, read the Runbook, use either workflow, save progress, and explicitly download the ZIP." },
+] as const;
 
 export function HelpDialog({ open, onClose, onReplayQuickStart, returnFocusRef }: {
   open: boolean;
@@ -8,28 +14,33 @@ export function HelpDialog({ open, onClose, onReplayQuickStart, returnFocusRef }
   onReplayQuickStart(): void;
   returnFocusRef: React.RefObject<HTMLButtonElement | null>;
 }) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (open) dialogRef.current?.focus(); }, [open]);
-  if (!open) return null;
+  const [activeChapter, setActiveChapter] = useState<DemoVideoId | null>(null);
   const close = () => {
+    setActiveChapter(null);
     onClose();
-    returnFocusRef.current?.focus();
   };
-  return <div className="dialog-backdrop">
-    <div role="dialog" aria-modal="true" aria-labelledby="help-title" tabIndex={-1} ref={dialogRef} className="help-dialog" onKeyDown={(event) => {
-      if (event.key === "Escape") close();
-      else containModalFocus(event);
-    }}>
-      <button type="button" className="dialog-close" aria-label="Close help" onClick={close}><CloseIcon /></button>
-      <h2 id="help-title">Help and workflow guide</h2>
-      <section><h3>Quick start</h3><p>Review Settings, add supported files, inspect and confirm each extraction, then build and download the package.</p></section>
-      <section><h3>One-shot and Manual</h3><p>One-shot asks the model to run Decompose, Rewrite, Verify, and Final internally. Manual exposes those four prompts in order so you can inspect each response and carry it forward.</p></section>
-      <section><h3>Models and context</h3><p>Select the model you will use and verify its current context limit. Context estimates are advisory; provider plans, interfaces, and limits can change.</p></section>
-      <section><h3>Formats, LaTeX, images, and OCR</h3><p>TXT, Markdown, DOCX, PDF, standalone LaTeX, and LaTeX project ZIPs are supported. Embedded images are extracted by default. PDF page captures and local English OCR are opt-in, bounded, and require review.</p></section>
-      <section><h3>Package and OPEN-ME</h3><p>The ZIP contains both workflow modes for every document. Open <code>OPEN-ME.html</code> first, then use the One-shot or Manual workbook. The package runs locally without external assets.</p></section>
-      <section><h3>Privacy and provider limits</h3><p>Documents, extracted text, OCR, assets, prompts, model responses, and packages remain session-only unless you download them. Only validated global preferences are saved in this browser. This app does not call a model provider; you move prompts and responses yourself.</p></section>
-      <section><h3>Reset saved preferences</h3><p>Use Reset saved preferences in Settings to clear the local preference key after confirmation. It does not remove uploaded documents from the current session.</p></section>
-      <button type="button" className="replay-tutorial-button" onClick={onReplayQuickStart}>REPLAY QUICK START</button>
+  const replay = () => {
+    setActiveChapter(null);
+    onReplayQuickStart();
+  };
+  return <ModalShell open={open} title="Help and workflow guide" closeLabel="Close help" onDismiss={close} returnFocusRef={returnFocusRef}>
+    <p>reword-nerd turns reviewed documents into local, inspectable prompt packages. Follow these three chapters or replay the complete Quick Start.</p>
+    <div className="help-chapter-list">
+      {chapters.map((chapter) => <section key={chapter.id}>
+        <h3>{chapter.title}</h3>
+        <p>{chapter.description}</p>
+        <button
+          type="button"
+          aria-expanded={activeChapter === chapter.id}
+          aria-controls={`help-demo-${chapter.id}`}
+          onClick={() => setActiveChapter((current) => current === chapter.id ? null : chapter.id)}
+        >{activeChapter === chapter.id ? "HIDE DEMO" : `WATCH ${chapter.title.toUpperCase()} DEMO`}</button>
+        {activeChapter === chapter.id ? <div id={`help-demo-${chapter.id}`}><DemoVideo demo={chapter.id} /></div> : null}
+      </section>)}
     </div>
-  </div>;
+    <section><h3>One-shot and Manual</h3><p>One-shot runs Decompose, Rewrite, Verify, and Final inside one long prompt. Manual exposes those four prompts in order for stage-by-stage review.</p></section>
+    <section><h3>Formats and privacy</h3><p>TXT, Markdown, DOCX, PDF, LaTeX, and LaTeX project ZIPs are supported. The app does not call a model provider. Documents, OCR, assets, prompts, and packages stay in this browser unless you download them; only validated preferences are saved.</p></section>
+    <section><h3>Reset or restart</h3><p>New session clears current documents and progress while keeping Settings. Reset saved preferences clears the browser preference record while leaving current documents in place.</p></section>
+    <button type="button" className="replay-tutorial-button" onClick={replay}>REPLAY QUICK START</button>
+  </ModalShell>;
 }
