@@ -11,9 +11,10 @@ interface EditorProps {
   onRemove(): void;
   onRetry(): void;
   onRevealFiles(): void;
+  onLatexMainFile(mainFile: string): void;
 }
 
-export function ExtractedTextEditor({ document, hashPending, onEdit, onConfirm, onRemove, onRetry, onRevealFiles }: EditorProps) {
+export function ExtractedTextEditor({ document, hashPending, onEdit, onConfirm, onRemove, onRetry, onRevealFiles, onLatexMainFile }: EditorProps) {
   const gutterRef = useRef<HTMLDivElement>(null);
   const lines = useMemo(() => (document?.extractedText ?? "").split("\n"), [document?.extractedText]);
   const onScroll = (event: UIEvent<HTMLTextAreaElement>) => {
@@ -26,6 +27,8 @@ export function ExtractedTextEditor({ document, hashPending, onEdit, onConfirm, 
   const validationId = `extracted-text-error-${document.id}`;
   const words = document.extractedText.trim() ? document.extractedText.trim().split(/\s+/u).length : 0;
   const characters = Array.from(document.extractedText).length;
+  const needsLatexMain = document.format === "latex-project" && !document.latexProject?.mainFile;
+  const pendingOcr = document.ocrCandidates?.some((candidate) => candidate.status === "pending") ?? false;
   return <>
     <div className="selected-file-control">
       <button type="button" className="selected-file-button" aria-label={`Selected file ${document.name}`} onClick={onRevealFiles}>
@@ -37,6 +40,12 @@ export function ExtractedTextEditor({ document, hashPending, onEdit, onConfirm, 
       <button type="button" aria-label={`Remove ${document.name}`} onClick={onRemove}><CloseIcon /></button>
     </div>
     <ReviewNotice visible={document.requiresReview && !blocked && !extracting} />
+    {document.format === "latex-project" && document.latexProject ? <label className="latex-main-file">LaTeX main file
+      <select value={document.latexProject.mainFile ?? ""} onChange={(event) => onLatexMainFile(event.currentTarget.value)}>
+        <option value="" disabled>Select the project entry point</option>
+        {document.latexProject.mainFileCandidates.map((path) => <option value={path} key={path}>{path}</option>)}
+      </select>
+    </label> : null}
     {document.warnings.length > 0 ? <section className="extraction-warnings" aria-label={`Extraction warnings for ${document.name}`}>
       <h3>EXTRACTION WARNINGS</h3>
       <ul>{document.warnings.map((warning, index) => <li key={`${index}-${warning}`}>{warning}</li>)}</ul>
@@ -60,7 +69,7 @@ export function ExtractedTextEditor({ document, hashPending, onEdit, onConfirm, 
       {blank ? <p className="editor-validation" id={validationId} role="alert">Extracted text cannot be blank. Add text or remove the file.</p> : null}
       <div className="review-actions">
         <div className="editor-metrics"><span>WORDS: {words}</span><span>CHARS: {characters}</span><span>LINES: {lines.length}</span></div>
-        <button type="button" onClick={onConfirm} disabled={blank || hashPending || !document.requiresReview}>Confirm review</button>
+        <button type="button" onClick={onConfirm} disabled={blank || needsLatexMain || pendingOcr || hashPending || !document.requiresReview}>Confirm review</button>
         {document.status === "ready" ? <span className="ready-text">Review complete</span> : null}
       </div>
     </>}

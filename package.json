@@ -1,6 +1,6 @@
 {
   "name": "reword-nerd",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -17,12 +17,17 @@
     "validate": "npm run lint && npm run typecheck && npm test -- --run && npm run build"
   },
   "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "@tesseract.js-data/eng": "^1.0.0",
+    "@unified-latex/unified-latex-util-parse": "^1.8.4",
     "@vitejs/plugin-react": "6.0.5",
+    "@zip.js/zip.js": "^2.8.41",
     "jszip": "3.10.1",
     "mammoth": "1.11.0",
     "pdfjs-dist": "5.4.624",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "tesseract.js": "^7.0.0",
     "turndown": "7.2.0",
     "turndown-plugin-gfm": "1.0.2"
   },

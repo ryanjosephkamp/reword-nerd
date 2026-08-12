@@ -13,7 +13,7 @@ export function containModalFocus(event: KeyboardEvent<HTMLElement>): void {
   if (event.key !== "Tab") return;
   const focusable = Array.from(
     event.currentTarget.querySelectorAll<HTMLElement>(focusableSelector),
-  ).filter((element) => !element.hasAttribute("hidden"));
+  ).filter((element) => !element.hasAttribute("hidden") && !element.closest("details:not([open])"));
   if (focusable.length === 0) {
     event.preventDefault();
     event.currentTarget.focus();

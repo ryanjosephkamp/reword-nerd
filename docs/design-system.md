@@ -171,7 +171,7 @@ are not replaced by this inventory.
 - `ALL CHANGES SAVED`, `v1.0.0`
 
 The version string in the visual reference is compositional sample copy. The
-current implementation renders its package version (`v0.2.0`) in that footer
+current implementation renders its package version (`v0.3.0`) in that footer
 position while preserving the same hierarchy and session-only meaning.
 
 ### Editor sample content
@@ -191,9 +191,10 @@ position while preserving the same hierarchy and session-only meaning.
 
 ### Mobile-specific
 
-- `FILES`, `PREVIEW`, `SETTINGS`
-- `EXTRACTED_TEXT`
-- `report.docx`, `READY`
+- `FILES`, `REVIEW`, `SETTINGS` in a persistent safe-area bottom command bar
+- selected-document identity, path, status, page/image/OCR counts
+- `SOURCE`, `ASSETS`, `PACKAGE`
+- `report.docx`, `NEEDS REVIEW`
 - `Review extracted content before export`
 - `ESTIMATE: ~2,500 WORDS`, `50%`
 - `BUILD PACKAGE`
@@ -213,11 +214,14 @@ position while preserving the same hierarchy and session-only meaning.
 - `BUILD PACKAGE` creates the revision-bound archive and structured preview in
   memory, switches Preview to Package, and moves focus to its heading. It never
   downloads automatically.
-- `SOURCE` and `PACKAGE` switch the Preview pane without adding a top-level
+- `SOURCE`, `ASSETS`, and `PACKAGE` switch the Preview pane without adding a top-level
   mobile tab. Each package prompt has an accessible Copy control.
 - `DOWNLOAD ZIP` exports the accepted Blob explicitly. A download failure keeps
   that Blob available for retry; a content or settings mutation invalidates it.
 - Mobile tabs preserve the same session state while changing the visible pane.
+- Mobile uses a task-first app layout: compact header, bounded scrollable work
+  surface, sticky contextual review action, and bottom navigation. Desktop
+  retains the approved three-column dashboard.
 
 ## Implementation guardrails
 

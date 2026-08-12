@@ -3,12 +3,18 @@ import type { DocumentFormat, ManifestDocumentInput, PromptSet } from "../domain
 import type { HashAdapter } from "../domain/extraction";
 import type { ModelProfile, PromptStage } from "../domain/profiles";
 import type { RewriteSettings } from "../domain/settings";
+import type { ExtractionOptions, LatexProjectMetadata, OcrCandidate, VisualAsset } from "../domain/media";
 
 export interface ExportDocumentInput extends ManifestDocumentInput {
   original: File;
   reviewed: boolean;
   contextWarningAcknowledged: boolean;
   uploadOrdinal: number;
+  pageCount?: number | null;
+  extractionOptions?: ExtractionOptions;
+  visualAssets?: readonly VisualAsset[];
+  ocrCandidates?: readonly OcrCandidate[];
+  latexProject?: LatexProjectMetadata & { projectRoot?: string };
 }
 
 export type ExportFailureCode =
@@ -31,6 +37,44 @@ export interface ManifestPromptRecord {
   sha256: string;
 }
 
+export interface ManifestAssetRecord {
+  id: string;
+  path?: string;
+  sha256?: string;
+  byteCount: number;
+  mimeType: string;
+  kind: VisualAsset["kind"];
+  filename: string;
+  order: number;
+  pageNumber?: number;
+  sourcePath?: string;
+  bounds?: VisualAsset["bounds"];
+  width?: number;
+  height?: number;
+  caption?: string;
+  altText?: string;
+  included: boolean;
+  decorative: boolean;
+  warnings: string[];
+}
+
+export interface ManifestOcrRecord {
+  id: string;
+  source: OcrCandidate["source"];
+  confidence: number;
+  status: OcrCandidate["status"];
+  engine: OcrCandidate["engine"];
+  engineVersion: string;
+  languageCode: string;
+  languageHash: string;
+  rawTextSha256: string;
+  reviewedTextSha256: string;
+}
+
+export type ManifestGeneratedArtifact =
+  | { status: "generated"; path: string; sha256: string }
+  | { status: "not-generated"; reason: "encoded-size-limit" };
+
 export interface ManifestDocumentRecord {
   key: string;
   exportOrdinal: number;
@@ -45,12 +89,24 @@ export interface ManifestDocumentRecord {
   contextAssessment: ContextAssessment;
   contextWarningAcknowledged: boolean;
   prompts: Record<keyof PromptSet, ManifestPromptRecord>;
-  combined: { markdown: ManifestPromptRecord; html: ManifestPromptRecord };
+  processing: { pageCount: number | null; options: ExtractionOptions };
+  visualAssets: {
+    index: ManifestPromptRecord;
+    placementMap: ManifestPromptRecord;
+    records: ManifestAssetRecord[];
+  };
+  ocr: { path: string; sha256: string; records: ManifestOcrRecord[] };
+  latexProject?: LatexProjectMetadata;
+  combined: {
+    markdown: ManifestPromptRecord;
+    html: ManifestPromptRecord;
+    fullHtml: ManifestGeneratedArtifact;
+  };
 }
 
 export interface PromptPackageManifest {
-  schemaVersion: 2;
-  package: { name: "reword-nerd"; version: "0.2.0"; format: "manual-four-stage-prompt-package" };
+  schemaVersion: 3;
+  package: { name: "reword-nerd"; version: "0.3.0"; format: "manual-four-stage-prompt-package" };
   archive: {
     entryOrder: "lexicographic-code-unit-ascending";
     timestamp: "1980-01-01T00:00:00.000Z";
@@ -90,6 +146,9 @@ export interface CombinedPromptArtifact {
   promptBlocks: readonly Readonly<CombinedPromptBlock>[];
   markdown: string;
   html: string;
+  fullHtml?: string;
+  fullHtmlStatus: ManifestGeneratedArtifact["status"];
+  visualAssets: readonly VisualAsset[];
 }
 
 export type PromptPackageResult =

@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, type WorkspaceDocument } from "../../src/domain";
+import { cloneExtractionOptions, DEFAULT_EXTRACTION_OPTIONS, DEFAULT_SETTINGS, type WorkspaceDocument } from "../../src/domain";
 import type { BuiltPromptPackage } from "../../src/app/workbench/contracts";
 import {
   createInitialWorkbenchState,
@@ -26,6 +26,10 @@ function document(
     extractedText: `text-${id}`,
     extractedTextHash: `text-hash-${id}`,
     warnings: [],
+    pageCount: null,
+    visualAssets: [],
+    ocrCandidates: [],
+    extractionOptions: cloneExtractionOptions(DEFAULT_EXTRACTION_OPTIONS),
     requiresReview: status !== "ready",
     settingsOverride: {},
     contextWarningAcknowledged: true,
@@ -43,6 +47,151 @@ function builtPackage(): BuiltPromptPackage {
 }
 
 describe("workbench reducer", () => {
+  it("keeps document processing conservative and invalidates reviewed media when options change", () => {
+    // This catches expensive extraction becoming default-on or an old reviewed package surviving changed media inputs.
+    let state = createInitialWorkbenchState();
+    expect((state as unknown as { globalExtractionOptions?: unknown }).globalExtractionOptions).toMatchObject({
+      extractEmbeddedImages: false,
+      capturePageVisuals: false,
+      ocrMode: "off",
+    });
+    state = workbenchReducer(state, {
+      type: "intake/accepted",
+      batchId: "batch-a",
+      documents: [{ document: document("alpha"), uploadOrdinal: 0 }],
+    });
+    const readyRevision = state.revision;
+    state = workbenchReducer(state, {
+      type: "export/started",
+      operationId: 1,
+      revision: readyRevision,
+    });
+    state = workbenchReducer(state, {
+      type: "export/package-built",
+      builtPackage: builtPackage(),
+      operationId: 1,
+      revision: readyRevision,
+    });
+
+    state = workbenchReducer(state, {
+      type: "processing/options-changed",
+      documentId: "alpha",
+      options: {
+        extractEmbeddedImages: true,
+        capturePageVisuals: false,
+        pageSelection: "all",
+        pageCaptureQuality: "standard",
+        ocrMode: "textless-pages",
+        ocrExtractedAssets: false,
+        ocrLanguage: { kind: "bundled", code: "eng", label: "English" },
+        excludeDecorativeImages: true,
+      },
+    } as never);
+
+    expect(state.documents[0]).toMatchObject({
+      status: "queued",
+      requiresReview: true,
+      visualAssets: [],
+      ocrCandidates: [],
+      extractionOptions: { extractEmbeddedImages: true, ocrMode: "textless-pages" },
+    });
+    expect(state.export.builtPackage).toBeUndefined();
+    expect(state.revision).toBeGreaterThan(readyRevision);
+  });
+
+  it("ignores a late extraction completion after a newer reprocessing operation starts", () => {
+    // This catches a cancelled or slow parser overwriting the source, media, and OCR review for a newer revision.
+    let state = createInitialWorkbenchState();
+    state = workbenchReducer(state, {
+      type: "intake/accepted",
+      batchId: "batch-a",
+      documents: [{ document: document("alpha", "queued"), uploadOrdinal: 0 }],
+    });
+    state = workbenchReducer(state, {
+      type: "extraction/started",
+      batchId: "batch-a",
+      documentId: "alpha",
+      operationId: 10,
+    } as never);
+    state = workbenchReducer(state, {
+      type: "extraction/started",
+      batchId: "batch-a",
+      documentId: "alpha",
+      operationId: 11,
+    } as never);
+
+    const result = {
+      format: "markdown" as const,
+      extractedText: "stale result",
+      warnings: [],
+      originalHash: "stale-original",
+      extractedTextHash: "stale-text",
+      pageCount: null,
+      visualAssets: [],
+      ocrCandidates: [],
+      extractionOptions: cloneExtractionOptions(DEFAULT_EXTRACTION_OPTIONS),
+      requiresReview: true,
+    };
+    const beforeStale = state;
+    state = workbenchReducer(state, {
+      type: "extraction/succeeded",
+      batchId: "batch-a",
+      documentId: "alpha",
+      operationId: 10,
+      result,
+    } as never);
+
+    expect(state).toBe(beforeStale);
+    expect(state.documents[0].status).toBe("extracting");
+  });
+
+  it("requires OCR candidate review and installs only an explicitly accepted candidate", () => {
+    // This catches uncertain OCR entering the reviewed source or export without page-level user acceptance.
+    let state = createInitialWorkbenchState();
+    const withOcr = {
+      ...document("scan", "needs-review"),
+      baseExtractedText: "--- Page 1 ---\n\n",
+      extractedText: "--- Page 1 ---\n\n",
+      ocrCandidates: [{
+        id: "ocr-page-1",
+        source: { kind: "page" as const, pageNumber: 1 },
+        text: "raw candidate",
+        reviewedText: "raw candidate",
+        confidence: 72,
+        status: "pending" as const,
+        engine: "tesseract.js" as const,
+        engineVersion: "7.0.0",
+        languageCode: "eng",
+        languageHash: "language-hash",
+      }],
+    };
+    state = workbenchReducer(state, {
+      type: "intake/accepted",
+      batchId: "batch-a",
+      documents: [{ document: withOcr, uploadOrdinal: 0 }],
+    });
+    expect(selectFirstExportBlocker(state)).toBe("Review every OCR candidate before export.");
+
+    state = workbenchReducer(state, {
+      type: "ocr/candidate-reviewed",
+      documentId: "scan",
+      candidateId: "ocr-page-1",
+      status: "accepted",
+      reviewedText: "corrected candidate",
+      composedText: "--- Page 1 ---\n\n\n\n--- Reviewed OCR: Page 1 ---\n\ncorrected candidate",
+      composedHash: "reviewed-ocr-hash",
+    } as never);
+
+    expect(state.documents[0]).toMatchObject({
+      extractedText: expect.stringContaining("corrected candidate"),
+      extractedTextHash: "reviewed-ocr-hash",
+      status: "needs-review",
+      requiresReview: true,
+      ocrCandidates: [{ status: "accepted", reviewedText: "corrected candidate" }],
+    });
+    expect(selectFirstExportBlocker(state)).toBe("Review extracted content before export");
+  });
+
   it("marks an edit for review and ignores stale hash completions", () => {
     let state = createInitialWorkbenchState();
     state = workbenchReducer(state, {
@@ -190,6 +339,10 @@ describe("workbench reducer", () => {
         format: "markdown",
         extractedText: "late",
         warnings: [],
+        pageCount: null,
+        visualAssets: [],
+        ocrCandidates: [],
+        extractionOptions: cloneExtractionOptions(DEFAULT_EXTRACTION_OPTIONS),
         originalHash: "late-original",
         extractedTextHash: "late-text",
         requiresReview: true,

@@ -17,12 +17,14 @@ export function normalizeDocumentBase(name: string): string {
   return capped || "document";
 }
 
-export function extensionForFormat(format: unknown): "txt" | "md" | "docx" | "pdf" | undefined {
+export function extensionForFormat(format: unknown): "txt" | "md" | "docx" | "pdf" | "tex" | "zip" | undefined {
   switch (format) {
     case "text": return "txt";
     case "markdown": return "md";
     case "docx": return "docx";
     case "pdf": return "pdf";
+    case "latex": return "tex";
+    case "latex-project": return "zip";
   }
 }
 

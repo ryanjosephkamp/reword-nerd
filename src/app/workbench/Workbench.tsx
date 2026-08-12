@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { assessContext, type RewriteSettings } from "../../domain";
+import { assessContext, composeExtractionWithOcr, type OcrReviewStatus, type RewriteSettings } from "../../domain";
 import type { MobileTab, WorkbenchServices } from "./contracts";
 import { createInitialWorkbenchState, workbenchReducer } from "./reducer";
 import {
@@ -25,6 +25,9 @@ import { SettingsDrawer } from "./components/SettingsDrawer";
 import { SettingsInspector } from "./components/SettingsInspector";
 import { StatusSummary } from "./components/StatusSummary";
 import { UploadDropZone } from "./components/UploadDropZone";
+import { AssetGallery } from "./components/AssetGallery";
+import { OcrReview } from "./components/OcrReview";
+import { DocumentIcon, MoreIcon } from "./components/Icons";
 
 type ResponsiveMode = "desktop" | "tablet" | "mobile";
 
@@ -70,6 +73,7 @@ function useResponsiveMode(): ResponsiveMode {
 
 export function Workbench({ services = defaultWorkbenchServices }: { services?: WorkbenchServices }) {
   const [state, dispatch] = useReducer(workbenchReducer, undefined, createInitialWorkbenchState);
+  const [busyOcrCandidate, setBusyOcrCandidate] = useState<string | null>(null);
   const mode = useResponsiveMode();
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const helpReturnFocusRef = useRef<HTMLButtonElement>(null);
@@ -133,6 +137,12 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     onProfileSelected: (profileId: string) => dispatch({ type: "profile/selected", profileId }),
     onProfileLabel: (value: string) => dispatch({ type: "profile/custom-label-changed", value }),
     onContextDraft: (value: string, parsed: number | null) => dispatch({ type: "profile/custom-context-draft-changed", value, parsed }),
+    onExtractionOptionsChange: (options: import("../../domain").ExtractionOptions, reprocess: boolean) => {
+      if (selected && reprocess) {
+        dispatch({ type: "processing/options-changed", documentId: selected.id, options });
+        intake.retry(selected.id, options);
+      } else dispatch({ type: "processing/global-options-changed", options });
+    },
   };
   const settings = <SettingsInspector {...settingsProps} exportPanel={mode === "desktop" ? exportPanel : undefined} />;
 
@@ -145,6 +155,28 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     if (!selected) return;
     if (mode === "mobile") dispatch({ type: "mobile/tab-changed", tab: "files" });
     dispatch({ type: "document/removed", documentId: selected.id });
+  };
+  const reviewOcrCandidate = async (candidateId: string, status: OcrReviewStatus, reviewedText: string) => {
+    if (!selected || busyOcrCandidate) return;
+    setBusyOcrCandidate(candidateId);
+    try {
+      const candidates = (selected.ocrCandidates ?? []).map((candidate) => candidate.id === candidateId
+        ? { ...candidate, status, reviewedText }
+        : candidate);
+      const composedText = composeExtractionWithOcr(selected.baseExtractedText ?? selected.extractedText, candidates);
+      const composedHash = await services.hashText(composedText);
+      dispatch({
+        type: "ocr/candidate-reviewed",
+        documentId: selected.id,
+        candidateId,
+        status,
+        reviewedText,
+        composedText,
+        composedHash,
+      });
+    } finally {
+      setBusyOcrCandidate(null);
+    }
   };
 
   return <main className="workbench" aria-label="reword_nerd workbench">
@@ -192,6 +224,19 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
         {...panelAccessibility(mode, state.mobileTab, "preview", "Extracted text preview")}
         className={`preview-panel mobile-panel${state.mobileTab === "preview" ? " is-mobile-active" : ""}`}
       >
+        {selected ? <div className="mobile-document-summary">
+          <div className="mobile-document-identity">
+            <DocumentIcon />
+            <div><strong>{selected.name}</strong><span>/files/{selected.name}</span></div>
+            <span className={`selected-status status-${selected.status}`}>{selected.status === "ready" ? "READY" : selected.status === "blocked" || selected.status === "error" ? "BLOCKED" : "NEEDS REVIEW"}</span>
+            <button type="button" aria-label={`Show ${selected.name} in files`} onClick={() => dispatch({ type: "mobile/tab-changed", tab: "files" })}><MoreIcon /></button>
+          </div>
+          <div className="mobile-document-stats">
+            <span><strong>{selected.pageCount ?? "—"}</strong><small>PAGES</small></span>
+            <span><strong>{selected.visualAssets?.filter((asset) => asset.included).length ?? 0}</strong><small>IMAGES</small></span>
+            <span><strong>{selected.ocrCandidates?.length ?? 0}</strong><small>OCR ITEMS</small></span>
+          </div>
+        </div> : null}
         <div className="panel-heading preview-heading">
           <h2 ref={packageHeadingRef} tabIndex={-1}>{state.previewMode === "package" ? "PACKAGE PREVIEW" : "EXTRACTED_TEXT"}</h2>
           <div className="preview-mode-switch" aria-label="Preview view">
@@ -200,6 +245,12 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
               aria-pressed={state.previewMode === "source"}
               onClick={() => dispatch({ type: "preview/mode-changed", mode: "source" })}
             >SOURCE</button>
+            <button
+              type="button"
+              aria-pressed={state.previewMode === "assets"}
+              disabled={!selected}
+              onClick={() => dispatch({ type: "preview/mode-changed", mode: "assets" })}
+            >ASSETS</button>
             <button
               type="button"
               aria-pressed={state.previewMode === "package"}
@@ -213,7 +264,11 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
             artifacts={state.export.builtPackage.artifacts}
             selectedDocumentKey={state.previewArtifactKey}
             onSelect={(documentKey) => dispatch({ type: "preview/artifact-selected", documentKey })}
-          /> : <ExtractedTextEditor
+          /> : state.previewMode === "assets" ? <AssetGallery
+            assets={selected?.visualAssets ?? []}
+            onInclusionChange={(assetId, included) => { if (selected) dispatch({ type: "visual-asset/inclusion-changed", documentId: selected.id, assetId, included }); }}
+          /> : <>
+          <ExtractedTextEditor
             document={selected}
             hashPending={selected ? state.editor[selected.id]?.hashPending ?? false : false}
             onEdit={(text) => { if (selected) editor.edit(selected.id, text); }}
@@ -221,14 +276,17 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
             onRemove={removeSelectedFromPreview}
             onRetry={() => { if (selected) intake.retry(selected.id); }}
             onRevealFiles={() => dispatch({ type: "mobile/tab-changed", tab: "files" })}
-          />}
+            onLatexMainFile={(mainFile) => { if (selected) dispatch({ type: "latex/main-file-selected", documentId: selected.id, mainFile }); }}
+          />
+          {selected ? <OcrReview candidates={selected.ocrCandidates ?? []} busyId={busyOcrCandidate} onReview={(candidateId, status, text) => void reviewOcrCandidate(candidateId, status, text)} /> : null}
+          </>}
         </div>
         {state.previewMode === "source" && context && selected ? <ContextMeter
           assessment={context}
           acknowledged={selected.contextWarningAcknowledged}
           onAcknowledge={(acknowledged) => dispatch({ type: "context/acknowledged", documentId: selected.id, acknowledged })}
         /> : null}
-        {mode === "mobile" ? exportPanel : null}
+        {mode === "mobile" && selected?.status === "ready" ? exportPanel : null}
         {mode === "mobile" ? <StatusSummary {...counts} compact /> : null}
       </section>
       <aside
@@ -242,7 +300,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     </div>
     <footer className="workbench-footer">
       <StatusSummary {...counts} />
-      <div className="saved-state" aria-label="Changes are held only for this browser session.">ALL CHANGES SAVED <span /> v0.2.0</div>
+      <div className="saved-state" aria-label="Changes are held only for this browser session.">ALL CHANGES SAVED <span /> v0.3.0</div>
     </footer>
     <SettingsDrawer open={state.settingsDrawerOpen} onClose={() => dispatch({ type: "drawer/changed", open: false })} returnFocusRef={settingsButtonRef}>
       <SettingsInspector {...settingsProps} exportPanel={exportPanel} />

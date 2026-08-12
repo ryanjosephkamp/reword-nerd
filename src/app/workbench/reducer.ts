@@ -1,9 +1,14 @@
 import {
   CURATED_MODEL_PROFILES,
+  cloneExtractionOptions,
+  DEFAULT_EXTRACTION_OPTIONS,
   DEFAULT_MODEL_PROFILE_ID,
   DEFAULT_SETTINGS,
   type ExtractionResult,
   type RewriteSettings,
+  type ExtractionOptions,
+  type OcrReviewStatus,
+  type ProcessingProgress,
   type WorkspaceDocument,
 } from "../../domain";
 import type { BuiltPromptPackage, MobileTab, PreviewMode, WorkbenchDocument, WorkbenchState } from "./contracts";
@@ -14,9 +19,11 @@ export type WorkbenchAction =
   | { type: "intake/drag-changed"; dragging: boolean }
   | { type: "intake/issues"; issues: WorkbenchState["intake"]["issues"]; message: string }
   | { type: "intake/accepted"; batchId: string; documents: IntakeDocument[] }
-  | { type: "extraction/started"; batchId: string; documentId: string }
-  | { type: "extraction/succeeded"; batchId: string; documentId: string; result: ExtractionResult }
-  | { type: "extraction/failed"; batchId: string; documentId: string; message: string }
+  | { type: "extraction/started"; batchId: string; documentId: string; operationId?: number }
+  | { type: "extraction/succeeded"; batchId: string; documentId: string; operationId?: number; result: ExtractionResult }
+  | { type: "extraction/failed"; batchId: string; documentId: string; operationId?: number; message: string }
+  | { type: "extraction/progress"; documentId: string; operationId: number; progress: ProcessingProgress }
+  | { type: "extraction/cancelled"; documentId: string; operationId: number }
   | { type: "selection/changed"; documentId: string }
   | { type: "document/removed"; documentId: string }
   | { type: "editor/edited"; documentId: string; text: string }
@@ -27,6 +34,19 @@ export type WorkbenchAction =
   | { type: "settings/global-changed"; field: keyof RewriteSettings; value: RewriteSettings[keyof RewriteSettings] }
   | { type: "settings/override-enabled"; documentId: string; enabled: boolean }
   | { type: "settings/override-changed"; documentId: string; field: keyof RewriteSettings; value: RewriteSettings[keyof RewriteSettings] }
+  | { type: "processing/global-options-changed"; options: ExtractionOptions }
+  | { type: "processing/options-changed"; documentId: string; options: ExtractionOptions }
+  | { type: "visual-asset/inclusion-changed"; documentId: string; assetId: string; included: boolean }
+  | { type: "latex/main-file-selected"; documentId: string; mainFile: string }
+  | {
+      type: "ocr/candidate-reviewed";
+      documentId: string;
+      candidateId: string;
+      status: OcrReviewStatus;
+      reviewedText: string;
+      composedText: string;
+      composedHash: string;
+    }
   | { type: "profile/selected"; profileId: string }
   | { type: "profile/context-limit-changed"; value: number | null }
   | { type: "profile/custom-label-changed"; value: string }
@@ -54,6 +74,7 @@ export function createInitialWorkbenchState(): WorkbenchState {
     documents: [],
     selectedDocumentId: null,
     globalSettings: { ...DEFAULT_SETTINGS },
+    globalExtractionOptions: cloneExtractionOptions(DEFAULT_EXTRACTION_OPTIONS),
     selectedProfileId: firstProfile.id,
     workingProfile: { ...firstProfile },
     customProfileLabel: "",
@@ -124,6 +145,12 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
         uploadOrdinal,
         settingsOverride: { ...document.settingsOverride },
         warnings: [...document.warnings],
+        pageCount: document.pageCount ?? null,
+        visualAssets: [...(document.visualAssets ?? [])],
+        ocrCandidates: [...(document.ocrCandidates ?? [])],
+        baseExtractedText: document.baseExtractedText ?? document.extractedText,
+        extractionOptions: cloneExtractionOptions(document.extractionOptions ?? state.globalExtractionOptions),
+        processingOperationId: document.processingOperationId,
       }));
       const editor = { ...state.editor };
       const overrideEnabled = { ...state.overrideEnabled };
@@ -145,34 +172,68 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
       return {
         ...state,
         documents: updateDocument(state.documents, action.documentId, (document) =>
-          document.batchId === action.batchId ? { ...document, status: "extracting" } : document),
+          document.batchId === action.batchId ? {
+            ...document,
+            status: "extracting",
+            processingOperationId: action.operationId ?? document.processingOperationId,
+          } : document),
       };
     case "extraction/succeeded": {
       const current = state.documents.find((document) => document.id === action.documentId);
-      if (!current || current.batchId !== action.batchId) return state;
+      if (!current
+        || current.batchId !== action.batchId
+        || (action.operationId !== undefined && current.processingOperationId !== action.operationId)) return state;
       return changed(state, {
         documents: updateDocument(state.documents, action.documentId, (document) => ({
           ...document,
           ...action.result,
+          baseExtractedText: action.result.extractedText,
           warnings: [...action.result.warnings],
           status: "needs-review",
           requiresReview: true,
           contextWarningAcknowledged: false,
+          processingProgress: undefined,
         })),
         liveMessage: `${current.name} is ready for review.`,
       });
     }
     case "extraction/failed": {
       const current = state.documents.find((document) => document.id === action.documentId);
-      if (!current || current.batchId !== action.batchId) return state;
+      if (!current
+        || current.batchId !== action.batchId
+        || (action.operationId !== undefined && current.processingOperationId !== action.operationId)) return state;
       return changed(state, {
         documents: updateDocument(state.documents, action.documentId, (document) => ({
           ...document,
           status: "blocked",
           requiresReview: true,
           safeErrorMessage: action.message,
+          processingProgress: undefined,
         })),
         liveMessage: `${current.name} is blocked.`,
+      });
+    }
+    case "extraction/progress": {
+      const current = state.documents.find((document) => document.id === action.documentId);
+      if (!current || current.processingOperationId !== action.operationId) return state;
+      return {
+        ...state,
+        documents: updateDocument(state.documents, action.documentId, (document) => ({
+          ...document,
+          processingProgress: { ...action.progress },
+        })),
+      };
+    }
+    case "extraction/cancelled": {
+      const current = state.documents.find((document) => document.id === action.documentId);
+      if (!current || current.processingOperationId !== action.operationId) return state;
+      return changed(state, {
+        documents: updateDocument(state.documents, action.documentId, (document) => ({
+          ...document,
+          status: "queued",
+          processingProgress: undefined,
+        })),
+        liveMessage: "Document processing was cancelled.",
       });
     }
     case "selection/changed":
@@ -261,6 +322,8 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
         || !document
         || document.status !== "needs-review"
         || !document.requiresReview
+        || (document.format === "latex-project" && !document.latexProject?.mainFile)
+        || document.ocrCandidates?.some((candidate) => candidate.status === "pending")
         || document.extractedText.trim().length === 0
         || editorState.revision !== action.revision
         || editorState.hashPending
@@ -300,6 +363,88 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
           settingsOverride: { ...document.settingsOverride, [action.field]: action.value },
         })),
       });
+    case "processing/global-options-changed":
+      return changed(state, {
+        globalExtractionOptions: cloneExtractionOptions(action.options),
+      });
+    case "processing/options-changed":
+      if (!state.documents.some((document) => document.id === action.documentId)) return state;
+      return changed(state, {
+        documents: updateDocument(state.documents, action.documentId, (document) => ({
+          ...document,
+          status: "queued",
+          requiresReview: true,
+          contextWarningAcknowledged: false,
+          visualAssets: [],
+          ocrCandidates: [],
+          latexProject: undefined,
+          processingProgress: undefined,
+          extractionOptions: cloneExtractionOptions(action.options),
+        })),
+        liveMessage: "Document processing settings changed. Reprocess the document before review.",
+      });
+    case "visual-asset/inclusion-changed": {
+      const current = state.documents.find((document) => document.id === action.documentId);
+      if (!current?.visualAssets?.some((asset) => asset.id === action.assetId)) return state;
+      return changed(state, {
+        documents: updateDocument(state.documents, action.documentId, (document) => ({
+          ...document,
+          visualAssets: (document.visualAssets ?? []).map((asset) => asset.id === action.assetId
+            ? { ...asset, included: action.included }
+            : asset),
+          status: "needs-review",
+          requiresReview: true,
+          contextWarningAcknowledged: false,
+        })),
+        liveMessage: action.included ? "Visual asset included. Confirm review again." : "Visual asset omitted. Confirm review again.",
+      });
+    }
+    case "latex/main-file-selected": {
+      const current = state.documents.find((document) => document.id === action.documentId);
+      if (!current?.latexProject?.mainFileCandidates.includes(action.mainFile)) return state;
+      return changed(state, {
+        documents: updateDocument(state.documents, action.documentId, (document) => ({
+          ...document,
+          latexProject: document.latexProject ? { ...document.latexProject, mainFile: action.mainFile } : undefined,
+          status: "needs-review",
+          requiresReview: true,
+          contextWarningAcknowledged: false,
+        })),
+        liveMessage: `LaTeX main file selected: ${action.mainFile}. Confirm review again.`,
+      });
+    }
+    case "ocr/candidate-reviewed": {
+      const current = state.documents.find((document) => document.id === action.documentId);
+      const candidate = current?.ocrCandidates?.find((item) => item.id === action.candidateId);
+      if (!current
+        || !candidate
+        || (action.status === "accepted" && !action.reviewedText.trim())
+        || !action.composedText.trim()
+        || !action.composedHash) return state;
+      const editorState = state.editor[action.documentId];
+      return changed(state, {
+        documents: updateDocument(state.documents, action.documentId, (document) => ({
+          ...document,
+          extractedText: action.composedText,
+          extractedTextHash: action.composedHash,
+          ocrCandidates: (document.ocrCandidates ?? []).map((item) => item.id === action.candidateId
+            ? { ...item, status: action.status, reviewedText: action.reviewedText }
+            : item),
+          status: "needs-review",
+          requiresReview: true,
+          contextWarningAcknowledged: false,
+        })),
+        editor: editorState ? {
+          ...state.editor,
+          [action.documentId]: {
+            revision: editorState.revision + 1,
+            hashPending: false,
+            hashFailed: false,
+          },
+        } : state.editor,
+        liveMessage: action.status === "accepted" ? "OCR candidate accepted for review." : "OCR candidate omitted.",
+      });
+    }
     case "profile/selected": {
       const profile = CURATED_MODEL_PROFILES.find((item) => item.id === action.profileId);
       if (!profile) return state;

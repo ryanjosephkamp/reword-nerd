@@ -23,7 +23,7 @@ export function UploadDropZone({
       className="visually-hidden"
       type="file"
       aria-label="Add supported files"
-      accept=".txt,.md,.markdown,.docx,.pdf"
+      accept=".txt,.md,.markdown,.docx,.pdf,.tex,.ltx,.zip"
       multiple
       onChange={onChange}
     />

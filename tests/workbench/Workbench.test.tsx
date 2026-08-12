@@ -20,6 +20,9 @@ function combinedArtifact(documentKey = "notes", name = "notes.md"): CombinedPro
     ],
     markdown: "combined markdown",
     html: "<!doctype html><title>combined prompts</title>",
+    fullHtml: "<!doctype html><title>combined prompts full</title>",
+    fullHtmlStatus: "generated",
+    visualAssets: [],
   };
 }
 
@@ -90,6 +93,61 @@ describe("Night Terminal workbench", () => {
     expect(screen.getByText(/local, self-hosted, fine-tuned, or otherwise unlisted/i)).toBeInTheDocument();
   });
 
+  it("keeps conservative processing defaults and reprocesses after an explicit image or OCR change", async () => {
+    // This catches optional expensive processing silently becoming the default or settings failing to reach extraction.
+    const extract = vi.fn(services().extract);
+    render(<App services={services({ extract })} />);
+    fireEvent.change(screen.getByLabelText("Add supported files"), {
+      target: { files: [new File(["Source text"], "notes.md")] },
+    });
+    await screen.findByDisplayValue("Source text");
+    expect(extract).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), expect.objectContaining({
+      extractEmbeddedImages: false,
+      capturePageVisuals: false,
+      ocrMode: "off",
+    }), expect.any(AbortSignal), expect.any(Function));
+
+    fireEvent.click(screen.getByText("DOCUMENT PROCESSING"));
+    fireEvent.click(screen.getByLabelText("Extract embedded images"));
+    await waitFor(() => expect(extract).toHaveBeenCalledTimes(2));
+    expect(extract).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), expect.objectContaining({
+      extractEmbeddedImages: true,
+      ocrMode: "off",
+    }), expect.any(AbortSignal), expect.any(Function));
+  });
+
+  it("reviews pending OCR before confirmation and merges only the accepted edited candidate", async () => {
+    // This catches OCR entering reviewed source without explicit disposition or losing the user's correction.
+    const extract = vi.fn(async (accepted: Parameters<WorkbenchServices["extract"]>[0]) => ({
+      format: accepted.format,
+      extractedText: "Native source",
+      warnings: ["Review every OCR candidate before confirming the extraction."],
+      originalHash: "original-hash",
+      extractedTextHash: "text-hash",
+      requiresReview: true,
+      ocrCandidates: [{
+        id: "ocr-page-2",
+        source: { kind: "page" as const, pageNumber: 2 },
+        text: "raw scan",
+        reviewedText: "raw scan",
+        confidence: 72,
+        status: "pending" as const,
+        engine: "tesseract.js" as const,
+        engineVersion: "7.0.0",
+        languageCode: "eng",
+        languageHash: "language-hash",
+      }],
+    }));
+    render(<App services={services({ extract })} />);
+    fireEvent.change(screen.getByLabelText("Add supported files"), { target: { files: [new File(["x"], "scan.pdf")] } });
+    await screen.findByLabelText("Reviewed OCR text for Page 2");
+    expect(screen.getByRole("button", { name: "Confirm review" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Reviewed OCR text for Page 2"), { target: { value: "corrected scan" } });
+    fireEvent.click(screen.getByRole("button", { name: "Accept OCR" }));
+    await waitFor(() => expect((screen.getByLabelText("Extracted text for scan.pdf") as HTMLTextAreaElement).value).toContain("corrected scan"));
+    expect(screen.getByRole("button", { name: "Confirm review" })).toBeEnabled();
+  });
+
   it("mounts the complete accessible workbench shell and upload affordances", () => {
     render(<App services={services()} />);
 
@@ -100,7 +158,7 @@ describe("Night Terminal workbench", () => {
     expect(screen.getByRole("region", { name: "Parameters" })).toBeInTheDocument();
     expect(screen.getByLabelText("Add supported files")).toHaveAttribute(
       "accept",
-      ".txt,.md,.markdown,.docx,.pdf",
+      ".txt,.md,.markdown,.docx,.pdf,.tex,.ltx,.zip",
     );
     expect(screen.getByRole("button", { name: "Add files" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Start with files" })).not.toHaveAttribute("hidden");
@@ -120,7 +178,7 @@ describe("Night Terminal workbench", () => {
     render(<App services={services()} />);
 
     for (const name of ["files", "preview", "settings"] as const) {
-      const tab = screen.getByRole("tab", { name: name.toUpperCase() });
+      const tab = screen.getByRole("tab", { name: name === "preview" ? "REVIEW" : name.toUpperCase() });
       const panel = document.getElementById(`panel-${name}`);
       expect(tab).toHaveAttribute("aria-controls", `panel-${name}`);
       expect(panel).toHaveAttribute("role", "tabpanel");
@@ -132,7 +190,7 @@ describe("Night Terminal workbench", () => {
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
     expect(screen.getByRole("tabpanel")).toHaveAttribute("id", "panel-files");
 
-    fireEvent.click(screen.getByRole("tab", { name: "PREVIEW" }));
+    fireEvent.click(screen.getByRole("tab", { name: "REVIEW" }));
     expect(document.getElementById("panel-files")).toHaveAttribute("hidden");
     expect(document.getElementById("panel-preview")).not.toHaveAttribute("hidden");
     expect(document.getElementById("panel-settings")).toHaveAttribute("hidden");
@@ -370,8 +428,8 @@ describe("Night Terminal workbench", () => {
     const filesTab = screen.getByRole("tab", { name: "FILES" });
     filesTab.focus();
     fireEvent.keyDown(filesTab, { key: "ArrowRight" });
-    expect(screen.getByRole("tab", { name: "PREVIEW" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tab", { name: "PREVIEW" })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: "REVIEW" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "REVIEW" })).toHaveFocus();
 
     const helpButton = screen.getByRole("button", { name: "Help" });
     fireEvent.click(helpButton);
@@ -595,12 +653,12 @@ describe("Night Terminal workbench", () => {
       target: { files: [new File(["Source text"], "notes.md")] },
     });
     await screen.findByDisplayValue("Source text");
-    expect(screen.getByRole("tab", { name: "PREVIEW" })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: "REVIEW" })).toHaveFocus();
     fireEvent.click(screen.getByRole("button", { name: "Selected file notes.md" }));
     expect(screen.getByRole("tab", { name: "FILES" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: "FILES" })).toHaveFocus();
     fireEvent.click(screen.getByRole("option", { name: /notes\.md/ }));
-    expect(screen.getByRole("tab", { name: "PREVIEW" })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: "REVIEW" })).toHaveFocus();
     window.matchMedia = originalMatchMedia;
   });
 

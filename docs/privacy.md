@@ -9,8 +9,9 @@ preview, clipboard handling, and ZIP creation run locally in the browser.
 - It has no application backend or account system.
 - It does not send the selected files to a model provider.
 - It does not include analytics, telemetry, remote assets, or post-load
-  external application requests. The local PDF parser may load same-origin
-  application assets on demand.
+  external application requests. The local PDF parser and optional OCR engine
+  may load same-origin application assets on demand, including the bundled
+  English language data.
 - It does not write workbench data to localStorage, sessionStorage, IndexedDB,
   Cache Storage, cookies, or a service worker.
 
@@ -33,10 +34,11 @@ After that point, the file is handled by your
 browser, its configured download destination, and your operating system. The
 application does not retain a copy after the session ends.
 
-The standalone HTML companion contains inline CSS and a small inline copy
-script. It has no external fonts, images, libraries, analytics, storage, or
-network requests. Copy uses the browser Clipboard API where available and a
-local selection fallback otherwise.
+The standalone HTML companions contain inline CSS and a small inline copy
+script. They have no external fonts, libraries, analytics, storage, or network
+requests. The lightweight companion links only to packaged sibling assets; the
+size-bounded full companion uses data URLs. Copy uses the browser Clipboard API
+where available and a local selection fallback otherwise.
 
 ## Your manual model workflow
 
