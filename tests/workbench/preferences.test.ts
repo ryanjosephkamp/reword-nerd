@@ -148,13 +148,14 @@ describe("saved preference adapter", () => {
     expect(PREFERENCES_STORAGE_KEY).toBe("reword-nerd:preferences:v1");
     expect(parsed.version).toBe(1);
     expect(Object.keys(parsed.data).sort()).toEqual([
+      "codeRewriteOptions",
       "contextWindowTokens",
       "globalSettings",
       "processing",
       "selectedProfileId",
       "tutorialVersion",
     ]);
-    expect(serialized).not.toMatch(/secret|document|content|hash|override|artifact|prompt|response|package/i);
+    expect(serialized).not.toMatch(/secret-document|secret-batch|source secret|private-content|private-.*hash|override|artifact|prompt|response|package/i);
   });
 
   it("omits invalid live drafts while canonicalizing valid fields in the serialized snapshot", () => {

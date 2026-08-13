@@ -4,6 +4,7 @@ import verifyTemplate from "../../prompts/03_verify.md?raw";
 import finalTemplate from "../../prompts/04_final.md?raw";
 import oneShotTemplate from "../../prompts/00_one_shot.md?raw";
 import type { DocumentFormat, PromptBundle, PromptSet } from "../domain/contracts";
+import type { SourcePreviewKind } from "../domain/sourceText";
 import type {
   ModelProfile,
   PromptDelimiterStyle,
@@ -14,6 +15,7 @@ import {
   lengthLabel,
   toneLabel,
   type RewriteSettings,
+  type CodeRewriteOptions,
 } from "../domain/settings";
 
 export const responseMarkers = {
@@ -53,10 +55,80 @@ export interface PromptAssetContext {
   included: boolean;
 }
 
+export interface PromptSourceFile {
+  path: string;
+  text: string;
+  originalHash: string;
+  reviewedTextHash: string;
+  languageId: string;
+  previewKind: SourcePreviewKind;
+}
+
 export interface PromptDocumentContext {
+  kind?: "document";
   format: DocumentFormat;
   assets: readonly PromptAssetContext[];
   latexMainFile?: string | null;
+  codeRewriteOptions?: CodeRewriteOptions;
+}
+
+export interface PromptProjectContext {
+  kind: "project";
+  format: DocumentFormat;
+  assets: readonly PromptAssetContext[];
+  reviewedTreeHash: string;
+  includedFiles: readonly PromptSourceFile[];
+  excludedPaths: readonly string[];
+  codeRewriteOptions: CodeRewriteOptions;
+  latexMainFile?: string | null;
+}
+
+export type PromptSourceContext = PromptDocumentContext | PromptProjectContext;
+
+export type PromptProjectSource = Pick<PromptProjectContext,
+  "kind" | "reviewedTreeHash" | "includedFiles" | "excludedPaths">;
+
+export function sourceBoundaryToken(treeHash: string, files: readonly Pick<PromptSourceFile, "text">[]): string {
+  const canonicalHash = treeHash.replaceAll(/[^a-f0-9]/giu, "").toUpperCase();
+  let length = Math.min(12, canonicalHash.length);
+  let token = `SOURCE_BOUNDARY_${canonicalHash.slice(0, length)}`;
+  const content = files.map((file) => file.text).join("\n");
+  while (content.includes(token)) {
+    if (length < canonicalHash.length) length = Math.min(canonicalHash.length, length + 4);
+    else token += "_X";
+    token = length < canonicalHash.length || !token.endsWith("_X")
+      ? `SOURCE_BOUNDARY_${canonicalHash.slice(0, length)}`
+      : token;
+  }
+  return token;
+}
+
+export function renderPromptSource(context: PromptProjectSource): string {
+  const files = [...context.includedFiles].sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+  const boundary = sourceBoundaryToken(context.reviewedTreeHash, files);
+  const body = files.map((file) => [
+    `<<<FILE ${file.path} | ORIGINAL ${file.originalHash} | REVIEWED ${file.reviewedTextHash}>>>`,
+    file.text,
+    `<<<END FILE ${file.path}>>>`,
+  ].join(file.text.endsWith("\n") ? "\n" : "\n")).join("\n");
+  return `${boundary}\nReviewed snapshot: ${context.reviewedTreeHash}\n${body}\nExcluded paths: ${context.excludedPaths.length > 0 ? [...context.excludedPaths].sort().join(", ") : "None."}\n${boundary}`;
+}
+
+const codeProjectFidelityGuidance = `## Code and Project Fidelity Contract
+Preserve executable syntax, control flow, identifiers, imports and signatures, paths, keys, types, numbers, placeholders and escapes, citations and licenses, markup structure, and table shape and formulas.
+Return changed text files only in deterministic path-delimited blocks. Report unchanged, excluded, and risk manifests. Do not modify excluded files. Tools may edit only a copied project and must report the same manifest. Do not claim that builds or tests were run.
+Inspect the generated diffs and run your normal tests/build after applying changes.`;
+
+function isCodeOrStructuredFormat(format: DocumentFormat): boolean {
+  return new Set<DocumentFormat>([
+    "html", "xml", "json", "jsonl", "ndjson", "csv", "tsv", "yaml", "toml",
+    "ini", "config", "css", "sql", "code",
+  ]).has(format);
+}
+
+function codeRewriteSelection(options: CodeRewriteOptions | undefined): string {
+  if (!options) return "";
+  return `\n\n## Rewrite Selection\nDocumentation and markup: ${options.documentationAndMarkup ? "include" : "exclude"}\nComments and docstrings: ${options.commentsAndDocstrings ? "include" : "exclude"}\nUser-facing strings: ${options.userFacingStrings ? "include" : "exclude"}\nNarrative structured-data values: ${options.narrativeStructuredDataValues ? "include" : "exclude"}\nProtected executable syntax: always preserve`;
 }
 
 const assetStageGuidance: Record<PromptStage, string> = {
@@ -68,7 +140,7 @@ const assetStageGuidance: Record<PromptStage, string> = {
 
 const oneShotAssetGuidance = "For the internal decomposition, inventory every included asset and its role. Preserve and place required assets in the rewrite, verify every reference and caption, then repair any supported fidelity issue before finalizing.";
 
-function documentFidelityContext(context: PromptDocumentContext, stage: PromptStage | "oneShot"): string {
+function documentFidelityContext(context: PromptSourceContext, stage: PromptStage | "oneShot"): string {
   const included = context.assets.filter((asset) => asset.included);
   const catalog = included.length === 0
     ? "No extracted visual assets are included."
@@ -84,13 +156,16 @@ function documentFidelityContext(context: PromptDocumentContext, stage: PromptSt
     ? `\n\n## LaTeX Fidelity Contract\nPreserve LaTeX preambles, macros, math, citations, labels, references, paths, and figure environments unless an explicit requirement says otherwise. Main file: ${context.latexMainFile ?? "standalone or not yet selected"}. For a multi-file response, emit one safe block per rewritten TeX source using exactly:\n<<<FILE relative/path.tex>>>\nrewritten source\n<<<END FILE>>>\nDo not rewrite bibliography or binary asset bytes.`
     : "";
   const guidance = stage === "oneShot" ? oneShotAssetGuidance : assetStageGuidance[stage];
-  return `## Visual Asset Workflow\n${guidance}\nAttach the packaged files manually when the selected model interface supports image input. Otherwise use this catalog and the reviewed OCR text.\n\n${artifact("VISUAL ASSET CATALOG", catalog, "markdown")}${latex}`;
+  const codeProject = context.kind === "project" || isCodeOrStructuredFormat(context.format)
+    ? `\n\n${codeProjectFidelityGuidance}${codeRewriteSelection(context.codeRewriteOptions)}`
+    : "";
+  return `## Visual Asset Workflow\n${guidance}\nAttach the packaged files manually when the selected model interface supports image input. Otherwise use this catalog and the reviewed OCR text.\n\n${artifact("VISUAL ASSET CATALOG", catalog, "markdown")}${latex}${codeProject}`;
 }
 
 function oneShotContext(
   settings: RewriteSettings,
   profile: ModelProfile,
-  documentContext?: PromptDocumentContext,
+  documentContext?: PromptSourceContext,
 ): string {
   const customRequirements = settings.customRequirements || "None.";
   return `## Model Workflow
@@ -116,7 +191,7 @@ function sharedContext(
   settings: RewriteSettings,
   profile: ModelProfile,
   stage: PromptStage,
-  documentContext?: PromptDocumentContext,
+  documentContext?: PromptSourceContext,
 ): string {
   const customRequirements = settings.customRequirements || "None.";
   return `## Model Workflow
@@ -154,10 +229,12 @@ export function renderPromptSet(
   sourceText: string,
   settings: RewriteSettings,
   profile: ModelProfile,
-  documentContext?: PromptDocumentContext,
+  documentContext?: PromptSourceContext,
 ): PromptSet {
   const delimiterStyle = profile.promptStrategy.delimiterStyle;
-  const source = artifact("SOURCE DOCUMENT", sourceText, delimiterStyle);
+  const source = documentContext?.kind === "project"
+    ? renderPromptSource(documentContext)
+    : artifact("SOURCE DOCUMENT", sourceText, delimiterStyle);
   const decomposition = artifact("STAGE 1 DECOMPOSITION", responseMarkers.decompose, delimiterStyle);
   const rewrite = artifact("STAGE 2 REWRITE", responseMarkers.rewrite, delimiterStyle);
   const verification = artifact("STAGE 3 VERIFICATION", responseMarkers.verify, delimiterStyle);
@@ -174,9 +251,11 @@ export function renderPromptBundle(
   sourceText: string,
   settings: RewriteSettings,
   profile: ModelProfile,
-  documentContext?: PromptDocumentContext,
+  documentContext?: PromptSourceContext,
 ): PromptBundle {
-  const source = artifact("SOURCE DOCUMENT", sourceText, profile.promptStrategy.delimiterStyle);
+  const source = documentContext?.kind === "project"
+    ? renderPromptSource(documentContext)
+    : artifact("SOURCE DOCUMENT", sourceText, profile.promptStrategy.delimiterStyle);
   const context = oneShotContext(settings, profile, documentContext);
   const oneShot = profile.promptStrategy.layout === "source-first-task-last"
     ? `${source}\n\n${context}\n\n${oneShotTemplate}`

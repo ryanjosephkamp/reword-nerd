@@ -2,11 +2,13 @@ import {
   CURATED_MODEL_PROFILES,
   cloneExtractionOptions,
   DEFAULT_EXTRACTION_OPTIONS,
+  DEFAULT_CODE_REWRITE_OPTIONS,
   DEFAULT_MODEL_PROFILE_ID,
   DEFAULT_SETTINGS,
   type ExtractionResult,
   type RewriteSettings,
   type ExtractionOptions,
+  type CodeRewriteOptions,
   type OcrReviewStatus,
   type ProcessingProgress,
   type WorkspaceDocument,
@@ -33,6 +35,7 @@ export type WorkbenchAction =
   | { type: "editor/hash-retry-started"; documentId: string; revision: number }
   | { type: "review/confirmed"; documentId: string; revision: number }
   | { type: "settings/global-changed"; field: keyof RewriteSettings; value: RewriteSettings[keyof RewriteSettings] }
+  | { type: "code-rewrite/global-options-changed"; options: CodeRewriteOptions }
   | { type: "settings/override-enabled"; documentId: string; enabled: boolean }
   | { type: "settings/override-changed"; documentId: string; field: keyof RewriteSettings; value: RewriteSettings[keyof RewriteSettings] }
   | { type: "processing/global-options-changed"; options: ExtractionOptions }
@@ -101,6 +104,7 @@ export function createInitialWorkbenchState(preferences: SavedPreferencesPatch |
     documents: [],
     selectedDocumentId: null,
     globalSettings: { ...DEFAULT_SETTINGS, ...preferences?.globalSettings },
+    globalCodeRewriteOptions: { ...DEFAULT_CODE_REWRITE_OPTIONS, ...preferences?.codeRewriteOptions, protectedExecutableSyntax: true },
     globalExtractionOptions: cloneExtractionOptions({
       ...DEFAULT_EXTRACTION_OPTIONS,
       ...preferences?.processing,
@@ -385,6 +389,10 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
       return changed(state, {
         globalSettings: { ...state.globalSettings, [action.field]: action.value },
       });
+    case "code-rewrite/global-options-changed":
+      return changed(state, {
+        globalCodeRewriteOptions: { ...action.options, protectedExecutableSyntax: true },
+      });
     case "settings/override-enabled": {
       const document = state.documents.find((item) => item.id === action.documentId);
       if (!document) return state;
@@ -608,6 +616,7 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
     case "preferences/reset-confirmed":
       return changed(state, {
         globalSettings: { ...DEFAULT_SETTINGS },
+        globalCodeRewriteOptions: { ...DEFAULT_CODE_REWRITE_OPTIONS },
         globalExtractionOptions: cloneExtractionOptions(DEFAULT_EXTRACTION_OPTIONS),
         selectedProfileId: firstProfile.id,
         workingProfile: { ...firstProfile },

@@ -113,11 +113,13 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     customProfileLabel: state.customProfileLabel,
     workingProfile: state.workingProfile,
     globalSettings: state.globalSettings,
+    globalCodeRewriteOptions: state.globalCodeRewriteOptions,
     globalExtractionOptions: state.globalExtractionOptions,
     tutorialSeenVersion: state.tutorialSeenVersion,
   }), [
     state.customProfileLabel,
     state.globalExtractionOptions,
+    state.globalCodeRewriteOptions,
     state.globalSettings,
     state.selectedProfileId,
     state.tutorialSeenVersion,

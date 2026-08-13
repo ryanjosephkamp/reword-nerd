@@ -8,7 +8,7 @@ import type {
 } from "../../domain";
 import type { DownloadResult, ExportDocumentInput, PromptPackageResult } from "../../export";
 import type { ModelProfile } from "../../domain/profiles";
-import type { RewriteSettings } from "../../domain/settings";
+import type { CodeRewriteOptions, RewriteSettings } from "../../domain/settings";
 import type { ExtractionOptions } from "../../domain/media";
 import type { ProcessingProgress } from "../../domain/media";
 
@@ -40,6 +40,7 @@ export interface WorkbenchState {
   documents: WorkbenchDocument[];
   selectedDocumentId: string | null;
   globalSettings: RewriteSettings;
+  globalCodeRewriteOptions: CodeRewriteOptions;
   globalExtractionOptions: ExtractionOptions;
   selectedProfileId: string;
   workingProfile: ModelProfile;

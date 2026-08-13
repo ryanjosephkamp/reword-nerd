@@ -4,6 +4,9 @@ import {
   type ExtractionOptions,
   type Formality,
   type LengthPreference,
+  DEFAULT_CODE_REWRITE_OPTIONS,
+  resolveCodeRewriteOptions,
+  type CodeRewriteOptions,
   type RewriteSettings,
   type Tone,
 } from "../../domain";
@@ -22,6 +25,7 @@ export interface SavedPreferencesPatch {
   customProfileLabel?: string;
   contextWindowTokens?: number | null;
   globalSettings?: Partial<RewriteSettings>;
+  codeRewriteOptions?: Partial<CodeRewriteOptions>;
   processing?: Partial<PersistedProcessing>;
   tutorialVersion?: string | null;
 }
@@ -135,6 +139,26 @@ function decodeProcessing(value: unknown): Partial<PersistedProcessing> | undefi
   return decoded;
 }
 
+function decodeCodeRewriteOptions(value: unknown): Partial<CodeRewriteOptions> | undefined {
+  const data = record(value);
+  if (!data) return undefined;
+  const decoded: Partial<CodeRewriteOptions> & { protectedExecutableSyntax?: true } = {};
+  for (const key of [
+    "documentationAndMarkup",
+    "commentsAndDocstrings",
+    "userFacingStrings",
+    "narrativeStructuredDataValues",
+    "honorRootGitignore",
+    "excludeDependenciesBuildGenerated",
+    "preserveSafeNonTextAssets",
+  ] as const) {
+    const decodedValue = boolean(data[key]);
+    if (decodedValue !== undefined) decoded[key] = decodedValue;
+  }
+  decoded.protectedExecutableSyntax = true;
+  return decoded;
+}
+
 function validatedPreferences(data: Record<string, unknown>): SavedPreferencesPatch {
   const decoded: SavedPreferencesPatch = {};
   const selectedProfileId = typeof data.selectedProfileId === "string"
@@ -144,6 +168,7 @@ function validatedPreferences(data: Record<string, unknown>): SavedPreferencesPa
   const customProfileLabel = canonicalText(data.customProfileLabel, MAX_CUSTOM_PROFILE_LABEL_LENGTH);
   const currentContextLimit = contextLimit(data.contextWindowTokens);
   const globalSettings = decodeSettings(data.globalSettings);
+  const codeRewriteOptions = decodeCodeRewriteOptions(data.codeRewriteOptions);
   const processing = decodeProcessing(data.processing);
   const tutorialVersion = data.tutorialVersion === null
     ? null
@@ -152,6 +177,7 @@ function validatedPreferences(data: Record<string, unknown>): SavedPreferencesPa
   if (customProfileLabel !== undefined) decoded.customProfileLabel = customProfileLabel;
   if (currentContextLimit !== undefined) decoded.contextWindowTokens = currentContextLimit;
   if (globalSettings !== undefined) decoded.globalSettings = globalSettings;
+  if (codeRewriteOptions !== undefined) decoded.codeRewriteOptions = codeRewriteOptions;
   if (processing !== undefined) decoded.processing = processing;
   if (tutorialVersion !== undefined) decoded.tutorialVersion = tutorialVersion;
   return decoded;
@@ -174,6 +200,7 @@ type PreferenceState = Pick<WorkbenchState,
   | "customProfileLabel"
   | "workingProfile"
   | "globalSettings"
+  | "globalCodeRewriteOptions"
   | "globalExtractionOptions"
   | "tutorialSeenVersion"
 >;
@@ -185,6 +212,7 @@ export function snapshotPreferences(state: PreferenceState): PreferenceSnapshot 
     customProfileLabel: state.customProfileLabel,
     contextWindowTokens: state.workingProfile.contextWindowTokens,
     globalSettings: { ...state.globalSettings },
+    codeRewriteOptions: resolveCodeRewriteOptions(state.globalCodeRewriteOptions ?? DEFAULT_CODE_REWRITE_OPTIONS),
     processing: {
       extractEmbeddedImages: options.extractEmbeddedImages,
       capturePageVisuals: options.capturePageVisuals,

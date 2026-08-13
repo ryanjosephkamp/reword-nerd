@@ -89,12 +89,15 @@ export function useFileIntake(
     const admitted = accepted.map((result, index) => {
       const id = services.createDocumentId();
       const document: WorkspaceDocument = {
+        kind: "document",
         id,
         original: result.file,
         originalByteSize: result.file.size,
         originalHash: "",
         name: result.file.name,
         format: result.format,
+        ...(result.languageId ? { languageId: result.languageId } : {}),
+        ...(result.previewKind ? { previewKind: result.previewKind } : {}),
         status: "queued",
         extractedText: "",
         extractedTextHash: "",
@@ -210,7 +213,14 @@ export function useFileIntake(
     controllersRef.current.set(documentId, controller);
     dispatch({ type: "extraction/started", batchId: document.batchId, documentId, operationId });
     void document.original.arrayBuffer().then((originalBytes) => services.extract(
-      { accepted: true, file: document.original, format: document.format, originalBytes },
+      {
+        accepted: true,
+        file: document.original,
+        format: document.format,
+        originalBytes,
+        ...(document.languageId ? { languageId: document.languageId } : {}),
+        ...(document.previewKind ? { previewKind: document.previewKind } : {}),
+      },
       stateRef.current.documents
         .filter((item) => item.id !== documentId && item.originalHash)
         .map((item) => ({ id: item.id, originalHash: item.originalHash })),

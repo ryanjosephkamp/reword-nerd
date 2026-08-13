@@ -14,6 +14,14 @@ import JSZip from "jszip";
 import mammoth from "mammoth";
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
+import {
+  classifyStandaloneTextName,
+  decodeSafeStandaloneText,
+  genericTextClassification,
+  isExplicitlyUnsupportedName,
+  isTextDocumentFormat,
+  type SourcePreviewKind,
+} from "./sourceText";
 
 export const MAX_FILE_COUNT = 20;
 export const MAX_FILE_BYTES = 20 * 1024 * 1024;
@@ -28,6 +36,8 @@ export type FileIssueCode =
   | "EMPTY_CONTENT"
   | "SIGNATURE_MISMATCH"
   | "INVALID_UTF8"
+  | "UNSAFE_TEXT_CONTROLS"
+  | "UNSUPPORTED_BINARY"
   | "INVALID_DOCX"
   | "DOCX_CONVERSION_FAILED"
   | "PDF_INVALID"
@@ -49,6 +59,8 @@ export interface PreflightAccepted {
   accepted: true;
   file: File;
   format: DocumentFormat;
+  languageId?: string;
+  previewKind?: SourcePreviewKind;
   originalBytes: ArrayBuffer;
 }
 
@@ -71,6 +83,8 @@ export interface HashAdapter {
 
 export interface ExtractionResult {
   format: DocumentFormat;
+  languageId?: string;
+  previewKind?: SourcePreviewKind;
   extractedText: string;
   warnings: string[];
   pageCount?: number | null;
@@ -184,6 +198,8 @@ const ISSUE_MESSAGES: Record<FileIssueCode, string> = {
   EMPTY_CONTENT: "This file does not contain reviewable content.",
   SIGNATURE_MISMATCH: "The file contents do not match its declared format.",
   INVALID_UTF8: "This text file is not valid UTF-8.",
+  UNSAFE_TEXT_CONTROLS: "This text file contains unsupported control characters and cannot be reviewed safely.",
+  UNSUPPORTED_BINARY: "This file contains unsupported binary data and cannot be reviewed as text.",
   INVALID_DOCX: "This DOCX file is not a valid Word document.",
   DOCX_CONVERSION_FAILED: "This DOCX file could not be converted safely.",
   PDF_INVALID: "This PDF file is invalid or unsupported.",
@@ -214,20 +230,14 @@ function issue(code: FileIssueCode): FileIssue {
 }
 
 export function formatFromName(name: string): DocumentFormat | undefined {
+  const text = classifyStandaloneTextName(name);
+  if (text) return text.format;
   const extension = name.slice(name.lastIndexOf(".")).toLowerCase();
   switch (extension) {
-    case ".txt":
-      return "text";
-    case ".md":
-    case ".markdown":
-      return "markdown";
     case ".docx":
       return "docx";
     case ".pdf":
       return "pdf";
-    case ".tex":
-    case ".ltx":
-      return "latex";
     case ".zip":
       return "latex-project";
     default:
@@ -260,17 +270,9 @@ function hasPdfSignature(bytes: Uint8Array): boolean {
 
 async function validateAdmittedBytes(format: DocumentFormat, originalBytes: ArrayBuffer): Promise<FileIssue | undefined> {
   const bytes = new Uint8Array(originalBytes);
-  if (format === "text" || format === "markdown" || format === "latex") {
-    let decoded: string;
-    try {
-      decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    } catch {
-      return issue("INVALID_UTF8");
-    }
-    if (decoded.includes("\0") || decoded.trim().length === 0) {
-      return issue("EMPTY_CONTENT");
-    }
-    return undefined;
+  if (isTextDocumentFormat(format)) {
+    const decoded = decodeSafeStandaloneText(bytes);
+    return decoded.ok ? undefined : issue(decoded.issue);
   }
   if (format === "pdf") {
     return hasPdfSignature(bytes) ? undefined : issue("SIGNATURE_MISMATCH");
@@ -321,16 +323,9 @@ export async function hashBytes(bytes: ArrayBufferLike, adapter: HashAdapter | n
 }
 
 function decodeText(originalBytes: ArrayBuffer): string {
-  try {
-    const decoded = new TextDecoder("utf-8", { fatal: true }).decode(originalBytes);
-    if (decoded.includes("\0") || decoded.trim().length === 0) {
-      throw new FileExtractionError(issue("EMPTY_CONTENT"));
-    }
-    return decoded;
-  } catch (error) {
-    if (error instanceof FileExtractionError) throw error;
-    throw new FileExtractionError(issue("INVALID_UTF8"));
-  }
+  const decoded = decodeSafeStandaloneText(new Uint8Array(originalBytes));
+  if (!decoded.ok) throw new FileExtractionError(issue(decoded.issue));
+  return decoded.text;
 }
 
 function pdfIssueFor(error: unknown): FileIssue {
@@ -655,7 +650,7 @@ export async function extractFile(
   let visualAssets: VisualAsset[] = [];
   let ocrCandidates: OcrCandidate[] = [];
   let latexProject: LatexProjectMetadata | undefined;
-  if (accepted.format === "text") {
+  if (isTextDocumentFormat(accepted.format) && accepted.format !== "markdown" && accepted.format !== "latex") {
     extractedText = decodeText(accepted.originalBytes);
   } else if (accepted.format === "markdown") {
     const markdown = await extractMarkdownMedia(
@@ -756,6 +751,8 @@ export async function extractFile(
   if (duplicateOf) warnings = [...warnings, "This file duplicates an existing document and needs review."];
   return {
     format: accepted.format,
+    ...(accepted.languageId ? { languageId: accepted.languageId } : {}),
+    ...(accepted.previewKind ? { previewKind: accepted.previewKind } : {}),
     extractedText,
     warnings,
     pageCount,
@@ -797,8 +794,9 @@ export async function preflightFiles(
   const results: PreflightResult[] = [];
 
   for (const file of files) {
-    const format = formatFromName(file.name);
-    if (!format) {
+    let format = formatFromName(file.name);
+    let classification = classifyStandaloneTextName(file.name);
+    if (!format && isExplicitlyUnsupportedName(file.name)) {
       results.push({ accepted: false, file, issue: issue("UNSUPPORTED_EXTENSION") });
       continue;
     }
@@ -826,12 +824,30 @@ export async function preflightFiles(
       results.push({ accepted: false, file, issue: issue("FILE_READ_FAILED") });
       continue;
     }
+    if (!format) {
+      const genericResult = decodeSafeStandaloneText(new Uint8Array(originalBytes));
+      if (!genericResult.ok) {
+        results.push({ accepted: false, file, issue: issue(genericResult.issue) });
+        continue;
+      }
+      classification = genericTextClassification();
+      format = classification.format;
+    }
     const byteIssue = await validateAdmittedBytes(format, originalBytes);
     if (byteIssue) {
       results.push({ accepted: false, file, issue: byteIssue });
       continue;
     }
-    results.push({ accepted: true, file, format, originalBytes });
+    classification ??= format === "docx" || format === "pdf" || format === "latex-project"
+      ? undefined
+      : genericTextClassification();
+    results.push({
+      accepted: true,
+      file,
+      format,
+      originalBytes,
+      ...(classification ? { languageId: classification.languageId, previewKind: classification.previewKind } : {}),
+    });
     acceptedCount += 1;
     acceptedBytes += file.size;
   }
