@@ -1,8 +1,8 @@
 import { access, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { execFile as execFileCallback } from "node:child_process";
-import { dirname, join, resolve, sep } from "node:path";
-import { tmpdir } from "node:os";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
+import { randomUUID } from "node:crypto";
 
 const execFile = promisify(execFileCallback);
 const MIB = 1024 * 1024;
@@ -84,17 +84,18 @@ function releaseTranscript(version) {
   return `reword-nerd v${version} — Updates, feedback, and Share\n\n00:00 — Title: Updates, feedback, and Share. A quiet, local-first release walkthrough.\n00:05 — Context: Release context should be easy to find. The release ledger records version, current status, same-origin media, and the local-first privacy boundary.\n00:09 — Demonstration: The Updates archive shows the current v0.7 release and Road to v0.6. The synthetic interface highlights Report a bug, Suggest a feature, and Share release.\n00:16 — Highlights: Static Updates pages with RSS. Clear bug and feature routes. Canonical Share with no tracking.\n00:20 — Feedback: Find the release. Send useful feedback. Share the clean URL. Built in public. Processed locally.\n`;
 }
 
-async function validateVersionAssets(rootDirectory, version) {
-  if (version !== SUPPORTED_VERSION) throw new Error(`No deterministic ReleaseUpdate composition is configured for ${version}`);
-  const paths = releaseMediaPaths(version);
-  const files = Object.values(paths).map((path) => localPathForWebPath(rootDirectory, path));
-  await Promise.all(files.map((path) => access(path)));
-  return { paths, files };
+function releaseMediaFiles(directory) {
+  return {
+    mp4Path: join(directory, "release-update.mp4"),
+    webmPath: join(directory, "release-update.webm"),
+    posterPath: join(directory, "poster.webp"),
+    transcriptPath: join(directory, "transcript.txt"),
+  };
 }
 
-export async function checkReleaseMedia(rootDirectory, version) {
-  const { paths, files } = await validateVersionAssets(rootDirectory, version);
-  const [mp4, webm, poster, transcript] = await Promise.all([inspectVideo(files[0]), inspectVideo(files[1]), inspectPoster(files[2]), readFile(files[3], "utf8")]);
+async function checkReleaseMediaFiles(files, version) {
+  await Promise.all(Object.values(files).map((path) => access(path)));
+  const [mp4, webm, poster, transcript] = await Promise.all([inspectVideo(files.mp4Path), inspectVideo(files.webmPath), inspectPoster(files.posterPath), readFile(files.transcriptPath, "utf8")]);
   verifyVideo("MP4", mp4, RELEASE_VIDEO_BUDGETS.mp4Bytes, "h264");
   verifyVideo("WebM", webm, RELEASE_VIDEO_BUDGETS.webmBytes, "vp9");
   if (poster.codec !== "webp") fail(`poster codec must be webp, got ${poster.codec}`);
@@ -104,12 +105,52 @@ export async function checkReleaseMedia(rootDirectory, version) {
   if (!transcript.includes(`reword-nerd v${version}`) || !transcript.includes("Share the clean URL")) fail("transcript is missing the release walkthrough");
   const aggregateBytes = mp4.bytes + webm.bytes + poster.bytes;
   if (aggregateBytes > RELEASE_VIDEO_BUDGETS.aggregateBytes) fail(`release media exceeds its ${RELEASE_VIDEO_BUDGETS.aggregateBytes}-byte aggregate budget`);
-  return { paths, mp4, webm, poster, transcriptBytes: Buffer.byteLength(transcript), aggregateBytes };
+  return { mp4, webm, poster, transcriptBytes: Buffer.byteLength(transcript), aggregateBytes };
 }
 
-async function writeFinalAsset(source, destination) {
-  await mkdir(dirname(destination), { recursive: true });
-  await rename(source, destination);
+async function validateVersionAssets(rootDirectory, version) {
+  if (version !== SUPPORTED_VERSION) throw new Error(`No deterministic ReleaseUpdate composition is configured for ${version}`);
+  const paths = releaseMediaPaths(version);
+  const files = Object.fromEntries(Object.entries(paths).map(([key, path]) => [key, localPathForWebPath(rootDirectory, path)]));
+  return { paths, files };
+}
+
+export async function checkReleaseMedia(rootDirectory, version) {
+  const { paths, files } = await validateVersionAssets(rootDirectory, version);
+  return { paths, ...await checkReleaseMediaFiles(files, version) };
+}
+
+export async function checkReleaseMediaDirectory(directory, version) {
+  return checkReleaseMediaFiles(releaseMediaFiles(directory), version);
+}
+
+async function pathExists(path) {
+  try { await access(path); return true; } catch { return false; }
+}
+
+export async function publishReleaseMediaCandidate(candidateDirectory, targetDirectory, version, check = checkReleaseMediaDirectory) {
+  const candidate = resolve(candidateDirectory);
+  const target = resolve(targetDirectory);
+  await check(candidate, version);
+  const backup = join(dirname(target), `.${basename(target)}-previous-${randomUUID()}`);
+  const priorExists = await pathExists(target);
+  let priorMoved = false;
+  let candidateMoved = false;
+  try {
+    if (priorExists) { await rename(target, backup); priorMoved = true; }
+    await rename(candidate, target);
+    candidateMoved = true;
+    await check(target, version);
+  } catch (error) {
+    try {
+      if (candidateMoved && await pathExists(target)) await rename(target, candidate);
+      if (priorMoved) await rename(backup, target);
+    } catch (rollbackError) {
+      throw new Error(`Release media publication failed and rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`, { cause: error });
+    }
+    throw error;
+  }
+  if (priorMoved) await rm(backup, { recursive: true, force: true });
 }
 
 export async function renderReleaseMedia(rootDirectory, version) {
@@ -117,21 +158,19 @@ export async function renderReleaseMedia(rootDirectory, version) {
   const root = resolve(rootDirectory);
   const paths = releaseMediaPaths(version);
   const output = Object.fromEntries(Object.entries(paths).map(([key, path]) => [key, localPathForWebPath(root, path)]));
-  const temporary = await mkdtemp(join(tmpdir(), "reword-nerd-release-video-"));
+  const targetDirectory = dirname(output.mp4Path);
+  await mkdir(dirname(targetDirectory), { recursive: true });
+  const temporary = await mkdtemp(join(dirname(targetDirectory), ".v0-7-0-staged-"));
   try {
     const sourceMp4 = join(temporary, "source.mp4");
-    const mp4 = join(temporary, "release-update.mp4");
-    const webm = join(temporary, "release-update.webm");
-    const poster = join(temporary, "poster.webp");
+    const { mp4Path: mp4, webmPath: webm, posterPath: poster, transcriptPath } = releaseMediaFiles(temporary);
     await execFile("npx", ["remotion", "render", "video/remotion/index.ts", "ReleaseUpdate", sourceMp4, "--codec=h264", "--crf=32", "--concurrency=2", "--log=error"], { cwd: root, encoding: "utf8" });
     await execFile("ffmpeg", ["-y", "-i", sourceMp4, "-map_metadata", "-1", "-map_chapters", "-1", "-an", "-c:v", "libx264", "-preset", "slow", "-crf", "32", "-movflags", "+faststart", mp4], { encoding: "utf8" });
     await execFile("ffmpeg", ["-y", "-i", sourceMp4, "-map_metadata", "-1", "-map_chapters", "-1", "-an", "-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "47", "-row-mt", "1", webm], { encoding: "utf8" });
     await execFile("ffmpeg", ["-y", "-ss", "00:00:12", "-i", sourceMp4, "-frames:v", "1", "-map_metadata", "-1", "-c:v", "libwebp", "-q:v", "62", poster], { encoding: "utf8" });
-    await writeFile(join(temporary, "transcript.txt"), releaseTranscript(version), "utf8");
-    await writeFinalAsset(mp4, output.mp4Path);
-    await writeFinalAsset(webm, output.webmPath);
-    await writeFinalAsset(poster, output.posterPath);
-    await writeFinalAsset(join(temporary, "transcript.txt"), output.transcriptPath);
+    await writeFile(transcriptPath, releaseTranscript(version), "utf8");
+    await rm(sourceMp4, { force: true });
+    await publishReleaseMediaCandidate(temporary, targetDirectory, version);
     return checkReleaseMedia(root, version);
   } finally {
     await rm(temporary, { recursive: true, force: true });

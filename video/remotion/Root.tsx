@@ -1,7 +1,7 @@
 import { Composition, Folder } from "remotion";
 import { Overview } from "./compositions/Overview";
 import { ReleaseUpdate } from "./release/ReleaseUpdate";
-import { RELEASE_UPDATE_DURATION_IN_FRAMES, ReleaseUpdateSchema, releaseUpdateDefaultProps } from "./release/ReleaseUpdate.contract";
+import { RELEASE_UPDATE_DURATION_IN_FRAMES, ReleaseUpdateSchema } from "./release/ReleaseUpdate.contract";
 import { PackageScene } from "./scenes/PackageScene";
 import { ReviewScene } from "./scenes/ReviewScene";
 import { SettingsScene } from "./scenes/SettingsScene";
@@ -17,7 +17,19 @@ export function RemotionRoot() {
       durationInFrames={RELEASE_UPDATE_DURATION_IN_FRAMES}
       {...format}
       schema={ReleaseUpdateSchema}
-      defaultProps={releaseUpdateDefaultProps}
+      defaultProps={{
+        version: "0.7.0",
+        title: "Updates, feedback, and Share",
+        context: "A static builder’s journal and small community routes make each release easier to inspect, discuss, and pass along without adding a publishing backend.",
+        demonstrationLabel: "See the release surface in action",
+        highlights: ["Static Updates pages with RSS", "Clear bug and feature routes", "Canonical Share with no tracking"],
+        feedback: {
+          bugLabel: "REPORT A BUG",
+          featureLabel: "SUGGEST A FEATURE",
+          shareLabel: "SHARE RELEASE",
+          closingLine: "Built in public. Processed locally.",
+        },
+      }}
     />
     <Folder name="Chapters">
       <Composition id="Settings" component={SettingsScene} durationInFrames={270} {...format} />

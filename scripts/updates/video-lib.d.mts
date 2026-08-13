@@ -39,4 +39,17 @@ export function checkReleaseMedia(rootDirectory: string, version: string): Promi
   transcriptBytes: number;
   aggregateBytes: number;
 }>;
+export function checkReleaseMediaDirectory(directory: string, version: string): Promise<{
+  mp4: VideoInspection;
+  webm: VideoInspection;
+  poster: PosterInspection;
+  transcriptBytes: number;
+  aggregateBytes: number;
+}>;
+export function publishReleaseMediaCandidate(
+  candidateDirectory: string,
+  targetDirectory: string,
+  version: string,
+  check?: (directory: string, version: string) => Promise<unknown>,
+): Promise<void>;
 export function renderReleaseMedia(rootDirectory: string, version: string): ReturnType<typeof checkReleaseMedia>;

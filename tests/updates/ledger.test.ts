@@ -25,8 +25,11 @@ const validLedger = {
       classification: "feature",
       visualChanges: true,
       video: {
-        policy: "exempt",
-        exemptionReason: "The static journal is fully represented in text and screenshots.",
+        policy: "required",
+        mp4Path: "/reword-nerd/media/updates/v0-7-0/release-update.mp4",
+        webmPath: "/reword-nerd/media/updates/v0-7-0/release-update.webm",
+        posterPath: "/reword-nerd/media/updates/v0-7-0/poster.webp",
+        transcriptPath: "/reword-nerd/media/updates/v0-7-0/transcript.txt",
       },
     },
   ],
@@ -52,6 +55,42 @@ describe("ReleaseLedgerV1 validation", () => {
     // Removing the visual-change video policy gate must make this fail.
     const entry = { ...validLedger.entries[0], video: { policy: "required" } };
     expect(() => validateReleaseLedger({ ...validLedger, entries: [entry] })).toThrow(/video/i);
+  });
+
+  it("requires media for every visual feature and maintenance release", () => {
+    // Allowing a visual release to escape media publication through an exemption must make this fail.
+    const visualFeature = { ...validLedger.entries[0], video: { policy: "exempt", exemptionReason: "The text covers it." } };
+    const visualMaintenance = {
+      ...validLedger.entries[0],
+      slug: "v0-7-1",
+      version: "0.7.1",
+      classification: "maintenance",
+      markdownPath: "content/updates/v0-7-1.md",
+      video: { policy: "exempt", exemptionReason: "The text covers it." },
+    };
+    expect(() => validateReleaseLedger({ ...validLedger, entries: [visualFeature] })).toThrow(/visual.*required/i);
+    expect(() => validateReleaseLedger({ ...validLedger, entries: [visualMaintenance] })).toThrow(/visual.*required/i);
+  });
+
+  it("limits exemptions to nonvisual feature releases and keeps nonvisual maintenance releases media-free", () => {
+    // Letting maintenance use an exemption or letting a nonvisual feature omit its public reason must make this fail.
+    const nonvisualFeature = { ...validLedger.entries[0], visualChanges: false, video: { policy: "exempt", exemptionReason: "No visual behavior changed." } };
+    const nonvisualMaintenance = {
+      ...validLedger.entries[0],
+      slug: "v0-7-1",
+      version: "0.7.1",
+      classification: "maintenance",
+      markdownPath: "content/updates/v0-7-1.md",
+      visualChanges: false,
+      video: { policy: "none" },
+    };
+    const maintenanceExemption = { ...nonvisualMaintenance, video: { policy: "exempt", exemptionReason: "No visual behavior changed." } };
+    const featureWithoutReason = { ...nonvisualFeature, video: { policy: "exempt", exemptionReason: "" } };
+
+    expect(validateReleaseLedger({ ...validLedger, entries: [nonvisualFeature] })).toEqual(expect.anything());
+    expect(validateReleaseLedger({ ...validLedger, entries: [nonvisualMaintenance] })).toEqual(expect.anything());
+    expect(() => validateReleaseLedger({ ...validLedger, entries: [maintenanceExemption] })).toThrow(/maintenance.*none/i);
+    expect(() => validateReleaseLedger({ ...validLedger, entries: [featureWithoutReason] })).toThrow(/reason/i);
   });
 
   it.each([

@@ -49,14 +49,21 @@ function requireMarkdownPath(value, slug) {
   return value;
 }
 
-function validateVideo(value, visualChanges, label) {
+function validateVideo(value, entry, label) {
   const video = requireObject(value, `${label}.video`);
   if (!["none", "required", "exempt"].includes(video.policy)) fail(`${label}.video.policy is invalid`);
   if (video.policy === "required") {
     for (const key of ["mp4Path", "webmPath", "posterPath", "transcriptPath"]) requireLocalWebPath(video[key], `${label}.video.${key}`);
   }
   if (video.policy === "exempt") requireSafeText(video.exemptionReason, `${label}.video.exemptionReason`);
-  if (visualChanges && video.policy === "none") fail(`${label} declares visual changes and needs video or an exemption`);
+  if (entry.kind === "release") {
+    if (entry.visualChanges && video.policy !== "required") fail(`${label} visual ${entry.classification} release requires policy required`);
+    if (!entry.visualChanges && entry.classification === "feature" && !["required", "exempt"].includes(video.policy)) fail(`${label} nonvisual feature release requires policy required or a public exemption reason`);
+    if (!entry.visualChanges && entry.classification === "maintenance" && video.policy !== "none") fail(`${label} nonvisual maintenance release requires policy none`);
+    if (video.policy === "exempt" && (entry.visualChanges || entry.classification !== "feature")) fail(`${label} exemptions are only for nonvisual feature releases`);
+  } else if (entry.visualChanges && video.policy === "none") {
+    fail(`${label} declares visual changes and needs video or an exemption`);
+  }
   return video;
 }
 
@@ -96,8 +103,6 @@ export function validateReleaseLedger(input) {
     if (!Array.isArray(entry.relatedPrs) || entry.relatedPrs.some((pr) => !Number.isSafeInteger(pr) || pr < 1)) fail(`${label}.relatedPrs is invalid`);
     requireMarkdownPath(entry.markdownPath, entry.slug);
     if (typeof entry.visualChanges !== "boolean") fail(`${label}.visualChanges must be boolean`);
-    validateVideo(entry.video, entry.visualChanges, label);
-
     if (entry.kind === "release") {
       if (typeof entry.version !== "string" || !SEMVER.test(entry.version)) fail(`${label}.version is invalid SemVer`);
       if (!["feature", "maintenance"].includes(entry.classification)) fail(`${label}.classification is invalid`);
@@ -106,6 +111,7 @@ export function validateReleaseLedger(input) {
     } else if ("version" in entry || "classification" in entry) {
       fail(`${label} article cannot declare release version fields`);
     }
+    validateVideo(entry.video, entry, label);
   }
 
   if (currentReleases > 1) fail("only one release may be current");

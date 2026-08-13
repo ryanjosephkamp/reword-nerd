@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import ts from "typescript";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   RELEASE_UPDATE_DURATION_IN_FRAMES,
   RELEASE_UPDATE_FPS,
@@ -11,6 +15,26 @@ import {
   checkReleaseMedia,
   releaseMediaPaths,
 } from "../../scripts/updates/video-lib.mjs";
+
+const temporaryRoots: string[] = [];
+
+afterEach(async () => Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true }))));
+
+function releaseUpdateDefaultPropsIsInline(source: string): boolean {
+  const file = ts.createSourceFile("Root.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let inline = false;
+  const visit = (node: ts.Node) => {
+    if (ts.isJsxSelfClosingElement(node) && node.tagName.getText(file) === "Composition") {
+      const namedAttribute = (property: ts.JsxAttributeLike, name: string) => ts.isJsxAttribute(property) && ts.isIdentifier(property.name) && property.name.text === name;
+      const identifier = node.attributes.properties.find((property) => namedAttribute(property, "id"));
+      const defaults = node.attributes.properties.find((property) => namedAttribute(property, "defaultProps"));
+      if (identifier && defaults && ts.isJsxAttribute(identifier) && identifier.initializer?.kind === ts.SyntaxKind.StringLiteral && identifier.initializer.text === "ReleaseUpdate" && ts.isJsxAttribute(defaults) && defaults.initializer && ts.isJsxExpression(defaults.initializer) && defaults.initializer.expression && ts.isObjectLiteralExpression(defaults.initializer.expression)) inline = true;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return inline;
+}
 
 describe("v0.7 release video contract", () => {
   it("exposes a validated 24-second editable ReleaseUpdate composition", () => {
@@ -44,5 +68,50 @@ describe("v0.7 release video contract", () => {
     expect(inspection.mp4.bytes).toBeLessThanOrEqual(RELEASE_VIDEO_BUDGETS.mp4Bytes);
     expect(inspection.poster.bytes).toBeLessThanOrEqual(RELEASE_VIDEO_BUDGETS.posterBytes);
     expect(inspection.aggregateBytes).toBeLessThanOrEqual(RELEASE_VIDEO_BUDGETS.aggregateBytes);
+  });
+
+  it("keeps Remotion default props inline and threads an arbitrary validated version into editable scenes", async () => {
+    // Replacing the Composition literal with an identifier or hard-coding v0.7 in an editable scene must make this fail.
+    const [rootSource, contextSource, demonstrationSource] = await Promise.all([
+      readFile(join(process.cwd(), "video/remotion/Root.tsx"), "utf8"),
+      readFile(join(process.cwd(), "video/remotion/release/scenes/ContextScene.tsx"), "utf8"),
+      readFile(join(process.cwd(), "video/remotion/release/scenes/DemonstrationScene.tsx"), "utf8"),
+    ]);
+    expect(releaseUpdateDefaultPropsIsInline(rootSource)).toBe(true);
+    expect(contextSource).toContain("version");
+    expect(contextSource).toContain("WHY v${version}");
+    expect(demonstrationSource).toContain("version");
+    expect(demonstrationSource).toContain("reword-nerd v${version}");
+    expect(demonstrationSource).not.toContain("reword-nerd v0.7");
+  });
+
+  it("exposes a transactional publisher that restores a prior complete media set after final verification fails", async () => {
+    // Publishing files one at a time, or failing without a restoration path, must make this leave a candidate transcript in the public target.
+    const pipeline = await import("../../scripts/updates/video-lib.mjs") as Record<string, unknown>;
+    const publisher = pipeline.publishReleaseMediaCandidate;
+    const checkDirectory = pipeline.checkReleaseMediaDirectory;
+    expect(publisher).toBeTypeOf("function");
+    expect(checkDirectory).toBeTypeOf("function");
+
+    const root = await mkdtemp(join(tmpdir(), "reword-nerd-video-transaction-"));
+    temporaryRoots.push(root);
+    const prior = join(root, "prior");
+    const candidate = join(root, "candidate");
+    const source = join(process.cwd(), "public/media/updates/v0-7-0");
+    await Promise.all([mkdir(prior, { recursive: true }), mkdir(candidate, { recursive: true })]);
+    await Promise.all(["release-update.mp4", "release-update.webm", "poster.webp", "transcript.txt"].flatMap((file) => [
+      copyFile(join(source, file), join(prior, file)),
+      copyFile(join(source, file), join(candidate, file)),
+    ]));
+    await writeFile(join(candidate, "transcript.txt"), "reword-nerd v0.7.0 — Share the clean URL. Candidate copy.\n");
+
+    let checks = 0;
+    await expect((publisher as (candidateDirectory: string, targetDirectory: string, version: string, check: (directory: string, version: string) => Promise<void>) => Promise<void>)(candidate, prior, "0.7.0", async (directory) => {
+      checks += 1;
+      await (checkDirectory as (directory: string, version: string) => Promise<void>)(directory, "0.7.0");
+      if (checks === 2) throw new Error("injected final verification failure");
+    })).rejects.toThrow(/injected final verification failure/i);
+
+    expect(await readFile(join(prior, "transcript.txt"), "utf8")).not.toContain("Candidate copy.");
   });
 });
