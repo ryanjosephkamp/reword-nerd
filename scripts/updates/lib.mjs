@@ -10,6 +10,7 @@ const SAFE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/u;
 const RAW_HTML_OR_MDX = /<!--|<![^>]*>|<\/?[A-Za-z][^>]*>|<\/?>|^\s*(?:import|export)(?:\s|\{)/mu;
+const MDX_EXPRESSION = /(?<!\\)\{\s*(?:\/\*[\s\S]*?\*\/|[A-Za-z_$][\w$]*(?:\s*(?:\}|[.\[(+*/%?:=!<>-]))|[\d'"\[({])/u;
 
 function isValidIsoDate(value) {
   if (typeof value !== "string" || !ISO_DATE.test(value)) return false;
@@ -139,7 +140,8 @@ const REQUIRED_SECTIONS = [
 ];
 
 function markdownProblem(markdown, entry) {
-  if (RAW_HTML_OR_MDX.test(markdown)) return "raw HTML or MDX is not allowed";
+  const proseWithoutInlineCode = markdown.replace(/`[^`\n]*`/gu, "");
+  if (RAW_HTML_OR_MDX.test(proseWithoutInlineCode) || MDX_EXPRESSION.test(proseWithoutInlineCode)) return "raw HTML or MDX is not allowed";
   if (/\b(?:TODO|TBD|FIXME|PLACEHOLDER)\b|\[insert\b|lorem ipsum/iu.test(markdown)) return "placeholder prose is not allowed";
   if (!markdown.startsWith(`# ${entry.title}\n`)) return `first heading must exactly match ${entry.title}`;
   let prior = -1;

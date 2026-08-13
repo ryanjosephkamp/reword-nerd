@@ -56,6 +56,12 @@ describe("ReleaseLedgerV1 declaration contract", () => {
     expectTypeOf(ledger).toMatchTypeOf<ReleaseLedgerV1>();
     // @ts-expect-error Article entries cannot declare a release version.
     const invalidArticle: ReleaseLedgerArticleEntry = { ...article, version: "0.7.0" };
+    // @ts-expect-error Article entries cannot declare an explicitly undefined release version.
+    const invalidUndefinedVersion: ReleaseLedgerArticleEntry = { ...article, version: undefined };
+    // @ts-expect-error Article entries cannot declare an explicitly undefined release classification.
+    const invalidUndefinedClassification: ReleaseLedgerArticleEntry = { ...article, classification: undefined };
     expectTypeOf(invalidArticle).toEqualTypeOf<ReleaseLedgerArticleEntry>();
+    expectTypeOf(invalidUndefinedVersion).toEqualTypeOf<ReleaseLedgerArticleEntry>();
+    expectTypeOf(invalidUndefinedClassification).toEqualTypeOf<ReleaseLedgerArticleEntry>();
   });
 });

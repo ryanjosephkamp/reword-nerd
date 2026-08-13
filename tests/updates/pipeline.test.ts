@@ -149,11 +149,21 @@ describe("Updates validation and rendering", () => {
     ["an HTML comment", "<!-- publication note -->"],
     ["a JSX fragment", "<>publication note</>"],
     ["an MDX export without whitespace", "export{publicationNote}"],
+    ["an MDX identifier expression", "{publicationNote}"],
+    ["an MDX comment expression", "{/* publication note */}"],
   ])("rejects %s in reviewed Markdown", async (_label, unsafeSource) => {
     // Narrow tag-only or whitespace-only syntax checks must make at least one prohibited raw HTML/MDX form pass.
     const root = await fixtureRoot();
     const postPath = join(root, "content/updates/v0-7-0.md");
     await writeFile(postPath, `${await readFile(postPath, "utf8")}\n${unsafeSource}\n`);
     await expect(checkUpdates(root)).rejects.toThrow(/raw HTML|MDX/i);
+  });
+
+  it("allows ordinary prose braces and inline-code braces", async () => {
+    // Treating every brace as MDX must make safe prose and inline code fail this check.
+    const root = await fixtureRoot();
+    const postPath = join(root, "content/updates/v0-7-0.md");
+    await writeFile(postPath, `${await readFile(postPath, "utf8")}\nKeep the literal {curly braces} visible and preserve \`{publicationNote}\` as code.\n`);
+    await expect(checkUpdates(root)).resolves.toMatchObject({ version: "0.7.0" });
   });
 });

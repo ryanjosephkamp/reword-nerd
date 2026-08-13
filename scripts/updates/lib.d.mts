@@ -27,8 +27,6 @@ export interface ReleaseLedgerReleaseEntry extends ReleaseLedgerEntryBase {
 
 export interface ReleaseLedgerArticleEntry extends ReleaseLedgerEntryBase {
   kind: "article";
-  version?: never;
-  classification?: never;
 }
 
 export type ReleaseLedgerEntry = ReleaseLedgerReleaseEntry | ReleaseLedgerArticleEntry;
