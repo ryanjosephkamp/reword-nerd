@@ -1,8 +1,15 @@
-import type { PromptPackageManifest, RunbookBlock, RunbookDocument, RunbookInline } from "./contracts";
+import {
+  PROJECT_FINAL_RESPONSE_BLOCKS,
+  type PromptPackageManifest,
+  type RunbookBlock,
+  type RunbookDocument,
+  type RunbookInline,
+} from "./contracts";
 import { isSafeArchivePath } from "./paths";
 
 const text = (value: string): RunbookInline => Object.freeze({ type: "text", value });
 const code = (value: string): RunbookInline => Object.freeze({ type: "code", value });
+const link = (label: string, href: string): RunbookInline => Object.freeze({ type: "link", label, href });
 const content = (...values: RunbookInline[]): readonly RunbookInline[] => Object.freeze(values);
 
 function freezeBlock(block: RunbookBlock): RunbookBlock {
@@ -23,10 +30,10 @@ export function createRunbookDocument(manifest: PromptPackageManifest): Readonly
     { type: "paragraph", content: content(text("Open "), code("OPEN-ME.html"), text(" for immediate document entry points. No exported HTML makes network requests or stores document data automatically.")) },
     {
       type: "table",
-      headers: ["Document key", "Original", "One-shot", "Manual", "Combined", "Full HTML"],
+      headers: ["Document key", "Source", "One-shot", "Manual", "Combined", "Full HTML"],
       rows: manifest.documents.map((document) => [
         code(document.key),
-        code(document.original.path),
+        code(document.source.kind === "file" ? document.source.original.path : document.source.index.markdown.path),
         code(document.workbooks.oneShot.html.path),
         code(document.workbooks.manual.html.path),
         code(document.workbooks.combined.html.path),
@@ -37,19 +44,43 @@ export function createRunbookDocument(manifest: PromptPackageManifest): Readonly
     },
   ];
   for (const document of manifest.documents) {
+    const project = document.source.kind === "project";
+    const workflowNote = project
+      ? `Start a new conversation for each project, run the four prompts in order, and replace response markers with the previous stage outputs. Stage 4 and One-shot return exactly ${PROJECT_FINAL_RESPONSE_BLOCKS}.`
+      : document.model.workflowNote;
+    const packagedProjectAssets = document.source.kind === "project"
+      ? document.source.entries.filter((entry) => entry.contentKind === "asset" && entry.packageIncluded && entry.packaged)
+      : [];
     blocks.push(
       { type: "heading", depth: 2, content: content(code(document.key)) },
       { type: "paragraph", content: content(text(`Selected model: ${document.model.label}`)) },
       { type: "paragraph", content: content(text(`Reference model: ${document.model.promptStrategy.referenceModel}`)) },
       { type: "paragraph", content: content(text(`Guidance version: ${document.model.promptStrategy.version}`)) },
-      { type: "paragraph", content: content(text(`Workflow note: ${document.model.workflowNote}`)) },
+      { type: "paragraph", content: content(text(`Workflow note: ${workflowNote}`)) },
       { type: "paragraph", content: content(text(`Resolved settings: ${JSON.stringify(document.settings)}`)) },
       { type: "paragraph", content: content(text(`Context estimates: One-shot ${document.contextAssessment.oneShotWorkflowTokens}; Manual ${document.contextAssessment.manualWorkflowTokens}; known limit: ${document.contextAssessment.contextWindowTokens ?? "unknown"}; required Manual warning acknowledged: ${document.contextAssessment.acknowledgmentRequired ? (document.contextWarningAcknowledged ? "yes" : "no") : "not required"}.`)) },
       { type: "paragraph", content: content(text("Reviewed extraction: "), code(document.reviewedExtraction.path)) },
+      ...(document.source.kind === "project" ? [
+        { type: "paragraph" as const, content: content(text("Reviewed project index: "), code(document.source.index.markdown.path), text(" and "), code(document.source.index.json.path), text(". This sanitized tree is AI context, not a source-control backup.")) },
+        { type: "paragraph" as const, content: content(text("Project workflow: ask the model to return changed text files only, apply those blocks to a copy, inspect every diff, and run the project's normal tests/build. reword-nerd does not execute project code.")) },
+        { type: "paragraph" as const, content: content(text("Project assets are references, not rewriteable text. When the model interface accepts attachments, attach the safe files listed below from "), code(`documents/${document.key}/project/files/`), text(" and ask the model to preserve their paths and use them where relevant.")) },
+        ...(packagedProjectAssets.length > 0 ? [{
+          type: "list" as const,
+          ordered: false,
+          items: packagedProjectAssets.map((entry) => content(link(entry.path, entry.packaged!.path))),
+        }] : [{ type: "paragraph" as const, content: content(text("No safe non-text project assets are included.")) }]),
+        { type: "paragraph" as const, content: content(text(`Project provenance: ${document.source.intakeKind} intake; ${document.source.entries.filter((entry) => entry.promptIncluded).length} prompt files; ${document.source.entries.filter((entry) => entry.packageIncluded).length} packaged entries; ${Object.values(document.source.sensitiveBlockedCounts).reduce((total, count) => total + count, 0)} sensitive files dropped before retention.`)) },
+      ] : []),
       { type: "paragraph", content: content(text("Canonical Manual prompts: "), ...(["decompose", "rewrite", "verify", "final"] as const).flatMap((stage, index) => [code(document.prompts[stage].path), text(index === 3 ? "." : "; ")])) },
       { type: "paragraph", content: content(text(`Visual assets: ${document.visualAssets.records.filter((asset) => asset.included).length} included, ${document.visualAssets.records.filter((asset) => !asset.included).length} omitted; OCR records: ${document.ocr.records.length}; page count: ${document.processing.pageCount ?? "not applicable"}.`)) },
       { type: "paragraph", content: content(text("When the model interface supports image input, attach included assets using the filenames in assets/index.md. Otherwise provide the asset catalog and reviewed OCR text. Preserve every stable asset ID and place each figure near the relevant rewritten discussion.")) },
-      { type: "paragraph", content: content(text("One-shot flow: copy "), code(document.prompts.oneShot.path), text(" into a new conversation. Expect only the marked final document and compact fidelity audit; intermediate reasoning remains internal.")) },
+      { type: "paragraph", content: content(
+        text("One-shot flow: copy "),
+        code(document.prompts.oneShot.path),
+        text(project
+          ? ` into a new conversation. Expect exactly ${PROJECT_FINAL_RESPONSE_BLOCKS}; intermediate reasoning remains internal.`
+          : " into a new conversation. Expect only the marked final document and compact fidelity audit; intermediate reasoning remains internal."),
+      ) },
       {
         type: "list",
         ordered: true,
@@ -84,7 +115,8 @@ function markdownText(value: string): string {
 
 function markdownCode(value: string): string {
   const delimiter = "`".repeat(Math.max(1, ...Array.from(value.matchAll(/`+/g), (match) => match[0].length + 1)));
-  return `${delimiter}${value}${delimiter}`;
+  const padding = /^`|`$/u.test(value) ? " " : "";
+  return `${delimiter}${padding}${value}${padding}${delimiter}`;
 }
 
 function markdownCodeBlock(value: string, language = ""): string {
@@ -98,10 +130,14 @@ function safeHref(href: string): string {
   return href;
 }
 
+function encodedArchiveHref(href: string): string {
+  return safeHref(href).split("/").map((segment) => encodeURIComponent(segment)).join("/");
+}
+
 function markdownInline(value: RunbookInline): string {
   if (value.type === "text") return markdownText(value.value);
   if (value.type === "code") return markdownCode(value.value);
-  return `[${markdownText(value.label)}](${safeHref(value.href).replaceAll("(", "%28").replaceAll(")", "%29")})`;
+  return `[${markdownText(value.label)}](${encodedArchiveHref(value.href)})`;
 }
 
 function markdownCell(values: readonly RunbookInline[]): string {
@@ -130,7 +166,7 @@ function escapeHtml(value: string): string {
 function htmlInline(value: RunbookInline, archiveRootPrefix: string): string {
   if (value.type === "text") return escapeHtml(value.value);
   if (value.type === "code") return `<code>${escapeHtml(value.value)}</code>`;
-  return `<a href="${escapeHtml(`${archiveRootPrefix}${safeHref(value.href)}`)}">${escapeHtml(value.label)}</a>`;
+  return `<a href="${escapeHtml(`${archiveRootPrefix}${encodedArchiveHref(value.href)}`)}">${escapeHtml(value.label)}</a>`;
 }
 
 export function renderRunbookHtml(

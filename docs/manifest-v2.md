@@ -1,5 +1,7 @@
 # Manifest v2
 
+> Historical contract. Current `0.6.0` packages use [manifest schema v6](manifest-v6.md).
+
 Every package includes `manifest.json` at its archive root. Schema v2 extends
 the historical [v1 contract](manifest-v1.md) with combined companion artifacts
 and versioned prompt-strategy provenance.

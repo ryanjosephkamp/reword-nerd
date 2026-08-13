@@ -77,7 +77,7 @@ async function sha256(bytes: Uint8Array): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-describe("v5 workbook package", () => {
+describe("v6 workbook package", () => {
   it("emits the full dual-mode suite with exact prompt parity and hashes every generated artifact", async () => {
     // This catches a v5 package that drops a workflow companion, alters canonical prompt bytes, or records stale hashes.
     const { buildPromptPackage } = await import("../../src/export");
@@ -87,8 +87,8 @@ describe("v5 workbook package", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("fixture should export");
     expect(result.manifest).toMatchObject({
-      schemaVersion: 5,
-      package: { name: "reword-nerd", version: "0.5.1", format: "dual-mode-prompt-package" },
+      schemaVersion: 6,
+      package: { name: "reword-nerd", version: "0.6.0", format: "dual-mode-prompt-package" },
       workflow: {
         modes: ["one-shot", "manual"],
         manualStages: ["decompose", "rewrite", "verify", "final"],
@@ -137,6 +137,10 @@ describe("v5 workbook package", () => {
     await expect(archive.file(document.workbooks.manual.html.path)?.async("string")).resolves.toBe(workbook.manual.html);
     await expect(archive.file(document.workbooks.combined.markdown.path)?.async("string")).resolves.toBe(workbook.combined.markdown);
     expect(workbook.oneShot.html).toContain(input.promptBundle.oneShot);
+    expect(workbook.sourceKind).toBe("file");
+    expect(workbook.runbook.sourceKind).toBe("file");
+    expect(workbook.oneShot.html).toContain("One-shot final document and compact audit");
+    expect(workbook.oneShot.html).not.toContain("One-shot project response:");
     expect(workbook.oneShot.html).not.toContain(input.promptBundle.manual.decompose);
     expect(workbook.manual.html).toContain(input.promptBundle.manual.decompose);
     expect(workbook.manual.html).not.toContain(input.promptBundle.oneShot);

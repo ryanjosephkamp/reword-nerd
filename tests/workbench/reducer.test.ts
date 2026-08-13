@@ -1,4 +1,4 @@
-import { cloneExtractionOptions, DEFAULT_EXTRACTION_OPTIONS, DEFAULT_SETTINGS, type WorkspaceDocument } from "../../src/domain";
+import { cloneExtractionOptions, DEFAULT_EXTRACTION_OPTIONS, DEFAULT_SETTINGS, type WorkspaceDocument, type WorkspaceProject } from "../../src/domain";
 import type { BuiltPromptPackage } from "../../src/app/workbench/contracts";
 import type { DocumentWorkbook } from "../../src/export";
 import { CURRENT_TUTORIAL_VERSION } from "../../src/app/workbench/preferences";
@@ -38,6 +38,17 @@ function document(
   };
 }
 
+function project(id: string, originalTreeHash = `tree-${id}`): WorkspaceProject {
+  return {
+    kind: "project", id, name: id, sourceKind: "folder", status: "ready", entries: [],
+    originalTreeHash, reviewedTreeHash: `reviewed-${id}`, treeHash: originalTreeHash, totalByteCount: 1,
+    classification: "general-text", classificationChoiceRequired: false, classificationChoices: ["general-text", "latex"],
+    rootDocument: null, selectedEntryPath: null, projectOperationGeneration: 0, projectReviewRevision: 0,
+    requiresReview: false, warnings: [], sensitiveBlockedCounts: { credentialFiles: 0, privateKeys: 0, clearCredentials: 0 },
+    intake: { kind: "folder", displayName: id }, settingsOverride: {}, contextWarningAcknowledged: true,
+  };
+}
+
 function workbook(documentKey: string): DocumentWorkbook {
   return { documentKey, originalDisplayName: `${documentKey}.md` } as DocumentWorkbook;
 }
@@ -55,6 +66,39 @@ function builtPackage(documentKeys: readonly string[] = ["alpha"]): BuiltPromptP
 }
 
 describe("workbench reducer", () => {
+  it("assigns global monotonic ordinals and culls document IDs conflicting with projects or their own batch", () => {
+    // This catches lagging hook refs giving distinct project/document admissions the same ordinal or ID.
+    let state = createInitialWorkbenchState();
+    state = workbenchReducer(state, { type: "project/admitted", project: project("shared"), uploadOrdinal: 0 });
+    state = workbenchReducer(state, { type: "intake/accepted", batchId: "mixed", documents: [
+      { document: document("shared"), uploadOrdinal: 0 },
+      { document: document("alpha"), uploadOrdinal: 0 },
+      { document: document("alpha"), uploadOrdinal: 0 },
+      { document: document("beta"), uploadOrdinal: 0 },
+    ] });
+
+    expect(state.items.map((item) => [item.id, item.uploadOrdinal])).toEqual([
+      ["shared", 0], ["alpha", 1], ["beta", 2],
+    ]);
+    expect(new Set(state.items.map((item) => item.uploadOrdinal)).size).toBe(state.items.length);
+  });
+
+  it("rejects project IDs already held by documents and reopens identity only after removal or reset", () => {
+    // This catches asymmetric ID validation or stale identity custody blocking a legitimate later session.
+    let state = createInitialWorkbenchState();
+    state = workbenchReducer(state, { type: "intake/accepted", batchId: "docs", documents: [{ document: document("shared"), uploadOrdinal: 0 }] });
+    const collided = workbenchReducer(state, { type: "project/admitted", project: project("shared"), uploadOrdinal: 0 });
+    expect(collided).toBe(state);
+
+    state = workbenchReducer(state, { type: "document/removed", documentId: "shared" });
+    state = workbenchReducer(state, { type: "project/admitted", project: project("shared"), uploadOrdinal: 1 });
+    expect(state.items.map((item) => [item.id, item.uploadOrdinal])).toEqual([["shared", 1]]);
+
+    state = workbenchReducer(state, { type: "session/reset-confirmed" });
+    state = workbenchReducer(state, { type: "intake/accepted", batchId: "fresh", documents: [{ document: document("shared"), uploadOrdinal: 0 }] });
+    expect(state.items.map((item) => [item.id, item.uploadOrdinal])).toEqual([["shared", 0]]);
+  });
+
   it("starts with the desktop Settings panel expanded without making the session dirty", () => {
     // This catches the desktop inspector starting collapsed or view-only state changing export revision.
     let state = createInitialWorkbenchState();
@@ -65,6 +109,32 @@ describe("workbench reducer", () => {
     expect(state.desktopSettingsExpanded).toBe(false);
     expect(state.revision).toBe(0);
     expect(selectDirty(state)).toBe(false);
+  });
+
+  it("reveals desktop Settings when Quick Start is dismissed", () => {
+    // This catches a dismissed first-run tutorial leaving the preferred starting panel hidden.
+    let state = createInitialWorkbenchState();
+    state = workbenchReducer(state, { type: "desktop/settings-expanded", expanded: false });
+    expect(state.desktopSettingsExpanded).toBe(false);
+
+    state = workbenchReducer(state, { type: "tutorial/dismissed" });
+
+    expect(state.desktopSettingsExpanded).toBe(true);
+    expect(state.revision).toBe(0);
+  });
+
+  it("reopens desktop Settings and targets Parameters after a desktop New Session", () => {
+    // This catches New Session returning desktop users to Files with the required first step hidden.
+    let state = createInitialWorkbenchState({ tutorialVersion: CURRENT_TUTORIAL_VERSION });
+    state = workbenchReducer(state, { type: "desktop/settings-expanded", expanded: false });
+
+    state = workbenchReducer(state, {
+      type: "session/reset-confirmed",
+      focusAfterReset: "parameters",
+    });
+
+    expect(state.desktopSettingsExpanded).toBe(true);
+    expect(state.focusTarget).toBe("parameters");
   });
 
   it("keeps gallery navigation view-only and preserves the selected asset while inclusion invalidates export", () => {
@@ -593,7 +663,7 @@ describe("workbench reducer", () => {
     state = workbenchReducer(state, { type: "export/download-started", revision: builtRevision });
     state = workbenchReducer(state, {
       type: "context/acknowledged",
-      documentId: "alpha",
+      itemId: "alpha",
       acknowledged: false,
     });
     const invalidated = state;

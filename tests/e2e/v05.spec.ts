@@ -136,7 +136,7 @@ test("Info is branded, versioned, exact-link-only, and dismisses from the backdr
   const infoButton = page.getByRole("button", { name: "Info" });
   await infoButton.click();
   const info = page.getByRole("dialog", { name: "About reword-nerd" });
-  await expect(info).toContainText("reword-nerd v0.5.1");
+  await expect(info).toContainText("reword-nerd v0.6.0");
   await expect(info).toContainText("Files, extraction, package generation, and previews remain on this device.");
   const logo = info.getByRole("img", { name: "reword-nerd logo" });
   await expect(logo).toHaveAttribute("src", /\/brand\/reword-nerd-logo\.webp$/u);
@@ -190,7 +190,7 @@ test("mobile visual assets support a persistent detail selection and compact gal
     buffer: Buffer.from(source, "utf8"),
   });
   await expect(page.getByLabel("Extracted text for gallery.md")).toHaveValue(/asset:asset-/u);
-  await page.getByRole("button", { name: "ASSETS" }).click();
+  await page.getByRole("button", { name: "ASSETS", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Figure one" })).toBeVisible();
   await page.getByRole("button", { name: "GALLERY", exact: true }).click();
   const gallery = page.getByRole("list", { name: "Visual asset gallery" });
@@ -259,6 +259,9 @@ test("New session clears work and package progress while preserving Settings", a
   await buildTextPackage(page);
   await page.getByRole("tab", { name: "MANUAL" }).click();
   await page.getByRole("textbox", { name: "Stage 1 — Decompose model response" }).fill("Ephemeral stage response");
+  const settingsButton = page.getByRole("button", { name: "Settings", exact: true });
+  if (await settingsButton.getAttribute("aria-expanded") === "true") await settingsButton.click();
+  await expect(settingsButton).toHaveAttribute("aria-expanded", "false");
 
   const newSession = page.getByRole("button", { name: "New session" });
   await newSession.click();
@@ -272,12 +275,13 @@ test("New session clears work and package progress while preserving Settings", a
   await newSession.click();
   await page.getByRole("dialog", { name: "Start a new session?" }).getByRole("button", { name: "Start new session" }).click();
   await expect(page.getByRole("listbox", { name: "Uploaded files" }).getByRole("option")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Add files", exact: true })).toBeFocused();
+  await expect(settingsButton).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("heading", { name: "PARAMETERS" })).toBeFocused();
   await expect(page.getByLabel("Tone", { exact: true })).toHaveValue("academic");
   await expect(page.getByLabel("Context limit", { exact: true })).toHaveValue("64000");
   await expect(page.getByLabel("Extract embedded images", { exact: true })).toBeChecked();
   await expect(page.getByRole("button", { name: "PACKAGE", exact: true })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "DOWNLOAD ZIP" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Download from Parameters" })).toBeDisabled();
   await expect(page.getByText("New session ready. Settings kept.")).toBeAttached();
 });
 

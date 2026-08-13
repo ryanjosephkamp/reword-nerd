@@ -5,4 +5,6 @@ export * from "./latex";
 export * from "./markdownMedia";
 export * from "./media";
 export * from "./profiles";
+export * from "./project";
 export * from "./settings";
+export * from "./sourceText";

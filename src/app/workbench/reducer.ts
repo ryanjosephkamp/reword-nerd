@@ -2,21 +2,32 @@ import {
   CURATED_MODEL_PROFILES,
   cloneExtractionOptions,
   DEFAULT_EXTRACTION_OPTIONS,
+  DEFAULT_CODE_REWRITE_OPTIONS,
   DEFAULT_MODEL_PROFILE_ID,
   DEFAULT_SETTINGS,
+  resolveCodeRewriteOptions,
   type ExtractionResult,
   type RewriteSettings,
   type ExtractionOptions,
+  type CodeRewriteOptions,
   type OcrReviewStatus,
   type ProcessingProgress,
   type WorkspaceDocument,
+  type WorkspaceProject,
 } from "../../domain";
-import type { ActiveOverlay, AssetViewMode, BuiltPromptPackage, MobileTab, PackagePreviewTab, PreviewMode, WorkbenchDocument, WorkbenchState } from "./contracts";
+import type { ActiveOverlay, AssetViewMode, BuiltPromptPackage, MobileTab, PackagePreviewTab, PreviewMode, WorkbenchDocument, WorkbenchItem, WorkbenchProject, WorkbenchState } from "./contracts";
 import { CURRENT_TUTORIAL_VERSION, type SavedPreferencesPatch } from "./preferences";
 
 type IntakeDocument = { document: WorkspaceDocument; uploadOrdinal: number };
 
 export type WorkbenchAction =
+  | { type: "project/admitted"; project: WorkspaceProject; uploadOrdinal: number }
+  | { type: "project/review-updated"; itemId: string; expectedOriginalTreeHash: string; expectedReviewRevision: number; expectedOperationGeneration: number; mutationTicket?: number; project: WorkspaceProject }
+  | { type: "project/selected-entry"; itemId: string; path: string }
+  | { type: "project/mutation-started"; itemId: string; originalTreeHash: string; projectOperationGeneration: number; ticket: number }
+  | { type: "project/mutation-failed"; itemId: string; originalTreeHash: string; projectOperationGeneration: number; ticket: number }
+  | { type: "item/selection-changed"; itemId: string }
+  | { type: "item/removed"; itemId: string }
   | { type: "intake/drag-changed"; dragging: boolean }
   | { type: "intake/issues"; issues: WorkbenchState["intake"]["issues"]; message: string }
   | { type: "intake/accepted"; batchId: string; documents: IntakeDocument[] }
@@ -33,6 +44,7 @@ export type WorkbenchAction =
   | { type: "editor/hash-retry-started"; documentId: string; revision: number }
   | { type: "review/confirmed"; documentId: string; revision: number }
   | { type: "settings/global-changed"; field: keyof RewriteSettings; value: RewriteSettings[keyof RewriteSettings] }
+  | { type: "code-rewrite/global-options-changed"; options: CodeRewriteOptions }
   | { type: "settings/override-enabled"; documentId: string; enabled: boolean }
   | { type: "settings/override-changed"; documentId: string; field: keyof RewriteSettings; value: RewriteSettings[keyof RewriteSettings] }
   | { type: "processing/global-options-changed"; options: ExtractionOptions }
@@ -52,7 +64,7 @@ export type WorkbenchAction =
   | { type: "profile/context-limit-changed"; value: number | null }
   | { type: "profile/custom-label-changed"; value: string }
   | { type: "profile/custom-context-draft-changed"; value: string; parsed: number | null | undefined }
-  | { type: "context/acknowledged"; documentId: string; acknowledged: boolean }
+  | { type: "context/acknowledged"; itemId: string; acknowledged: boolean }
   | { type: "mobile/tab-changed"; tab: MobileTab }
   | { type: "preview/mode-changed"; mode: PreviewMode }
   | { type: "assets/view-changed"; mode: AssetViewMode }
@@ -64,7 +76,7 @@ export type WorkbenchAction =
   | { type: "overlay/closed" }
   | { type: "session/reset-requested" }
   | { type: "session/reset-cancelled" }
-  | { type: "session/reset-confirmed" }
+  | { type: "session/reset-confirmed"; focusAfterReset?: "upload" | "parameters" }
   | { type: "drawer/changed"; open: boolean }
   | { type: "tutorial/opened" }
   | { type: "tutorial/dismissed" }
@@ -98,9 +110,12 @@ export function createInitialWorkbenchState(preferences: SavedPreferencesPatch |
     contextWindowTokens: savedContext ?? null,
   };
   return {
+    items: [],
+    selectedItemId: null,
     documents: [],
     selectedDocumentId: null,
     globalSettings: { ...DEFAULT_SETTINGS, ...preferences?.globalSettings },
+    globalCodeRewriteOptions: { ...DEFAULT_CODE_REWRITE_OPTIONS, ...preferences?.codeRewriteOptions, protectedExecutableSyntax: true },
     globalExtractionOptions: cloneExtractionOptions({
       ...DEFAULT_EXTRACTION_OPTIONS,
       ...preferences?.processing,
@@ -122,6 +137,7 @@ export function createInitialWorkbenchState(preferences: SavedPreferencesPatch |
     tutorialSeenVersion: preferences?.tutorialVersion ?? null,
     intake: { dragging: false, activeBatchId: null, issues: [] },
     editor: {},
+    projectMutationState: {},
     export: { status: "idle", safeMessage: "" },
     liveMessage: "",
     revision: 0,
@@ -146,6 +162,10 @@ function clearAcknowledgments(documents: readonly WorkbenchDocument[]): Workbenc
   return documents.map((document) => ({ ...document, contextWarningAcknowledged: false }));
 }
 
+function clearItemAcknowledgments(items: readonly WorkbenchItem[]): WorkbenchItem[] {
+  return items.map((item) => ({ ...item, contextWarningAcknowledged: false }));
+}
+
 function updateDocument(
   documents: readonly WorkbenchDocument[],
   documentId: string,
@@ -164,8 +184,127 @@ function isCurrentExportOperation(
     && state.export.operationRevision === revision;
 }
 
-export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction): WorkbenchState {
+function nextItemUploadOrdinal(items: readonly WorkbenchItem[]): number {
+  return items.reduce((next, item) => Math.max(next, item.uploadOrdinal + 1), 0);
+}
+
+function reduceWorkbenchState(state: WorkbenchState, action: WorkbenchAction): WorkbenchState {
   switch (action.type) {
+    case "project/admitted": {
+      if (state.items.some((item) => item.id === action.project.id
+        || (item.kind === "project" && item.originalTreeHash === action.project.originalTreeHash))) return state;
+      const admitted: WorkbenchProject = {
+        ...action.project,
+        entries: [...action.project.entries],
+        warnings: [...action.project.warnings],
+        uploadOrdinal: Math.max(action.uploadOrdinal, nextItemUploadOrdinal(state.items)),
+      };
+      return changed(state, {
+        items: [...state.items, admitted],
+        selectedItemId: admitted.id,
+        selectedDocumentId: null,
+        mobileTab: "preview",
+        liveMessage: `${admitted.name} is ready for project review.`,
+      });
+    }
+    case "project/review-updated": {
+      const current = state.items.find((item): item is WorkbenchProject => item.kind === "project" && item.id === action.itemId);
+      if (!current
+        || current.originalTreeHash !== action.expectedOriginalTreeHash
+        || current.projectReviewRevision !== action.expectedReviewRevision
+        || current.projectOperationGeneration !== action.expectedOperationGeneration
+        || action.project.id !== current.id
+        || action.project.originalTreeHash !== current.originalTreeHash) return state;
+      const project: WorkbenchProject = {
+        ...action.project,
+        entries: [...action.project.entries],
+        warnings: [...action.project.warnings],
+        selectedEntryPath: current.selectedEntryPath,
+        uploadOrdinal: current.uploadOrdinal,
+      };
+      const projectMutationState = { ...state.projectMutationState };
+      const pending = projectMutationState[current.id];
+      if (action.mutationTicket !== undefined
+        && pending?.originalTreeHash === action.expectedOriginalTreeHash
+        && pending.projectOperationGeneration === action.expectedOperationGeneration
+        && pending.latestTicket === action.mutationTicket) {
+        delete projectMutationState[current.id];
+      }
+      return changed(state, {
+        items: state.items.map((item) => item.id === current.id ? project : item),
+        projectMutationState,
+        liveMessage: project.requiresReview ? "Project review changed. Confirm the project again." : "Project review complete.",
+      });
+    }
+    case "project/selected-entry": {
+      const current = state.items.find((item): item is WorkbenchProject => item.kind === "project" && item.id === action.itemId);
+      if (!current?.entries.some((entry) => entry.path === action.path)) return state;
+      return {
+        ...state,
+        items: state.items.map((item) => item.id === current.id ? { ...current, selectedEntryPath: action.path } : item),
+      };
+    }
+    case "project/mutation-started": {
+      const project = state.items.find((item): item is WorkbenchProject => item.kind === "project" && item.id === action.itemId);
+      if (!project
+        || project.originalTreeHash !== action.originalTreeHash
+        || project.projectOperationGeneration !== action.projectOperationGeneration) return state;
+      const current = state.projectMutationState[action.itemId];
+      if (current?.originalTreeHash === action.originalTreeHash
+        && current.projectOperationGeneration === action.projectOperationGeneration
+        && action.ticket < current.latestTicket) return state;
+      if (current?.originalTreeHash === action.originalTreeHash
+        && current.projectOperationGeneration === action.projectOperationGeneration
+        && current.latestTicket === action.ticket
+        && current.status === "pending") return state;
+      const projectMutationState = { ...state.projectMutationState };
+      projectMutationState[action.itemId] = {
+        originalTreeHash: action.originalTreeHash,
+        projectOperationGeneration: action.projectOperationGeneration,
+        latestTicket: action.ticket,
+        status: "pending",
+      };
+      return changed(state, { projectMutationState, liveMessage: "Project review change is being applied." });
+    }
+    case "project/mutation-failed": {
+      const project = state.items.find((item): item is WorkbenchProject => item.kind === "project" && item.id === action.itemId);
+      const current = state.projectMutationState[action.itemId];
+      if (!project
+        || project.originalTreeHash !== action.originalTreeHash
+        || project.projectOperationGeneration !== action.projectOperationGeneration
+        || current?.originalTreeHash !== action.originalTreeHash
+        || current.projectOperationGeneration !== action.projectOperationGeneration
+        || current.latestTicket !== action.ticket) return state;
+      return {
+        ...state,
+        projectMutationState: {
+          ...state.projectMutationState,
+          [action.itemId]: { ...current, status: "failed" },
+        },
+        liveMessage: "The project review change failed. Retry it before export.",
+      };
+    }
+    case "item/selection-changed": {
+      const item = state.items.find((candidate) => candidate.id === action.itemId);
+      if (!item) return state;
+      return { ...state, selectedItemId: item.id, selectedDocumentId: item.kind === "document" ? item.id : null, mobileTab: "preview" };
+    }
+    case "item/removed": {
+      const index = state.items.findIndex((item) => item.id === action.itemId);
+      if (index < 0) return state;
+      const item = state.items[index];
+      if (item.kind === "document") return reduceWorkbenchState(state, { type: "document/removed", documentId: item.id });
+      const items = state.items.filter((candidate) => candidate.id !== item.id);
+      const next = items[index] ?? items[index - 1] ?? null;
+      return changed(state, {
+        items,
+        selectedItemId: state.selectedItemId === item.id ? next?.id ?? null : state.selectedItemId,
+        selectedDocumentId: next?.kind === "document" ? next.id : null,
+        focusTarget: next ? `document:${next.id}` : "upload",
+        liveMessage: `${item.name} removed from the session.`,
+        projectMutationState: Object.fromEntries(Object.entries(state.projectMutationState).filter(([id]) => id !== item.id)),
+      });
+    }
     case "intake/drag-changed":
       return { ...state, intake: { ...state.intake, dragging: action.dragging } };
     case "intake/issues":
@@ -175,19 +314,31 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
         liveMessage: action.message,
       };
     case "intake/accepted": {
-      const admitted = action.documents.map(({ document, uploadOrdinal }) => ({
-        ...document,
-        batchId: action.batchId,
-        uploadOrdinal,
-        settingsOverride: { ...document.settingsOverride },
-        warnings: [...document.warnings],
-        pageCount: document.pageCount ?? null,
-        visualAssets: [...(document.visualAssets ?? [])],
-        ocrCandidates: [...(document.ocrCandidates ?? [])],
-        baseExtractedText: document.baseExtractedText ?? document.extractedText,
-        extractionOptions: cloneExtractionOptions(document.extractionOptions ?? state.globalExtractionOptions),
-        processingOperationId: document.processingOperationId,
-      }));
+      const heldIds = new Set(state.items.map((item) => item.id));
+      const accepted = action.documents.filter(({ document }) => {
+        if (heldIds.has(document.id)) return false;
+        heldIds.add(document.id);
+        return true;
+      });
+      let nextOrdinal = nextItemUploadOrdinal(state.items);
+      const admitted = accepted.map(({ document, uploadOrdinal }) => {
+        const assignedOrdinal = Math.max(uploadOrdinal, nextOrdinal);
+        nextOrdinal = assignedOrdinal + 1;
+        return {
+          ...document,
+          batchId: action.batchId,
+          uploadOrdinal: assignedOrdinal,
+          settingsOverride: { ...document.settingsOverride },
+          warnings: [...document.warnings],
+          pageCount: document.pageCount ?? null,
+          visualAssets: [...(document.visualAssets ?? [])],
+          ocrCandidates: [...(document.ocrCandidates ?? [])],
+          baseExtractedText: document.baseExtractedText ?? document.extractedText,
+          extractionOptions: cloneExtractionOptions(document.extractionOptions ?? state.globalExtractionOptions),
+          processingOperationId: document.processingOperationId,
+        };
+      });
+      if (admitted.length === 0) return state;
       const editor = { ...state.editor };
       const overrideEnabled = { ...state.overrideEnabled };
       for (const document of admitted) {
@@ -385,6 +536,15 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
       return changed(state, {
         globalSettings: { ...state.globalSettings, [action.field]: action.value },
       });
+    case "code-rewrite/global-options-changed": {
+      try {
+        return changed(state, {
+          globalCodeRewriteOptions: resolveCodeRewriteOptions(action.options),
+        });
+      } catch {
+        return state;
+      }
+    }
     case "settings/override-enabled": {
       const document = state.documents.find((item) => item.id === action.documentId);
       if (!document) return state;
@@ -502,12 +662,14 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
         selectedProfileId: profile.id,
         workingProfile: { ...profile },
         customContextDraft: profile.contextWindowTokens?.toString() ?? "",
+        items: clearItemAcknowledgments(state.items),
         documents: clearAcknowledgments(state.documents),
       });
     }
     case "profile/context-limit-changed":
       return changed(state, {
         workingProfile: { ...state.workingProfile, contextWindowTokens: action.value },
+        items: clearItemAcknowledgments(state.items),
         documents: clearAcknowledgments(state.documents),
       });
     case "profile/custom-label-changed":
@@ -524,11 +686,15 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
       return changed(state, {
         customContextDraft: action.value,
         workingProfile: { ...state.workingProfile, contextWindowTokens: action.parsed },
+        items: clearItemAcknowledgments(state.items),
         documents: clearAcknowledgments(state.documents),
       });
     case "context/acknowledged":
       return changed(state, {
-        documents: updateDocument(state.documents, action.documentId, (document) => ({
+        items: state.items.map((item) => item.id === action.itemId
+          ? { ...item, contextWarningAcknowledged: action.acknowledged }
+          : item),
+        documents: updateDocument(state.documents, action.itemId, (document) => ({
           ...document,
           contextWarningAcknowledged: action.acknowledged,
         })),
@@ -573,7 +739,9 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
       return {
         ...state,
         documents: [],
+        items: [],
         selectedDocumentId: null,
+        selectedItemId: null,
         overrideEnabled: {},
         mobileTab: "files",
         previewMode: "source",
@@ -581,14 +749,16 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
         selectedAssetIdByDocument: {},
         previewWorkflow: "runbook",
         previewDocumentKey: null,
+        desktopSettingsExpanded: true,
         activeOverlay: null,
         intake: { dragging: false, activeBatchId: null, issues: [] },
         editor: {},
+        projectMutationState: {},
         export: { status: "idle", safeMessage: "" },
         liveMessage: "New session ready. Settings kept.",
         revision,
         lastExportedRevision: revision,
-        focusTarget: "upload",
+        focusTarget: action.focusAfterReset ?? "upload",
       };
     }
     case "drawer/changed":
@@ -598,6 +768,7 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
     case "tutorial/dismissed":
       return {
         ...state,
+        desktopSettingsExpanded: true,
         activeOverlay: null,
         tutorialSeenVersion: CURRENT_TUTORIAL_VERSION,
       };
@@ -608,12 +779,14 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
     case "preferences/reset-confirmed":
       return changed(state, {
         globalSettings: { ...DEFAULT_SETTINGS },
+        globalCodeRewriteOptions: { ...DEFAULT_CODE_REWRITE_OPTIONS },
         globalExtractionOptions: cloneExtractionOptions(DEFAULT_EXTRACTION_OPTIONS),
         selectedProfileId: firstProfile.id,
         workingProfile: { ...firstProfile },
         customProfileLabel: "",
         customContextDraft: firstProfile.contextWindowTokens?.toString() ?? "",
         activeOverlay: null,
+        items: clearItemAcknowledgments(state.items),
         documents: clearAcknowledgments(state.documents),
       });
     case "focus/consumed":
@@ -691,4 +864,38 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
     case "live/announced":
       return { ...state, liveMessage: action.message };
   }
+}
+
+function mergeDocumentAliases(
+  priorItems: readonly WorkbenchItem[],
+  documents: readonly WorkbenchDocument[],
+): WorkbenchItem[] {
+  const documentsById = new Map(documents.map((document) => [document.id, document]));
+  const merged: WorkbenchItem[] = [];
+  for (const item of priorItems) {
+    if (item.kind === "project") {
+      merged.push(item);
+      continue;
+    }
+    const document = documentsById.get(item.id);
+    if (!document) continue;
+    documentsById.delete(item.id);
+    merged.push(document);
+  }
+  return [...merged, ...documentsById.values()];
+}
+
+export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction): WorkbenchState {
+  const next = reduceWorkbenchState(state, action);
+  if (!next) return state;
+  const documentsChanged = next.documents !== state.documents;
+  const selectionChanged = next.selectedDocumentId !== state.selectedDocumentId;
+  if (!documentsChanged && !selectionChanged) return next;
+  return {
+    ...next,
+    items: documentsChanged ? mergeDocumentAliases(next.items, next.documents) : next.items,
+    selectedItemId: selectionChanged && next.selectedItemId === state.selectedItemId
+      ? next.selectedDocumentId
+      : next.selectedItemId,
+  };
 }

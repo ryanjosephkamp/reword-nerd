@@ -6,7 +6,11 @@ import {
   type DocumentWorkbook,
 } from "../../src/export";
 
-function workbook(documentKey = "notes", originalDisplayName = "notes.md"): DocumentWorkbook {
+function workbook(
+  documentKey = "notes",
+  originalDisplayName = "notes.md",
+  sourceKind: DocumentWorkbook["sourceKind"] = "file",
+): DocumentWorkbook {
   const promptBlocks = [
     { stage: "decompose" as const, title: "Stage 1 — Decompose", content: "DECOMPOSE\nSource text" },
     { stage: "rewrite" as const, title: "Stage 2 — Rewrite", content: "REWRITE\n<<<INSERT_STAGE_1_DECOMPOSITION_RESPONSE>>>" },
@@ -16,6 +20,7 @@ function workbook(documentKey = "notes", originalDisplayName = "notes.md"): Docu
   return {
     documentKey,
     originalDisplayName,
+    sourceKind,
     runbook: {} as never,
     runbookMarkdown: "# reword-nerd prompt package\n\nRun each stage in order.",
     runbookDocument: {
@@ -23,6 +28,7 @@ function workbook(documentKey = "notes", originalDisplayName = "notes.md"): Docu
       blocks: [
         { type: "heading", depth: 1, content: [{ type: "text", value: "reword-nerd prompt package" }] },
         { type: "paragraph", content: [{ type: "text", value: "Run each stage in order." }] },
+        { type: "paragraph", content: [{ type: "link", label: "assets/figure.png", href: "documents/notes/project/files/assets/figure.png" }] },
       ],
     },
     promptBundle: {
@@ -103,6 +109,8 @@ describe("PackagePreview workbook integration", () => {
     expect(screen.getByRole("heading", { name: "reword-nerd prompt package" })).toBeInTheDocument();
     expect(screen.queryByText(/^# reword-nerd prompt package/)).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Editable One-shot prompt" })).not.toBeInTheDocument();
+    expect(screen.getByText("assets/figure.png").tagName).toBe("CODE");
+    expect(screen.queryByRole("link", { name: "assets/figure.png" })).not.toBeInTheDocument();
 
     runbook.focus();
     fireEvent.keyDown(runbook, { key: "ArrowRight" });
@@ -145,6 +153,21 @@ describe("PackagePreview workbook integration", () => {
     expect(document.querySelector("[data-generated-html]")).toBeNull();
 
     Object.defineProperty(document, "execCommand", { configurable: true, value: previousExecCommand });
+  });
+
+  it("labels project One-shot responses with the exact four-block contract while preserving document wording", () => {
+    const { unmount } = render(<PreviewHarness workbooks={[workbook("project", "source", "project")]} />);
+    fireEvent.click(screen.getByRole("tab", { name: "ONE-SHOT" }));
+
+    expect(screen.getByRole("textbox", {
+      name: "One-shot project response: CHANGED_FILES, UNCHANGED_PATHS, EXCLUDED_PATHS, and RISK_MANIFEST",
+    })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "One-shot final document and compact audit" })).not.toBeInTheDocument();
+
+    unmount();
+    render(<PreviewHarness workbooks={[workbook("document", "notes.md", "file")]} />);
+    fireEvent.click(screen.getByRole("tab", { name: "ONE-SHOT" }));
+    expect(screen.getByRole("textbox", { name: "One-shot final document and compact audit" })).toBeInTheDocument();
   });
 
   it("copies the edited One-shot prompt from the contextual prompt heading", async () => {

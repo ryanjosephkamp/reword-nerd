@@ -1,5 +1,5 @@
 import { useId, useRef, useState, type ReactNode } from "react";
-import type { ExtractionOptions, RewriteSettings, Tone, Formality, LengthPreference, OcrMode } from "../../../domain";
+import type { CodeRewriteOptions, ExtractionOptions, RewriteSettings, Tone, Formality, LengthPreference, OcrMode } from "../../../domain";
 import { cloneExtractionOptions } from "../../../domain";
 import { CURATED_MODEL_PROFILES, MAX_CUSTOM_REQUIREMENTS_LENGTH } from "../../../domain";
 import type { WorkbenchState } from "../contracts";
@@ -28,6 +28,7 @@ interface SettingsInspectorProps {
   onProfileSelected(profileId: string): void;
   onProfileLabel(value: string): void;
   onContextDraft(value: string, parsed: number | null | undefined): void;
+  onCodeRewriteOptionsChange(options: CodeRewriteOptions): void;
   onExtractionOptionsChange(options: ExtractionOptions, reprocess: boolean): void;
   onResetPreferences(returnFocus: HTMLButtonElement): void;
   exportPanel?: ReactNode;
@@ -89,6 +90,7 @@ export function SettingsInspector(props: SettingsInspectorProps) {
   const parsedContext = parseContextLimitDraft(contextDraft);
   const invalidContext = parsedContext === undefined;
   const extraction = selected?.extractionOptions ?? props.state.globalExtractionOptions;
+  const codeOptions = props.state.globalCodeRewriteOptions;
   const extractionChange = <K extends keyof ExtractionOptions>(field: K, value: ExtractionOptions[K]) => {
     props.onExtractionOptionsChange(cloneExtractionOptions({ ...extraction, [field]: value }), Boolean(selected));
   };
@@ -174,6 +176,24 @@ export function SettingsInspector(props: SettingsInspectorProps) {
         onChange={(event) => change("customRequirements", Array.from(event.currentTarget.value).slice(0, MAX_CUSTOM_REQUIREMENTS_LENGTH).join(""))}
       />
     </SettingsHelpField>
+    <fieldset className="processing-settings" aria-labelledby={id("code-rewrite-title")}>
+      <legend id={id("code-rewrite-title")}>CODE &amp; STRUCTURED TEXT</legend>
+      <p className="processing-help">Choose which prose-like regions may be rewritten. Executable syntax and structural tokens always stay protected.</p>
+      {([
+        ["documentationAndMarkup", "Rewrite documentation and markup", "documentationAndMarkup"],
+        ["commentsAndDocstrings", "Rewrite comments and docstrings", "commentsAndDocstrings"],
+        ["userFacingStrings", "Rewrite user-facing strings", "userFacingStrings"],
+        ["narrativeStructuredDataValues", "Rewrite narrative structured-data values", "narrativeStructuredDataValues"],
+        ["honorRootGitignore", "Honor root .gitignore", "honorRootGitignore"],
+        ["excludeDependenciesBuildGenerated", "Exclude dependencies, build, and generated content", "excludeDependenciesBuildGenerated"],
+        ["preserveSafeNonTextAssets", "Preserve safe non-text assets", "preserveSafeNonTextAssets"],
+      ] as const).map(([field, label, helpKey]) => <SettingsHelpField key={field} label={label} htmlFor={id(field)} helpKey={helpKey} className="checkbox-row" {...help}>
+        <input id={id(field)} type="checkbox" checked={codeOptions[field]} onChange={(event) => props.onCodeRewriteOptionsChange({ ...codeOptions, [field]: event.currentTarget.checked, protectedExecutableSyntax: true })} />
+      </SettingsHelpField>)}
+      <SettingsHelpField label="Preserve executable syntax" htmlFor={id("protected-executable-syntax")} helpKey="protectedExecutableSyntax" className="checkbox-row" {...help}>
+        <input id={id("protected-executable-syntax")} type="checkbox" checked disabled />
+      </SettingsHelpField>
+    </fieldset>
     <fieldset className="processing-settings" aria-labelledby={id("document-processing-title")}>
       <legend>
         <span className="settings-help-legend-row">

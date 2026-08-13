@@ -105,7 +105,7 @@ describe("prompt-package export", () => {
     await expect(archive.file(`documents/${record.key}/project/section.tex`)?.async("string")).resolves.toBe("Stable project text.\n");
   });
 
-  it("archives reviewed media, OCR provenance, and both companion HTML modes in schema v5", async () => {
+  it("archives reviewed media, OCR provenance, and both companion HTML modes in schema v6", async () => {
     // This catches package builds that expose figures in the UI but omit their bytes, placement, or review provenance from export.
     const { buildPromptPackage } = await import("../../src/export");
     const source = documentInput();
@@ -173,8 +173,8 @@ describe("prompt-package export", () => {
     expect(result.ok ? null : result.error).toBeNull();
     if (!result.ok) throw new Error("fixture should export");
     expect(result.manifest).toMatchObject({
-      schemaVersion: 5,
-      package: { version: "0.5.1", format: "dual-mode-prompt-package" },
+      schemaVersion: 6,
+      package: { version: "0.6.0", format: "dual-mode-prompt-package" },
       documents: [{
         processing: {
           pageCount: 7,
@@ -265,7 +265,7 @@ describe("prompt-package export", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("archives a confirmed document as a schema-v5 package with byte-preserved original", async () => {
+  it("archives a confirmed document as a schema-v6 package with byte-preserved original", async () => {
     // This catches omissions or transformations of the immutable original and reviewed extraction export contract.
     const { buildPromptPackage } = await import("../../src/export");
     const source = documentInput();
@@ -275,8 +275,8 @@ describe("prompt-package export", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("fixture should export");
     expect(result.filename).toBe("reword-nerd-prompt-package.zip");
-    expect(result.manifest.schemaVersion).toBe(5);
-    expect(result.manifest.package.version).toBe("0.5.1");
+    expect(result.manifest.schemaVersion).toBe(6);
+    expect(result.manifest.package.version).toBe("0.6.0");
     expect(result.manifest.documents).toHaveLength(1);
     expect(result.manifest.documents[0]).toMatchObject({
       key: "resume-notes--ea27ac66cf6a",
@@ -323,7 +323,7 @@ describe("prompt-package export", () => {
     expect(artifact.runbook).toMatchObject({
       documentKey: result.manifest.documents[0].key,
       originalDisplayName: source.documentName,
-      package: { version: "0.5.1" },
+      package: { version: "0.6.0" },
       model: {
         id: "openai-general",
         promptStrategy: { id: "openai-chatgpt-v1", version: "2026-08-11-v1" },
@@ -567,8 +567,9 @@ describe("prompt-package export", () => {
       responseMarkers: markerValues,
     });
     const document = result.manifest.documents[0];
+    if (!document.original) throw new Error("file fixture requires original record");
     expect(Object.keys(document)).toEqual([
-      "key", "exportOrdinal", "originalDisplayName", "format", "original", "reviewedExtraction",
+      "key", "exportOrdinal", "originalDisplayName", "format", "source", "original", "reviewedExtraction",
       "settings", "model", "contextAssessment", "contextWarningAcknowledged", "prompts", "processing",
       "visualAssets", "ocr", "workbooks",
     ]);

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { vi } from "vitest";
 import { App } from "../../src/app/App";
 import { SettingsInspector } from "../../src/app/workbench/components/SettingsInspector";
 import type { WorkbenchServices } from "../../src/app/workbench/contracts";
@@ -103,6 +104,7 @@ describe("Settings help", () => {
       onProfileSelected: () => undefined,
       onProfileLabel: () => undefined,
       onContextDraft: () => undefined,
+      onCodeRewriteOptionsChange: () => undefined,
       onExtractionOptionsChange: () => undefined,
       onResetPreferences: () => undefined,
     };
@@ -112,5 +114,32 @@ describe("Settings help", () => {
     const helpControls = screen.getAllByRole("button", { name: "Help about Tone" });
     expect(toneControls[0].id).not.toBe(toneControls[1].id);
     expect(helpControls[0].getAttribute("aria-controls")).not.toBe(helpControls[1].getAttribute("aria-controls"));
+  });
+
+  it("exposes real code and structured-text rewrite controls", () => {
+    const state = createInitialWorkbenchState(null);
+    const onCodeRewriteOptionsChange = vi.fn();
+    render(<SettingsInspector
+      state={state}
+      onGlobalChange={() => undefined}
+      onOverrideEnabled={() => undefined}
+      onOverrideChange={() => undefined}
+      onProfileSelected={() => undefined}
+      onProfileLabel={() => undefined}
+      onContextDraft={() => undefined}
+      onCodeRewriteOptionsChange={onCodeRewriteOptionsChange}
+      onExtractionOptionsChange={() => undefined}
+      onResetPreferences={() => undefined}
+    />);
+
+    const structuredValues = screen.getByLabelText("Rewrite narrative structured-data values");
+    expect(structuredValues).not.toBeChecked();
+    fireEvent.click(structuredValues);
+    expect(onCodeRewriteOptionsChange).toHaveBeenCalledWith(expect.objectContaining({
+      narrativeStructuredDataValues: true,
+      protectedExecutableSyntax: true,
+    }));
+    expect(screen.getByLabelText("Preserve executable syntax")).toBeChecked();
+    expect(screen.getByLabelText("Preserve executable syntax")).toBeDisabled();
   });
 });

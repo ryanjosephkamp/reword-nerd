@@ -5,10 +5,14 @@ import type {
   PreflightCapacity,
   PreflightResult,
   WorkspaceDocument,
+  WorkspaceProject,
+  FolderProjectInput,
+  ProjectReadOptions,
+  ZipProjectInput,
 } from "../../domain";
-import type { DownloadResult, ExportDocumentInput, PromptPackageResult } from "../../export";
+import type { DownloadResult, ExportSourceInput, PromptPackageResult } from "../../export";
 import type { ModelProfile } from "../../domain/profiles";
-import type { RewriteSettings } from "../../domain/settings";
+import type { CodeRewriteOptions, RewriteSettings } from "../../domain/settings";
 import type { ExtractionOptions } from "../../domain/media";
 import type { ProcessingProgress } from "../../domain/media";
 
@@ -25,6 +29,12 @@ export interface WorkbenchDocument extends WorkspaceDocument {
   uploadOrdinal: number;
 }
 
+export interface WorkbenchProject extends WorkspaceProject {
+  uploadOrdinal: number;
+}
+
+export type WorkbenchItem = WorkbenchDocument | WorkbenchProject;
+
 export interface EditorRevisionState {
   revision: number;
   hashPending: boolean;
@@ -37,9 +47,14 @@ export interface IntakeIssue {
 }
 
 export interface WorkbenchState {
+  /** Canonical v0.6 workspace collection. */
+  items: WorkbenchItem[];
+  selectedItemId: string | null;
+  /** Compatibility aliases for v0.5 document-only consumers. */
   documents: WorkbenchDocument[];
   selectedDocumentId: string | null;
   globalSettings: RewriteSettings;
+  globalCodeRewriteOptions: CodeRewriteOptions;
   globalExtractionOptions: ExtractionOptions;
   selectedProfileId: string;
   workingProfile: ModelProfile;
@@ -61,6 +76,13 @@ export interface WorkbenchState {
     issues: IntakeIssue[];
   };
   editor: Record<string, EditorRevisionState>;
+  /** Latest project-review intent. Only that exact ticket may release the export guard. */
+  projectMutationState: Record<string, Readonly<{
+    originalTreeHash: string;
+    projectOperationGeneration: number;
+    latestTicket: number;
+    status: "pending" | "failed";
+  }>>;
   export: {
     status: "idle" | "building" | "ready" | "downloading" | "success" | "failure";
     safeMessage: string;
@@ -85,8 +107,10 @@ export interface WorkbenchServices {
     onProgress?: (progress: ProcessingProgress) => void,
   ): Promise<ExtractionResult>;
   hashText(text: string): Promise<string>;
-  buildPackage(inputs: readonly ExportDocumentInput[]): Promise<PromptPackageResult>;
+  buildPackage(inputs: readonly ExportSourceInput[]): Promise<PromptPackageResult>;
   download(blob: Blob): DownloadResult;
   downloadProgressCopy(html: string, filename: string): DownloadResult;
   createDocumentId(): string;
+  readFolderProject?(input: FolderProjectInput, options?: ProjectReadOptions): Promise<WorkspaceProject>;
+  readZipProject?(input: ZipProjectInput, options?: ProjectReadOptions): Promise<WorkspaceProject>;
 }

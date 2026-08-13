@@ -1,8 +1,9 @@
 # Privacy and local-processing boundary
 
-`reword-nerd` processes selected files in the browser. Validation, extraction,
-hashing, review edits, prompt generation, package preview, clipboard handling,
-ZIP creation, and progress-copy rendering are local operations.
+`reword-nerd` processes selected files, folders, and ZIP workspaces in the
+browser. Validation, safe project classification, extraction, hashing, review
+edits, inert ORIGINAL previews, prompt generation, package preview, clipboard
+handling, ZIP creation, and progress-copy rendering are local operations.
 
 ## The one saved-preference key
 
@@ -13,6 +14,8 @@ allowlist and may contain only:
 - selected global model profile, custom model label, and current context limit;
 - global tone, formality, length, output language, and custom requirements;
 - global embedded-image, decorative-image, PDF capture/page/quality, and OCR options;
+- global code/structured-text selection, root-ignore, dependency/build exclusion, and safe
+  non-text-asset options;
 - the tutorial version used to decide whether Quick start appears.
 
 Corrupt, unsupported, oversized, or unknown fields are ignored or replaced with
@@ -21,10 +24,11 @@ safe defaults. Reset saved preferences removes this one key after confirmation.
 in-memory work while keeping validated global preferences and the tutorial
 record.
 
-The key never contains source files, extracted text, assets, OCR text, review
-state, per-file overrides, generated prompts, model responses, workbook
-progress, ZIP bytes, or built packages. Those remain in memory and are cleared
-by reload or session end.
+The key never contains source files, project paths or decisions, extracted or
+reviewed text, assets, OCR text, ORIGINAL previews, tree hashes, review state,
+per-file overrides, generated prompts, model responses, workbook progress, ZIP
+bytes, or built packages. Those remain in memory and are cleared by reload or
+session end.
 
 The application does not use sessionStorage, IndexedDB, Cache Storage, cookies,
 or a service worker for workbench state.
@@ -38,6 +42,24 @@ or a service worker for workbench state.
   Help posters, and Help videos may be requested from the same app origin when
   those local features are used.
 - A model profile is descriptive prompt metadata only; it creates no connection.
+- Uploaded HTML/Markdown cannot navigate or load active resources, and uploaded
+  code is never run, compiled, dependency-resolved, or tested.
+
+## Project-sensitive data boundary
+
+Project intake applies a fail-closed classifier before `.gitignore` and normal
+exclusion rules. Likely credential files, private keys, and clear credential
+material are dropped before tree hashing, preview, indexing, prompt rendering,
+or export. The session retains aggregate safe-category counts only; blocked
+paths, names, bytes, and hashes are not retained or recoverable in the app.
+
+Non-sensitive entries stay in browser memory with explicit prompt/package
+inclusion state. Default-excluded dependencies, vendor/cache/build/generated,
+minified, source-map, lock, and root-ignored files are not silently added to
+prompts. A user may deliberately restore eligible safe exclusions during
+review. Project packages contain a sanitized reviewed tree for AI context; they
+are not source-control backups. ZIP-container metadata may be recorded for
+provenance, but the original generic ZIP is not copied into the package.
 
 The Info dialog offers exactly four deliberate external navigation
 destinations:
@@ -77,5 +99,6 @@ The branded logo, favicons, tutorial posters, and demo video files are
 application assets. Package creation does not copy them into the ZIP or any
 downloaded progress workbook.
 
-Opening or pasting a workbook into a model is a separate user action governed
+Opening or pasting a workbook into a model, or applying its suggested changed
+files to a project, is a separate user action governed
 by that provider's terms, privacy settings, and account controls.

@@ -94,7 +94,8 @@ describe("saved preferences and onboarding UI", () => {
     fireEvent.click(within(screen.getByRole("dialog", { name: "Quick start" })).getByRole("button", { name: "ADD FILES" }));
 
     expect(click).toHaveBeenCalledTimes(1);
-    expect(document.querySelectorAll('input[type="file"]')).toHaveLength(1);
+    expect(document.querySelectorAll('input[type="file"][aria-label="Add supported files"]')).toHaveLength(1);
+    expect(screen.getByLabelText("Add folder project")).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "Quick start" })).not.toBeInTheDocument();
   });
 
@@ -114,6 +115,8 @@ describe("saved preferences and onboarding UI", () => {
       "Formats and privacy",
       "Reset or restart",
     ]) expect(help).toHaveTextContent(copy);
+    expect(help).toHaveTextContent(/safe UTF-8 text, code, structured data, and folder or ZIP project workspaces/i);
+    expect(help).toHaveTextContent(/demo clips predate project-workspace support/i);
 
     fireEvent.click(within(help).getByRole("button", { name: "REPLAY QUICK START" }));
     expect(screen.getByRole("dialog", { name: "Quick start" })).toBeInTheDocument();
@@ -123,6 +126,16 @@ describe("saved preferences and onboarding UI", () => {
     });
     fireEvent.keyDown(screen.getByRole("dialog", { name: "Quick start" }), { key: "Escape" });
     expect(helpButton).toHaveFocus();
+  });
+
+  it("introduces document and project intake without overstating the unchanged demo", () => {
+    // This catches v0.6 onboarding hiding Add Folder/ZIP support or implying that the v0.5 clips demonstrate it.
+    render(<App services={services()} />);
+    const quickStart = screen.getByRole("dialog", { name: "Quick start" });
+
+    expect(quickStart).toHaveTextContent(/document, folder workspace, or project ZIP/i);
+    expect(quickStart).toHaveTextContent(/demo clip predates project-workspace support/i);
+    expect(within(quickStart).getByRole("button", { name: "ADD FILES" })).toBeInTheDocument();
   });
 
   it("requires confirmation to reset globals, clears the key, and retains uploaded documents", async () => {

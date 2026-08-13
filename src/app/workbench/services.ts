@@ -3,6 +3,8 @@ import {
   extractFile,
   hashBytes,
   preflightFiles,
+  readFolderProject,
+  readZipProject,
 } from "../../domain";
 import { buildPromptPackage, initiatePromptPackageDownload, initiateWorkbookProgressDownload } from "../../export";
 import type { WorkbenchServices } from "./contracts";
@@ -22,6 +24,8 @@ export const defaultWorkbenchServices: WorkbenchServices = {
   download: (blob) => initiatePromptPackageDownload(blob),
   downloadProgressCopy: (html, filename) => initiateWorkbookProgressDownload(html, filename),
   createDocumentId: () => globalThis.crypto?.randomUUID?.() ?? `document-${Date.now()}-${Math.random()}`,
+  readFolderProject,
+  readZipProject,
 };
 
 export function safeExtractionMessage(error: unknown): string {

@@ -15,7 +15,15 @@ export type SettingsHelpKey =
   | "pageVisualQuality"
   | "ocr"
   | "ocrExtractedRasterImages"
-  | "excludeLikelyDecorativeImages";
+  | "excludeLikelyDecorativeImages"
+  | "documentationAndMarkup"
+  | "commentsAndDocstrings"
+  | "userFacingStrings"
+  | "narrativeStructuredDataValues"
+  | "honorRootGitignore"
+  | "excludeDependenciesBuildGenerated"
+  | "preserveSafeNonTextAssets"
+  | "protectedExecutableSyntax";
 
 export const SETTINGS_HELP_CONTENT: Record<SettingsHelpKey, string> = {
   perFileOverride: "Uses document-specific tone, formality, length, output language, and requirements instead of global values. It does not change the model profile or context limit.",
@@ -35,4 +43,12 @@ export const SETTINGS_HELP_CONTENT: Record<SettingsHelpKey, string> = {
   ocr: "Choose Off, textless selected PDF pages, or all selected pages. Bundled English OCR runs locally and requires review.",
   ocrExtractedRasterImages: "Also runs OCR over recovered raster assets. It is available only when embedded-image extraction is enabled.",
   excludeLikelyDecorativeImages: "Applies conservative size and type heuristics, not semantic classification. Verify exclusions in Assets.",
+  documentationAndMarkup: "Includes prose in documentation and markup while preserving tags, attributes, links, and structure.",
+  commentsAndDocstrings: "Includes comments and docstrings for rewriting while keeping surrounding executable syntax unchanged.",
+  userFacingStrings: "Includes strings shown to users. Identifiers, protocol values, placeholders, and other executable strings stay protected.",
+  narrativeStructuredDataValues: "Includes prose-like values in JSON, YAML, TOML, INI, and config files. Keys, types, numbers, and structure stay protected.",
+  honorRootGitignore: "Applies the project root .gitignore locally when deciding initial exclusions. No files or patterns leave this browser.",
+  excludeDependenciesBuildGenerated: "Excludes dependencies, vendor, cache, build, generated, minified, source-map, and lock content by default.",
+  preserveSafeNonTextAssets: "Keeps safe non-text assets in the sanitized project package without placing their bytes in prompts.",
+  protectedExecutableSyntax: "Always on. Preserves executable syntax, control flow, identifiers, imports, signatures, paths, and structural tokens.",
 };

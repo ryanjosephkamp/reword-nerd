@@ -29,7 +29,8 @@ Run `npm run install:playwright` if Playwright does not yet have Chromium.
 ## Contributions that fit the project
 
 - Improve the canonical One-shot or four Manual prompt templates.
-- Improve extraction, review, package generation, and accessibility.
+- Improve safe standalone-text/project intake, ORIGINAL previews, review,
+  package generation, and accessibility.
 - Improve the model-profile and writing-settings experience.
 - Add focused tests, synthetic fixtures, examples, or documentation.
 - Report reproducible defects or suggest a well-scoped enhancement.
@@ -47,6 +48,15 @@ execution, or unrelated interface should be discussed before implementation.
   Decompose → Rewrite → Verify → Final sequence.
 - Keep the source extraction visible, editable, and explicitly reviewable
   before export.
+- Keep uploaded HTML/Markdown and code inert. Do not add `iframe`, `object`,
+  `embed`, `srcdoc`, active links/resources, `dangerouslySetInnerHTML`, code
+  execution, compilation, or project test execution.
+- Preserve project path normalization, portability-collision checks,
+  sensitive-entry fail-closed removal, bounded intake, immutable tree lineage,
+  and explicit prompt/package inclusion. Sensitive test fixtures must contain
+  synthetic markers only and must never include real credentials.
+- Keep executable syntax protected. Project prompts return changed text files
+  and risk manifests; the exported tree is AI context, not a source backup.
 - Keep document processing in the current browser session. Do not add provider
   calls, telemetry, remote assets, or service workers. The validated adapter in
   `src/app/workbench/preferences.ts` is the only permitted storage writer; its
@@ -61,16 +71,18 @@ execution, or unrelated interface should be discussed before implementation.
 Write and run a failing focused test before fixing or adding behavior.
 Unit and component tests live under `tests/`; browser coverage lives in
 `tests/e2e/`. Keep test fixtures synthetic, minimal, deterministic, and free
-of personal, confidential, or copyrighted source material. A fixture that
+of personal, confidential, secret-bearing, or copyrighted source material. A
+fixture that
 exercises DOCX or PDF extraction must use genuine format bytes, not a parser
-mock alone.
+mock alone. Folder/ZIP fixtures must also exercise normalized paths, exclusions,
+tree hashes, and sanitized schema-v6 export without relying only on parser mocks.
 
 Run the relevant focused tests while iterating, then run the checks listed
 above against the built preview before proposing a change. Inspect generated
 screenshots and downloaded archive/progress bytes rather than relying on test
 status alone. Update documentation whenever an accepted
-format, limit, archive field, setting, privacy boundary, or visible workflow
-changes.
+format, project rule, limit, archive field, setting, privacy boundary, or
+visible workflow changes.
 
 ## Prompt changes
 

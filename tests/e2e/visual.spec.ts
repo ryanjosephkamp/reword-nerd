@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import { asPayload, markdownFixture, textFixture } from "./fixtures";
+import { asPayload, markdownFixture, setFolderInputFiles, strictCodeFixture, textFixture } from "./fixtures";
 
 const screenshotDirectory = "output/playwright";
 
@@ -63,6 +63,79 @@ test("captures the approved representative workbench at all native QA viewports"
       });
       expect(overlap).toBe(0);
     }
+    await assertViewportContained(page);
+    await page.screenshot({ path: `${screenshotDirectory}/${name}`, fullPage: false, animations: "disabled" });
+  }
+});
+
+test("captures v0.6 project review, source ORIGINAL, context risk, and Preview Footer Dock evidence", async ({ page }) => {
+  mkdirSync(screenshotDirectory, { recursive: true });
+  await page.goto("./");
+  const quickStart = page.getByRole("dialog", { name: "Quick start" });
+  if (await quickStart.isVisible()) await quickStart.getByRole("button", { name: "Close quick start" }).click();
+
+  await setFolderInputFiles(page, "visual-project", [
+    {
+      path: "README.md",
+      mimeType: "text/markdown",
+      contents: "# Visual project\n\nNight Terminal project review evidence.\n",
+    },
+    {
+      path: "src/main.ts",
+      mimeType: "text/typescript",
+      contents: "// Visual source fixture\nexport const release = 6;\n",
+    },
+  ]);
+  await expect(page.getByRole("listbox", { name: "Uploaded files" }).getByRole("option").filter({ hasText: "visual-project" })).toBeVisible();
+  await page.getByLabel("Context limit", { exact: true }).fill("1");
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByText("Estimated workflow context exceeds the selected profile.")).toBeVisible();
+
+  for (const [name, width, height] of [
+    ["v06-project-context-desktop-1586x992.png", 1586, 992],
+    ["v06-project-context-tablet-1024x768.png", 1024, 768],
+    ["v06-project-context-mobile-412x915.png", 412, 915],
+    ["v06-project-context-mobile-390x844.png", 390, 844],
+    ["v06-project-context-mobile-360x800.png", 360, 800],
+    ["v06-project-context-mobile-320x720.png", 320, 720],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    if (width < 768) await page.getByRole("tab", { name: "REVIEW" }).click();
+    await assertViewportContained(page);
+    const entry = page.locator(".project-entry-review");
+    const entryBox = await entry.boundingBox();
+    expect(entryBox).not.toBeNull();
+    expect(entryBox!.x).toBeGreaterThanOrEqual(-0.5);
+    expect(entryBox!.x + entryBox!.width).toBeLessThanOrEqual(width + 0.5);
+    if (width >= 1280) {
+      const dock = page.getByRole("region", { name: "Package actions" });
+      await expect(dock).toBeVisible();
+      const [dockBox, previewBox] = await Promise.all([dock.boundingBox(), page.locator("#panel-preview").boundingBox()]);
+      expect(dockBox).not.toBeNull();
+      expect(previewBox).not.toBeNull();
+      expect(dockBox!.x).toBeGreaterThanOrEqual(previewBox!.x);
+      expect(dockBox!.x + dockBox!.width).toBeLessThanOrEqual(previewBox!.x + previewBox!.width + 1);
+    } else {
+      await expect(page.getByRole("region", { name: "Package actions" })).toHaveCount(0);
+    }
+    await page.screenshot({ path: `${screenshotDirectory}/${name}`, fullPage: false, animations: "disabled" });
+  }
+
+  await page.setViewportSize({ width: 1586, height: 992 });
+  await page.getByLabel("Add supported files").setInputFiles(asPayload(strictCodeFixture));
+  await expect(page.getByLabel(`Extracted text for ${strictCodeFixture.name}`)).toHaveValue(/Strict UTF-8 source/u);
+  await page.getByRole("tablist", { name: "Source view" }).getByRole("tab", { name: "ORIGINAL" }).click();
+  for (const [name, width, height] of [
+    ["v06-source-original-desktop-1586x992.png", 1586, 992],
+    ["v06-source-original-tablet-1024x768.png", 1024, 768],
+    ["v06-source-original-mobile-412x915.png", 412, 915],
+    ["v06-source-original-mobile-390x844.png", 390, 844],
+    ["v06-source-original-mobile-360x800.png", 360, 800],
+    ["v06-source-original-mobile-320x720.png", 320, 720],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    if (width < 768) await page.getByRole("tab", { name: "REVIEW" }).click();
+    await expect(page.getByLabel("Read-only typescript source")).toBeVisible();
     await assertViewportContained(page);
     await page.screenshot({ path: `${screenshotDirectory}/${name}`, fullPage: false, animations: "disabled" });
   }

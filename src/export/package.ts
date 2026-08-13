@@ -4,19 +4,38 @@ import {
   cloneExtractionOptions,
   DEFAULT_EXTRACTION_OPTIONS,
   MAX_GENERATED_MEDIA_BYTES_PER_PACKAGE,
+  MAX_ARCHIVE_ENTRY_BYTES,
+  MAX_FOLDER_FILE_BYTES,
+  MAX_PROJECT_BYTES,
+  MAX_PROJECT_ENTRIES,
+  MAX_PROMPT_DECODED_TEXT_BYTES,
+  MAX_PROMPT_TEXT_FILES,
+  assessSourceContext,
+  classifyStandaloneTextName,
+  classifySensitiveProjectEntry,
+  decodeSafeStandaloneText,
+  genericTextClassification,
+  hashOriginalProjectTree,
+  hashReviewedTree,
+  joinProjectArchivePath,
+  normalizeProjectPath,
   type ExtractionOptions,
   type LatexProjectMetadata,
   type OcrCandidate,
+  type ProjectEntry,
+  type WorkspaceProject,
   type VisualAsset,
 } from "../domain";
 import type { ModelFamily } from "../domain/profiles";
 import { readSafeLatexProjectFiles } from "../domain/latex";
-import { responseMarkers } from "../prompting/renderPromptSet";
+import { renderPromptBundle, renderPromptSource, responseMarkers } from "../prompting/renderPromptSet";
 import { APP_VERSION } from "../version";
 import type {
   ArchiveAdapter,
   ExportDependencies,
   ExportDocumentInput,
+  ExportProjectInput,
+  ExportSourceInput,
   ExportFailure,
   ManifestDocumentRecord,
   PromptPackageManifest,
@@ -41,10 +60,11 @@ interface PreparedDocument {
 }
 
 interface ExportSnapshot {
+  kind: "document" | "project";
   documentId: string;
   documentName: string;
   documentFormat: ExportDocumentInput["documentFormat"];
-  original: File;
+  original?: File;
   reviewedExtractedText: string;
   resolvedSettings: ExportDocumentInput["resolvedSettings"];
   chosenProfile: ExportDocumentInput["chosenProfile"];
@@ -65,6 +85,10 @@ interface ExportSnapshot {
     | "ratio"
     | "oversized"
     | "acknowledgmentRequired"
+    | "includedFileCount"
+    | "amberRisk"
+    | "amberRiskReasons"
+    | "inspectDiffsAndRunTestsWarning"
   >;
   reviewed: boolean;
   contextWarningAcknowledged: boolean;
@@ -74,6 +98,9 @@ interface ExportSnapshot {
   visualAssets: VisualAsset[];
   ocrCandidates: OcrCandidate[];
   latexProject?: LatexProjectMetadata;
+  project?: WorkspaceProject;
+  codeRewriteOptions?: ExportProjectInput["codeRewriteOptions"];
+  sensitiveBlockedCounts?: ExportProjectInput["sensitiveBlockedCounts"];
 }
 
 interface ArchiveEntry {
@@ -105,12 +132,11 @@ function isNonblankString(value: unknown): value is string {
 }
 
 function isSupportedFormat(value: unknown): value is ExportDocumentInput["documentFormat"] {
-  return value === "text"
-    || value === "markdown"
-    || value === "docx"
-    || value === "pdf"
-    || value === "latex"
-    || value === "latex-project";
+  return typeof value === "string" && new Set<ExportDocumentInput["documentFormat"]>([
+    "text", "markdown", "html", "xml", "json", "jsonl", "ndjson", "csv", "tsv",
+    "yaml", "toml", "ini", "config", "css", "sql", "code", "docx", "pdf", "latex",
+    "latex-project",
+  ]).has(value as ExportDocumentInput["documentFormat"]);
 }
 
 const supportedModelFamilies = new Set<ModelFamily>([
@@ -239,7 +265,7 @@ function snapshotLatexProject(value: unknown): LatexProjectMetadata | undefined 
   return JSON.parse(JSON.stringify(value)) as LatexProjectMetadata;
 }
 
-function snapshotInput(value: unknown): ExportSnapshot | undefined {
+function snapshotDocumentInput(value: unknown): ExportSnapshot | undefined {
   if (!isRecord(value)
     || typeof value.documentId !== "string"
     || !isNonblankString(value.documentName)
@@ -290,7 +316,13 @@ function snapshotInput(value: unknown): ExportSnapshot | undefined {
     || typeof context.manualOversized !== "boolean"
     || typeof context.oneShotWarning !== "boolean"
     || typeof context.oversized !== "boolean"
-    || typeof context.acknowledgmentRequired !== "boolean") return undefined;
+    || typeof context.acknowledgmentRequired !== "boolean"
+    || !(context.includedFileCount === undefined || isNonnegativeInteger(context.includedFileCount))
+    || !(context.amberRisk === undefined || typeof context.amberRisk === "boolean")
+    || !(context.amberRiskReasons === undefined || (Array.isArray(context.amberRiskReasons)
+      && context.amberRiskReasons.every((reason) => reason === "included-file-count" || reason === "one-shot-ratio")))
+    || !(context.inspectDiffsAndRunTestsWarning === undefined
+      || context.inspectDiffsAndRunTestsWarning === "Inspect the generated diffs and run your normal tests/build after applying changes.")) return undefined;
 
   const promptStrategy = profile.promptStrategy;
   const stageGuidance = promptStrategy.stageGuidance;
@@ -322,6 +354,7 @@ function snapshotInput(value: unknown): ExportSnapshot | undefined {
     || (value.latexProject !== undefined && !latexProject)) return undefined;
 
   return {
+    kind: "document",
     documentId: value.documentId,
     documentName: value.documentName,
     documentFormat: value.documentFormat,
@@ -385,6 +418,10 @@ function snapshotInput(value: unknown): ExportSnapshot | undefined {
       ratio: context.ratio as number | null,
       oversized: context.oversized as boolean,
       acknowledgmentRequired: context.acknowledgmentRequired as boolean,
+      ...(context.includedFileCount !== undefined ? { includedFileCount: context.includedFileCount } : {}),
+      ...(context.amberRisk !== undefined ? { amberRisk: context.amberRisk } : {}),
+      ...(context.amberRiskReasons !== undefined ? { amberRiskReasons: [...context.amberRiskReasons] as ("included-file-count" | "one-shot-ratio")[] } : {}),
+      ...(context.inspectDiffsAndRunTestsWarning !== undefined ? { inspectDiffsAndRunTestsWarning: context.inspectDiffsAndRunTestsWarning } : {}),
     },
     reviewed: value.reviewed,
     contextWarningAcknowledged: value.contextWarningAcknowledged,
@@ -395,6 +432,306 @@ function snapshotInput(value: unknown): ExportSnapshot | undefined {
     ocrCandidates,
     ...(latexProject ? { latexProject } : {}),
   };
+}
+
+function snapshotCodeRewriteOptions(value: unknown): ExportProjectInput["codeRewriteOptions"] | undefined {
+  if (!isRecord(value)
+    || typeof value.documentationAndMarkup !== "boolean"
+    || typeof value.commentsAndDocstrings !== "boolean"
+    || typeof value.userFacingStrings !== "boolean"
+    || typeof value.narrativeStructuredDataValues !== "boolean"
+    || typeof value.honorRootGitignore !== "boolean"
+    || typeof value.excludeDependenciesBuildGenerated !== "boolean"
+    || typeof value.preserveSafeNonTextAssets !== "boolean"
+    || value.protectedExecutableSyntax !== true) return undefined;
+  return {
+    documentationAndMarkup: value.documentationAndMarkup,
+    commentsAndDocstrings: value.commentsAndDocstrings,
+    userFacingStrings: value.userFacingStrings,
+    narrativeStructuredDataValues: value.narrativeStructuredDataValues,
+    honorRootGitignore: value.honorRootGitignore,
+    excludeDependenciesBuildGenerated: value.excludeDependenciesBuildGenerated,
+    preserveSafeNonTextAssets: value.preserveSafeNonTextAssets,
+    protectedExecutableSyntax: true,
+  };
+}
+
+function isSha256(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{64}$/u.test(value);
+}
+
+function cloneProjectEntry(value: unknown): ProjectEntry | undefined {
+  if (!isRecord(value)
+    || !isNonblankString(value.path)
+    || value.immutablePath !== value.path
+    || !isNonnegativeInteger(value.byteCount)
+    || !isSha256(value.originalHash)
+    || value.sha256 !== value.originalHash
+    || !(value.originalBytes instanceof Uint8Array)
+    || value.originalBytes.byteLength !== value.byteCount
+    || !(value.contentKind === "text" || value.contentKind === "asset" || value.contentKind === "invalid-text")
+    || !(value.languageId === null || typeof value.languageId === "string")
+    || !(value.previewKind === null || typeof value.previewKind === "string")
+    || !(value.reviewedText === null || typeof value.reviewedText === "string")
+    || !(value.reviewedTextHash === null || isSha256(value.reviewedTextHash))
+    || !isNonnegativeInteger(value.reviewRevision)
+    || typeof value.promptIncluded !== "boolean"
+    || typeof value.packageIncluded !== "boolean"
+    || !(value.exclusionReason === null
+      || value.exclusionReason === "gitignore"
+      || value.exclusionReason === "default-excluded"
+      || value.exclusionReason === "non-text-asset"
+      || value.exclusionReason === "invalid-text"
+      || value.exclusionReason === "prompt-limit")
+    || typeof value.restorable !== "boolean") return undefined;
+  try {
+    if (normalizeProjectPath(value.path) !== value.path) return undefined;
+  } catch {
+    return undefined;
+  }
+  const decodedOriginal = decodeSafeStandaloneText(value.originalBytes);
+  const namedClassification = classifyStandaloneTextName(value.path);
+  const expectedTextClassification = namedClassification ?? (decodedOriginal.ok ? genericTextClassification() : undefined);
+  if (value.contentKind === "text") {
+    if (!expectedTextClassification
+      || !decodedOriginal.ok
+      || value.languageId !== expectedTextClassification.languageId
+      || value.previewKind !== expectedTextClassification.previewKind
+      || typeof value.reviewedText !== "string"
+      || !decodeSafeStandaloneText(textEncoder.encode(value.reviewedText)).ok
+      || !isSha256(value.reviewedTextHash)
+      || value.restorable !== true
+      || (value.promptIncluded && !value.packageIncluded)
+      || (value.promptIncluded && value.exclusionReason !== null)
+      || value.exclusionReason === "non-text-asset"
+      || value.exclusionReason === "invalid-text") return undefined;
+  } else if (value.contentKind === "asset") {
+    if (expectedTextClassification
+      || value.languageId !== null
+      || value.previewKind !== null
+      || value.reviewedText !== null
+      || value.reviewedTextHash !== null
+      || value.promptIncluded
+      || value.restorable !== true
+      || !(value.exclusionReason === "non-text-asset"
+        || value.exclusionReason === "gitignore"
+        || value.exclusionReason === "default-excluded")
+      || (value.packageIncluded && value.exclusionReason !== "non-text-asset")) return undefined;
+  } else if (!namedClassification
+    || decodedOriginal.ok
+    || value.languageId !== namedClassification.languageId
+    || value.previewKind !== namedClassification.previewKind
+    || value.reviewedText !== null
+    || value.reviewedTextHash !== null
+    || value.promptIncluded
+    || value.packageIncluded
+    || value.exclusionReason !== "invalid-text"
+    || value.restorable) return undefined;
+  return Object.freeze({
+    path: value.path,
+    immutablePath: value.path,
+    byteCount: value.byteCount,
+    originalHash: value.originalHash,
+    sha256: value.originalHash,
+    originalBytes: value.originalBytes.slice(),
+    contentKind: value.contentKind,
+    languageId: value.languageId,
+    previewKind: value.previewKind as ProjectEntry["previewKind"],
+    reviewedText: value.reviewedText,
+    reviewedTextHash: value.reviewedTextHash,
+    reviewRevision: value.reviewRevision,
+    promptIncluded: value.promptIncluded,
+    packageIncluded: value.packageIncluded,
+    exclusionReason: value.exclusionReason,
+    restorable: value.restorable,
+  });
+}
+
+function snapshotWorkspaceProject(value: unknown): WorkspaceProject | undefined {
+  if (!isRecord(value)
+    || value.kind !== "project"
+    || !isNonblankString(value.id)
+    || !isNonblankString(value.name)
+    || !(value.sourceKind === "folder" || value.sourceKind === "zip")
+    || !(value.status === "needs-review" || value.status === "ready" || value.status === "blocked" || value.status === "error")
+    || !Array.isArray(value.entries)
+    || !isSha256(value.originalTreeHash)
+    || !isSha256(value.reviewedTreeHash)
+    || value.treeHash !== value.originalTreeHash
+    || !isNonnegativeInteger(value.totalByteCount)
+    || !(value.classification === "latex" || value.classification === "general-text")
+    || typeof value.classificationChoiceRequired !== "boolean"
+    || !Array.isArray(value.classificationChoices)
+    || !value.classificationChoices.every((choice) => choice === "latex" || choice === "general-text")
+    || !(value.rootDocument === null || typeof value.rootDocument === "string")
+    || !(value.selectedEntryPath === null || typeof value.selectedEntryPath === "string")
+    || !isNonnegativeInteger(value.projectOperationGeneration)
+    || !isNonnegativeInteger(value.projectReviewRevision)
+    || typeof value.requiresReview !== "boolean"
+    || !Array.isArray(value.warnings)
+    || !value.warnings.every((warning) => typeof warning === "string")
+    || !isRecord(value.sensitiveBlockedCounts)
+    || !isNonnegativeInteger(value.sensitiveBlockedCounts.credentialFiles)
+    || !isNonnegativeInteger(value.sensitiveBlockedCounts.privateKeys)
+    || !isNonnegativeInteger(value.sensitiveBlockedCounts.clearCredentials)
+    || !isRecord(value.intake)
+    || value.intake.kind !== value.sourceKind
+    || !isNonblankString(value.intake.displayName)
+    || !isRecord(value.settingsOverride)
+    || typeof value.contextWarningAcknowledged !== "boolean") return undefined;
+  const entries = value.entries.map(cloneProjectEntry);
+  if (entries.some((entry) => !entry)) return undefined;
+  const projectReviewRevision = value.projectReviewRevision as number;
+  if (entries.length > MAX_PROJECT_ENTRIES
+    || value.name !== value.intake.displayName
+    || !value.classificationChoices.includes(value.classification)
+    || (value.classification === "general-text" && value.rootDocument !== null)
+    || (entries as ProjectEntry[]).some((entry) => entry.reviewRevision > projectReviewRevision)) return undefined;
+  const exact = new Set<string>();
+  const portable = new Set<string>();
+  let priorPath: string | null = null;
+  let computedTotalBytes = 0;
+  let promptFileCount = 0;
+  let promptTextBytes = 0;
+  const perEntryLimit = value.sourceKind === "zip" ? MAX_ARCHIVE_ENTRY_BYTES : MAX_FOLDER_FILE_BYTES;
+  for (const entry of entries as ProjectEntry[]) {
+    if (priorPath !== null && stableCompare(priorPath, entry.path) >= 0) return undefined;
+    priorPath = entry.path;
+    computedTotalBytes += entry.byteCount;
+    if (entry.byteCount > perEntryLimit) return undefined;
+    if (entry.promptIncluded) {
+      promptFileCount += 1;
+      if (entry.contentKind !== "text" || entry.reviewedText === null) return undefined;
+      promptTextBytes += textEncoder.encode(entry.reviewedText).byteLength;
+    }
+    const key = entry.path.normalize("NFKC").toLocaleLowerCase("und").replaceAll("ß", "ss").replaceAll("ς", "σ");
+    if (exact.has(entry.path) || portable.has(key)) return undefined;
+    exact.add(entry.path);
+    portable.add(key);
+  }
+  if (computedTotalBytes !== value.totalByteCount
+    || computedTotalBytes > MAX_PROJECT_BYTES
+    || promptFileCount > MAX_PROMPT_TEXT_FILES
+    || promptTextBytes > MAX_PROMPT_DECODED_TEXT_BYTES) return undefined;
+  let originalContainer: WorkspaceProject["originalContainer"];
+  if (value.originalContainer !== undefined) {
+    if (value.sourceKind !== "zip"
+      || !isRecord(value.originalContainer)
+      || !isNonblankString(value.originalContainer.displayName)
+      || value.originalContainer.displayName !== value.intake.displayName
+      || !isNonnegativeInteger(value.originalContainer.byteCount)
+      || !isSha256(value.originalContainer.sha256)) return undefined;
+    originalContainer = Object.freeze({
+      displayName: value.originalContainer.displayName,
+      byteCount: value.originalContainer.byteCount,
+      sha256: value.originalContainer.sha256,
+    });
+  } else if (value.sourceKind === "zip") return undefined;
+  const sensitiveBlockedCounts = Object.freeze({
+    credentialFiles: value.sensitiveBlockedCounts.credentialFiles,
+    privateKeys: value.sensitiveBlockedCounts.privateKeys,
+    clearCredentials: value.sensitiveBlockedCounts.clearCredentials,
+  });
+  const blockedCount = Object.values(sensitiveBlockedCounts).reduce((total, count) => total + count, 0);
+  const warnings = [
+    ...(blockedCount > 0 ? [`${blockedCount} sensitive project ${blockedCount === 1 ? "file was" : "files were"} dropped before hashing and retention.`] : []),
+    ...(value.classificationChoiceRequired
+      ? ["Choose whether to treat this ZIP as a LaTeX or General text project before confirming review."]
+      : []),
+  ];
+  return {
+    kind: "project",
+    id: value.id,
+    name: value.name,
+    sourceKind: value.sourceKind,
+    status: value.status,
+    entries: Object.freeze(entries as ProjectEntry[]),
+    originalTreeHash: value.originalTreeHash,
+    reviewedTreeHash: value.reviewedTreeHash,
+    treeHash: value.originalTreeHash,
+    totalByteCount: value.totalByteCount,
+    classification: value.classification,
+    classificationChoiceRequired: value.classificationChoiceRequired,
+    classificationChoices: Object.freeze([...value.classificationChoices]) as WorkspaceProject["classificationChoices"],
+    rootDocument: value.rootDocument,
+    selectedEntryPath: value.selectedEntryPath,
+    projectOperationGeneration: value.projectOperationGeneration,
+    projectReviewRevision,
+    requiresReview: value.requiresReview,
+    warnings: Object.freeze(warnings),
+    sensitiveBlockedCounts,
+    intake: Object.freeze({ kind: value.sourceKind, displayName: value.intake.displayName }),
+    ...(originalContainer ? { originalContainer } : {}),
+    settingsOverride: { ...value.settingsOverride },
+    contextWarningAcknowledged: value.contextWarningAcknowledged,
+  };
+}
+
+function snapshotProjectInput(value: unknown): ExportSnapshot | undefined {
+  if (!isRecord(value)
+    || value.kind !== "project"
+    || typeof value.projectId !== "string"
+    || !isNonblankString(value.projectName)
+    || !isRecord(value.project)) return undefined;
+  const project = snapshotWorkspaceProject(value.project);
+  const codeRewriteOptions = snapshotCodeRewriteOptions(value.codeRewriteOptions);
+  if (!project
+    || !codeRewriteOptions
+    || project.id !== value.projectId
+    || project.name !== value.projectName
+    || project.contextWarningAcknowledged !== value.contextWarningAcknowledged
+    || !isRecord(value.sensitiveBlockedCounts)
+    || !isNonnegativeInteger(value.sensitiveBlockedCounts.credentialFiles)
+    || !isNonnegativeInteger(value.sensitiveBlockedCounts.privateKeys)
+    || !isNonnegativeInteger(value.sensitiveBlockedCounts.clearCredentials)) return undefined;
+  const sensitiveBlockedCounts = {
+    credentialFiles: value.sensitiveBlockedCounts.credentialFiles,
+    privateKeys: value.sensitiveBlockedCounts.privateKeys,
+    clearCredentials: value.sensitiveBlockedCounts.clearCredentials,
+  };
+  if (JSON.stringify(project.sensitiveBlockedCounts) !== JSON.stringify(sensitiveBlockedCounts)) return undefined;
+  const base = snapshotDocumentInput({
+    documentId: value.projectId,
+    documentName: value.projectName,
+    documentFormat: project.classification === "latex" ? "latex-project" : "text",
+    original: { arrayBuffer: () => new ArrayBuffer(0) },
+    reviewedExtractedText: value.reviewedExtractedText,
+    resolvedSettings: value.resolvedSettings,
+    chosenProfile: value.chosenProfile,
+    promptBundle: value.promptBundle,
+    warnings: project.warnings,
+    contextAssessment: value.contextAssessment,
+    reviewed: value.reviewed,
+    contextWarningAcknowledged: value.contextWarningAcknowledged,
+    uploadOrdinal: value.uploadOrdinal,
+  });
+  if (!base) return undefined;
+  return {
+    ...base,
+    kind: "project",
+    original: undefined,
+    project,
+    codeRewriteOptions,
+    sensitiveBlockedCounts,
+    warnings: [...project.warnings],
+  };
+}
+
+function snapshotInput(value: unknown): ExportSnapshot | undefined {
+  return isRecord(value) && value.kind === "project"
+    ? snapshotProjectInput(value)
+    : snapshotDocumentInput(value);
+}
+
+/** @internal Pure limit check kept separate so the cumulative boundary is testable without allocating 100 MiB. */
+export function exceedsCumulativeProjectBytes(byteCounts: readonly number[]): boolean {
+  let total = 0;
+  for (const count of byteCounts) {
+    if (!isNonnegativeInteger(count)) return true;
+    total += count;
+    if (!Number.isSafeInteger(total) || total > MAX_PROJECT_BYTES) return true;
+  }
+  return false;
 }
 
 function snapshotInputs(value: unknown): ExportSnapshot[] | PromptPackageResult {
@@ -412,7 +749,98 @@ function snapshotInputs(value: unknown): ExportSnapshot[] | PromptPackageResult 
     }
     snapshots.push(input);
   }
+  if (exceedsCumulativeProjectBytes(snapshots.flatMap((input) => input.project ? [input.project.totalByteCount] : []))) {
+    return failure("INVALID_INPUT");
+  }
   return snapshots;
+}
+
+function arrayBufferFor(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
+async function revalidateProjectSnapshot(input: ExportSnapshot, hasher?: ExportDependencies["hasher"]): Promise<boolean> {
+  const project = input.project;
+  const codeRewriteOptions = input.codeRewriteOptions;
+  if (input.kind !== "project"
+    || !project
+    || !codeRewriteOptions
+    || input.reviewed !== true
+    || project.status !== "ready"
+    || project.requiresReview
+    || project.classificationChoiceRequired) return false;
+  if (!project.classificationChoices.includes(project.classification)
+    || (project.classification === "general-text" && project.rootDocument !== null)) return false;
+  let totalByteCount = 0;
+  for (const entry of project.entries) {
+    try {
+      if (normalizeProjectPath(entry.path) !== entry.path) return false;
+      joinProjectArchivePath("project/files", entry.path);
+    } catch {
+      return false;
+    }
+    totalByteCount += entry.byteCount;
+    if (entry.reviewRevision > project.projectReviewRevision) return false;
+    if (classifySensitiveProjectEntry(entry.path, entry.originalBytes) !== null) return false;
+    if (await hashBytes(arrayBufferFor(entry.originalBytes), hasher) !== entry.originalHash) return false;
+    if (entry.contentKind === "text") {
+      if (entry.reviewedText === null || entry.reviewedTextHash === null) return false;
+      const reviewedBytes = textEncoder.encode(entry.reviewedText);
+      if (classifySensitiveProjectEntry(entry.path, reviewedBytes) !== null
+        || await hashBytes(reviewedBytes.buffer, hasher) !== entry.reviewedTextHash) return false;
+    } else if (entry.reviewedText !== null || entry.reviewedTextHash !== null || entry.promptIncluded) return false;
+    if (entry.packageIncluded && entry.contentKind === "invalid-text") return false;
+  }
+  if (totalByteCount !== project.totalByteCount
+    || await hashOriginalProjectTree(project.entries, hasher) !== project.originalTreeHash
+    || await hashReviewedTree(project.entries, hasher, project.classification, project.rootDocument) !== project.reviewedTreeHash) return false;
+  if (project.classification === "latex") {
+    if (project.rootDocument === null || !/\.(?:tex|ltx)$/iu.test(project.rootDocument)) return false;
+    const root = project.entries.find((entry) => entry.path === project.rootDocument);
+    if (!root?.promptIncluded || !root.packageIncluded || root.contentKind !== "text") return false;
+  }
+  const includedFiles = project.entries.flatMap((entry) => entry.promptIncluded
+    && entry.contentKind === "text"
+    && entry.reviewedText !== null
+    && entry.reviewedTextHash !== null
+    && entry.languageId !== null
+    && entry.previewKind !== null
+    ? [{
+        path: entry.path,
+        text: entry.reviewedText,
+        originalHash: entry.originalHash,
+        reviewedTextHash: entry.reviewedTextHash,
+        languageId: entry.languageId,
+        previewKind: entry.previewKind,
+      }]
+    : []);
+  const excludedPaths = project.entries.filter((entry) => !entry.promptIncluded).map((entry) => entry.path);
+  const format = project.classification === "latex" ? "latex-project" as const : "text" as const;
+  const sourceContext = {
+    kind: "project" as const,
+    format,
+    assets: [],
+    reviewedTreeHash: project.reviewedTreeHash,
+    includedFiles,
+    excludedPaths,
+    codeRewriteOptions,
+    latexMainFile: project.rootDocument,
+  };
+  const reviewedExtractedText = renderPromptSource(sourceContext);
+  if (input.reviewedExtractedText !== reviewedExtractedText) return false;
+  const expectedBundle = renderPromptBundle(reviewedExtractedText, input.resolvedSettings, input.chosenProfile, sourceContext);
+  if (input.promptBundle.oneShot !== expectedBundle.oneShot
+    || stages.some((stage) => input.promptBundle.manual[stage] !== expectedBundle.manual[stage])) return false;
+  const expectedContext = assessSourceContext({ kind: "project", includedFiles }, input.chosenProfile.contextWindowTokens);
+  const contextKeys = [
+    "estimateLabel",
+    "sourceTokens", "oneShotWorkflowTokens", "manualWorkflowTokens", "oneShotRatio", "manualRatio",
+    "oneShotOversized", "manualOversized", "oneShotWarning", "workflowTokens", "contextWindowTokens",
+    "ratio", "oversized", "acknowledgmentRequired", "includedFileCount", "amberRisk",
+    "inspectDiffsAndRunTestsWarning",
+  ] as const;
+  return contextKeys.every((key) => input.contextAssessment[key] === expectedContext[key])
+    && JSON.stringify(input.contextAssessment.amberRiskReasons ?? []) === JSON.stringify(expectedContext.amberRiskReasons ?? []);
 }
 
 function createDefaultArchive(): ArchiveAdapter {
@@ -472,6 +900,9 @@ function pathsFor(key: string, format: ExportDocumentInput["documentFormat"]): R
     assetIndex: `${root}/assets/index.md`,
     placementMap: `${root}/assets/placement-map.json`,
     ocrCandidates: `${root}/ocr/candidates.json`,
+    projectIndexMarkdown: `${root}/project/index.md`,
+    projectIndexJson: `${root}/project/index.json`,
+    projectFilesRoot: `${root}/project/files`,
   };
 }
 
@@ -494,9 +925,53 @@ function assetPathFor(key: string, asset: VisualAsset): string {
   return `documents/${key}/assets/${safeId}.${extensionForAsset(asset)}`;
 }
 
+function projectFilePathFor(key: string, entryPath: string): string {
+  return `documents/${key}/${joinProjectArchivePath("project/files", entryPath)}`;
+}
+
 function manifestFor(prepared: readonly PreparedDocument[]): PromptPackageManifest {
   const documents: ManifestDocumentRecord[] = prepared.map((document, exportOrdinal) => {
     const paths = pathsFor(document.key, document.input.documentFormat);
+    const project = document.input.project;
+    const source: ManifestDocumentRecord["source"] = project
+      ? {
+          kind: "project",
+          intakeKind: project.sourceKind,
+          rootName: project.intake.displayName,
+          classification: project.classification,
+          rootDocument: project.rootDocument,
+          originalTreeHash: project.originalTreeHash,
+          reviewedTreeHash: project.reviewedTreeHash,
+          reviewRevision: project.projectReviewRevision,
+          totalByteCount: project.totalByteCount,
+          codeRewriteOptions: { ...document.input.codeRewriteOptions! },
+          ...(project.originalContainer ? { originalContainer: { ...project.originalContainer } } : {}),
+          index: {
+            markdown: { path: paths.projectIndexMarkdown, sha256: "" },
+            json: { path: paths.projectIndexJson, sha256: "" },
+          },
+          entries: project.entries.map((entry) => ({
+            path: entry.path,
+            originalByteCount: entry.byteCount,
+            originalSha256: entry.originalHash,
+            reviewedSha256: entry.reviewedTextHash,
+            reviewRevision: entry.reviewRevision,
+            contentKind: entry.contentKind,
+            languageId: entry.languageId,
+            promptIncluded: entry.promptIncluded,
+            packageIncluded: entry.packageIncluded,
+            exclusionReason: entry.exclusionReason,
+            ...(entry.packageIncluded ? { packaged: {
+              path: projectFilePathFor(document.key, entry.path),
+              sha256: entry.contentKind === "text" ? entry.reviewedTextHash! : entry.originalHash,
+            } } : {}),
+          })),
+          sensitiveBlockedCounts: { ...document.input.sensitiveBlockedCounts! },
+        }
+      : {
+          kind: "file",
+          original: { path: paths.original, byteCount: document.originalBytes.byteLength, sha256: document.originalHash },
+        };
     const promptHashes: ManifestDocumentRecord["prompts"] = {
       oneShot: { path: paths.oneShot, sha256: "" },
       decompose: { path: paths.decompose, sha256: "" },
@@ -509,7 +984,8 @@ function manifestFor(prepared: readonly PreparedDocument[]): PromptPackageManife
       exportOrdinal,
       originalDisplayName: document.input.documentName,
       format: document.input.documentFormat,
-      original: { path: paths.original, byteCount: document.originalBytes.byteLength, sha256: document.originalHash },
+      source,
+      ...(!project ? { original: { path: paths.original, byteCount: document.originalBytes.byteLength, sha256: document.originalHash } } : {}),
       reviewedExtraction: {
         path: paths.reviewedExtraction,
         unicodeCodePointCount: Array.from(document.input.reviewedExtractedText).length,
@@ -566,7 +1042,7 @@ function manifestFor(prepared: readonly PreparedDocument[]): PromptPackageManife
     };
   });
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     package: { name: "reword-nerd", version: APP_VERSION, format: "dual-mode-prompt-package" },
     archive: {
       entryOrder: "lexicographic-code-unit-ascending",
@@ -596,6 +1072,12 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
+function markdownCodeSpan(value: string): string {
+  const delimiter = "`".repeat(Math.max(1, ...Array.from(value.matchAll(/`+/g), (match) => match[0].length + 1)));
+  const padding = /^`|`$/u.test(value) ? " " : "";
+  return `${delimiter}${padding}${value}${padding}${delimiter}`;
+}
+
 function createOpenMe(manifest: PromptPackageManifest): string {
   const documents = manifest.documents.map((document) => `<article>
     <h2>${escapeHtml(document.originalDisplayName)}</h2>
@@ -620,8 +1102,50 @@ function createOpenMe(manifest: PromptPackageManifest): string {
 `;
 }
 
+function projectIndexes(record: ManifestDocumentRecord): { markdown: string; json: string } {
+  if (record.source.kind !== "project") throw new Error("Project index requires project provenance.");
+  const source = record.source;
+  const markdown = [
+    "# Reviewed project index",
+    "",
+    "This sanitized tree is AI context for a changed-files rewriting workflow. It is not a source-control backup, does not include dropped sensitive files, and was not built or tested by reword-nerd.",
+    "",
+    `- Intake: ${source.intakeKind}`,
+    `- Root name: ${escapeMarkdownText(source.rootName)}`,
+    `- Classification: ${source.classification}`,
+    `- Root document: ${source.rootDocument ? escapeMarkdownText(source.rootDocument) : "not applicable"}`,
+    `- Original tree SHA-256: ${source.originalTreeHash}`,
+    `- Reviewed tree SHA-256: ${source.reviewedTreeHash}`,
+    `- Review revision: ${source.reviewRevision}`,
+    `- Sensitive files dropped before retention: ${Object.values(source.sensitiveBlockedCounts).reduce((total, count) => total + count, 0)}`,
+    "",
+    "## Retained entries",
+    "",
+    ...source.entries.map((entry) => `- ${markdownCodeSpan(entry.path)} — ${entry.contentKind}; prompt ${entry.promptIncluded ? "included" : "excluded"}; package ${entry.packageIncluded ? "included" : "excluded"}; original ${entry.originalSha256}; reviewed ${entry.reviewedSha256 ?? "not applicable"}.`),
+    "",
+    "Apply only changed text-file blocks returned by the model, inspect every diff, and run the project's normal tests/build afterward.",
+    "",
+  ].join("\n");
+  const json = `${JSON.stringify({
+    schemaVersion: 1,
+    kind: "reviewed-project-index",
+    intakeKind: source.intakeKind,
+    rootName: source.rootName,
+    classification: source.classification,
+    rootDocument: source.rootDocument,
+    originalTreeHash: source.originalTreeHash,
+    reviewedTreeHash: source.reviewedTreeHash,
+    reviewRevision: source.reviewRevision,
+    totalByteCount: source.totalByteCount,
+    codeRewriteOptions: source.codeRewriteOptions,
+    sensitiveBlockedCounts: source.sensitiveBlockedCounts,
+    entries: source.entries,
+  }, null, 2)}\n`;
+  return { markdown, json };
+}
+
 export async function buildPromptPackage(
-  inputs: readonly ExportDocumentInput[],
+  inputs: readonly ExportSourceInput[],
   dependencies: ExportDependencies = {},
 ): Promise<PromptPackageResult> {
   let snapshots: ExportSnapshot[] | PromptPackageResult;
@@ -635,6 +1159,11 @@ export async function buildPromptPackage(
   const prepared: PreparedDocument[] = [];
   try {
     for (const input of snapshots) {
+      if (input.kind === "project") {
+        prepared.push({ input, originalBytes: new Uint8Array(), originalHash: "", reviewedHash: "", key: "" });
+        continue;
+      }
+      if (!input.original) throw new Error("File source is missing original bytes.");
       const readBytes: unknown = await input.original.arrayBuffer();
       if (!isArrayBuffer(readBytes)) throw new Error("File-like input returned non-binary data.");
       const originalBytes = new Uint8Array(readBytes).slice();
@@ -646,6 +1175,14 @@ export async function buildPromptPackage(
   try {
     for (const document of prepared) {
       const { input, originalBytes } = document;
+      if (input.kind === "project") {
+        if (!await revalidateProjectSnapshot(input, dependencies.hasher)) return failure("INVALID_INPUT");
+        const project = input.project!;
+        document.originalHash = project.originalTreeHash;
+        document.reviewedHash = await hashBytes(textEncoder.encode(input.reviewedExtractedText).buffer, dependencies.hasher);
+        document.key = `${normalizeDocumentBase(filenameBase(input.documentName))}--${project.originalTreeHash.slice(0, 12)}`;
+        continue;
+      }
       const originalHash = await hashBytes(originalBytes.buffer, dependencies.hasher);
       const reviewedHash = await hashBytes(textEncoder.encode(input.reviewedExtractedText).buffer, dependencies.hasher);
       document.originalHash = originalHash;
@@ -775,7 +1312,6 @@ export async function buildPromptPackage(
       }, null, 2)}\n`;
       record.ocr.sha256 = await hashBytes(textEncoder.encode(ocrText).buffer, dependencies.hasher);
       entries.push(
-        { path: paths.original, data: document.originalBytes, stored: true },
         { path: paths.reviewedExtraction, data: document.input.reviewedExtractedText, stored: false },
         { path: paths.oneShot, data: document.input.promptBundle.oneShot, stored: false },
         ...stages.map((stage) => ({ path: paths[stage], data: document.input.promptBundle.manual[stage], stored: false })),
@@ -783,7 +1319,29 @@ export async function buildPromptPackage(
         { path: paths.placementMap, data: placementMap, stored: false },
         { path: paths.ocrCandidates, data: ocrText, stored: false },
       );
-      if (document.input.documentFormat === "latex-project") {
+      if (document.input.kind === "project") {
+        const project = document.input.project!;
+        if (record.source.kind !== "project") throw new Error("Project manifest provenance is missing.");
+        const indexes = projectIndexes(record);
+        record.source.index.markdown.sha256 = await hashBytes(textEncoder.encode(indexes.markdown).buffer, dependencies.hasher);
+        record.source.index.json.sha256 = await hashBytes(textEncoder.encode(indexes.json).buffer, dependencies.hasher);
+        entries.push(
+          { path: record.source.index.markdown.path, data: indexes.markdown, stored: false },
+          { path: record.source.index.json.path, data: indexes.json, stored: false },
+        );
+        for (const entry of project.entries) {
+          if (!entry.packageIncluded) continue;
+          const path = projectFilePathFor(document.key, entry.path);
+          const data = entry.contentKind === "text" ? entry.reviewedText! : entry.originalBytes;
+          const expectedHash = entry.contentKind === "text" ? entry.reviewedTextHash : entry.originalHash;
+          const digest = await hashBytes(typeof data === "string" ? textEncoder.encode(data).buffer : arrayBufferFor(data), dependencies.hasher);
+          if (digest !== expectedHash) throw new Error("Reviewed project entry changed during export.");
+          entries.push({ path, data, stored: typeof data !== "string" });
+        }
+      } else {
+        entries.push({ path: paths.original, data: document.originalBytes, stored: true });
+      }
+      if (document.input.kind === "document" && document.input.documentFormat === "latex-project") {
         const projectFiles = await readSafeLatexProjectFiles(document.originalBytes);
         const declared = new Map((document.input.latexProject?.files ?? []).map((file) => [file.path, file.sha256]));
         for (const projectFile of projectFiles) {

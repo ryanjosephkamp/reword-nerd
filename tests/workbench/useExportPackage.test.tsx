@@ -113,7 +113,7 @@ function ExportHarness({ services }: { services: WorkbenchServices }) {
       type="button"
       onClick={() => dispatch({
         type: "context/acknowledged",
-        documentId: "document-alpha",
+        itemId: "document-alpha",
         acknowledged: false,
       })}
     >Mutate review</button>
@@ -123,6 +123,19 @@ function ExportHarness({ services }: { services: WorkbenchServices }) {
     <output data-testid="last-exported-revision">{state.lastExportedRevision}</output>
     <output data-testid="workbook-key">{state.export.builtPackage?.workbooks[0]?.documentKey ?? "none"}</output>
   </>;
+}
+
+function CodeExportHarness({ services }: { services: WorkbenchServices }) {
+  const [state, dispatch] = useReducer(workbenchReducer, undefined, () => {
+    const document = { ...readyDocument(), name: "app.ts", format: "code" as const, extractedText: "// original comment\nconst x = 1;" };
+    return workbenchReducer(createInitialWorkbenchState(), {
+      type: "intake/accepted",
+      batchId: "code-batch",
+      documents: [{ document, uploadOrdinal: 0 }],
+    });
+  });
+  const exporter = useExportPackage(state, dispatch, services);
+  return <button type="button" onClick={() => void exporter.build()}>Build code</button>;
 }
 
 function testServices(
@@ -204,7 +217,9 @@ describe("useExportPackage operation guards", () => {
       expect(download).not.toHaveBeenCalled();
       expect(buildPackage).toHaveBeenCalledTimes(2);
       expect(screen.getByTestId("workbook-key")).toHaveTextContent("current");
-      assertCurrent(buildPackage.mock.calls[1][0][0]);
+      const currentInput = buildPackage.mock.calls[1][0][0];
+      if (currentInput.kind === "project") throw new Error("document fixture produced project input");
+      assertCurrent(currentInput);
       expect(screen.getByTestId("dirty")).toHaveTextContent("true");
 
       fireEvent.click(screen.getByRole("button", { name: "Download" }));
@@ -293,5 +308,19 @@ describe("useExportPackage operation guards", () => {
     expect(download.mock.calls[0][0]).toBe(blob);
     expect(download.mock.calls[1][0]).toBe(blob);
     expect(screen.getByTestId("dirty")).toHaveTextContent("false");
+  });
+
+  it("passes global code rewrite selections into standalone code prompts", async () => {
+    const buildPackage = vi.fn<WorkbenchServices["buildPackage"]>().mockResolvedValue({
+      ok: false,
+      error: { code: "ARCHIVE_GENERATION_FAILED", message: "capture only" },
+    });
+    render(<CodeExportHarness services={testServices(buildPackage, () => ({ ok: true }))} />);
+    fireEvent.click(screen.getByRole("button", { name: "Build code" }));
+    await waitFor(() => expect(buildPackage).toHaveBeenCalledOnce());
+    const input = buildPackage.mock.calls[0][0][0] as ExportDocumentInput;
+    expect(input.promptBundle.oneShot).toContain("## Rewrite Selection");
+    expect(input.promptBundle.oneShot).toContain("Comments and docstrings: include");
+    expect(input.promptBundle.oneShot).toContain("Narrative structured-data values: exclude");
   });
 });

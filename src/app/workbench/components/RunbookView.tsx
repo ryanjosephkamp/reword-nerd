@@ -4,7 +4,9 @@ function InlineContent({ values }: { values: readonly RunbookInline[] }) {
   return <>{values.map((value, index) => {
     const key = `${value.type}-${index}`;
     if (value.type === "code") return <code key={key}>{value.value}</code>;
-    if (value.type === "link") return <a key={key} href={value.href}>{value.label}</a>;
+    // Archive-relative paths only exist inside the downloaded ZIP. Keep them
+    // inert in the deployed workbench; standalone workbook HTML renders links.
+    if (value.type === "link") return <code key={key}>{value.label}</code>;
     return <span key={key}>{value.value}</span>;
   })}</>;
 }

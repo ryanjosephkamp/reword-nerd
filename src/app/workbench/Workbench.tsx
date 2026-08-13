@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { assessContext, composeExtractionWithOcr, type OcrReviewStatus, type RewriteSettings } from "../../domain";
-import type { MobileTab, WorkbenchServices } from "./contracts";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
+import { assessContext, chooseProjectClassification, composeExtractionWithOcr, confirmProjectReview, editProjectEntryText, setProjectEntryInclusion, type OcrReviewStatus, type RewriteSettings, type WorkspaceProject } from "../../domain";
+import type { MobileTab, WorkbenchServices, WorkbenchState } from "./contracts";
 import { createInitialWorkbenchState, workbenchReducer } from "./reducer";
 import {
   selectContextAssessment,
   selectCounts,
   selectDirty,
+  selectSelectedItem,
   selectSelectedDocument,
   selectSelectedVisualAsset,
 } from "./selectors";
@@ -13,7 +14,9 @@ import { defaultWorkbenchServices } from "./services";
 import { useBeforeUnloadWarning } from "./useBeforeUnloadWarning";
 import { useExportPackage } from "./useExportPackage";
 import { useFileIntake } from "./useFileIntake";
+import { useProjectIntake } from "./useProjectIntake";
 import { useReviewEditor } from "./useReviewEditor";
+import { createIntakeCapacityCoordinator } from "./intakeCapacityCoordinator";
 import { ContextMeter } from "./components/ContextMeter";
 import { ExportPanel } from "./components/ExportPanel";
 import { ExtractedTextEditor } from "./components/ExtractedTextEditor";
@@ -33,6 +36,8 @@ import { StatusSummary } from "./components/StatusSummary";
 import { UploadDropZone } from "./components/UploadDropZone";
 import { AssetGallery } from "./components/AssetGallery";
 import { OcrReview } from "./components/OcrReview";
+import { SourceReview } from "./components/OriginalPreview";
+import { ProjectReview } from "./components/ProjectReview";
 import { DocumentIcon, MoreIcon } from "./components/Icons";
 import {
   clearSavedPreferences,
@@ -42,6 +47,25 @@ import {
 } from "./preferences";
 
 type ResponsiveMode = "desktop" | "tablet" | "mobile";
+
+function exportDockGuidance(
+  blocker: string | null,
+  message: string,
+  status: WorkbenchState["export"]["status"],
+  hasBuiltPackage: boolean,
+): string {
+  if (message) {
+    if (status !== "failure") return message;
+    return `${message} Next: retry ${hasBuiltPackage ? "DOWNLOAD ZIP" : "BUILD PACKAGE"}.`;
+  }
+  if (!blocker) return "Ready to build the reviewed package.";
+  if (blocker === "Extraction is in progress.") return "Next: wait for extraction to finish.";
+  if (blocker === "Review extracted content before export") return "Next: review extracted content before export.";
+  if (blocker === "Estimated workflow context exceeds the selected profile.") {
+    return "Next: acknowledge the context warning or adjust the selected context limit.";
+  }
+  return `Next: ${blocker.charAt(0).toLocaleLowerCase()}${blocker.slice(1)}`;
+}
 
 function panelAccessibility(
   mode: ResponsiveMode,
@@ -89,6 +113,21 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     undefined,
     () => createInitialWorkbenchState(loadSavedPreferences()),
   );
+  const [intakeCapacity] = useState(createIntakeCapacityCoordinator);
+  useLayoutEffect(() => {
+    intakeCapacity.sync({
+      acceptedCount: state.documents.length,
+      acceptedBytes: state.items.reduce(
+        (total, item) => total + (item.kind === "project" ? item.totalByteCount : item.originalByteSize),
+        0,
+      ),
+    });
+    intakeCapacity.syncItems(state.items.map((item) => ({
+      id: item.id,
+      uploadOrdinal: item.uploadOrdinal,
+      ...(item.kind === "project" ? { projectTreeHash: item.originalTreeHash } : {}),
+    })));
+  }, [intakeCapacity, state.documents.length, state.items]);
   const [busyOcrCandidate, setBusyOcrCandidate] = useState<string | null>(null);
   const mode = useResponsiveMode();
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
@@ -101,10 +140,43 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
   const preferenceEffectReadyRef = useRef(false);
   const suppressPreferenceWriteRef = useRef(false);
   const resetPreferencesReturnFocusRef = useRef<HTMLButtonElement>(null);
-  const intake = useFileIntake(state, dispatch, services);
+  const projectIntake = useProjectIntake(state, dispatch, services, intakeCapacity);
+  const intake = useFileIntake(state, dispatch, services, projectIntake.intakeZip, intakeCapacity);
   const editor = useReviewEditor(state, dispatch, services);
   const exporter = useExportPackage(state, dispatch, services);
-  const selected = selectSelectedDocument(state);
+  const projectReviewQueuesRef = useRef(new Map<string, Promise<WorkspaceProject>>());
+  const projectReviewSessionGenerationRef = useRef(0);
+  const projectReviewEpochsRef = useRef(new Map<string, number>());
+  const nextProjectMutationTicketRef = useRef(0);
+  const projectMutationCustodyRef = useRef(new Map<number, Readonly<{
+    itemId: string;
+    originalTreeHash: string;
+    projectOperationGeneration: number;
+    sessionGeneration: number;
+    projectEpoch: number;
+  }>>());
+  const beginProjectMutation = useCallback((project: WorkspaceProject) => {
+    const ticket = nextProjectMutationTicketRef.current + 1;
+    nextProjectMutationTicketRef.current = ticket;
+    projectMutationCustodyRef.current.set(ticket, {
+      itemId: project.id,
+      originalTreeHash: project.originalTreeHash,
+      projectOperationGeneration: project.projectOperationGeneration,
+      sessionGeneration: projectReviewSessionGenerationRef.current,
+      projectEpoch: projectReviewEpochsRef.current.get(project.id) ?? 0,
+    });
+    dispatch({
+      type: "project/mutation-started",
+      itemId: project.id,
+      originalTreeHash: project.originalTreeHash,
+      projectOperationGeneration: project.projectOperationGeneration,
+      ticket,
+    });
+    return ticket;
+  }, []);
+  const selectedItem = selectSelectedItem(state);
+  const selected = selectedItem?.kind === "document" ? selectedItem : selectSelectedDocument(state);
+  const selectedProject = selectedItem?.kind === "project" ? selectedItem : undefined;
   const selectedAsset = selected ? selectSelectedVisualAsset(state, selected.id) : undefined;
   const counts = selectCounts(state);
   const dirty = selectDirty(state);
@@ -113,11 +185,13 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     customProfileLabel: state.customProfileLabel,
     workingProfile: state.workingProfile,
     globalSettings: state.globalSettings,
+    globalCodeRewriteOptions: state.globalCodeRewriteOptions,
     globalExtractionOptions: state.globalExtractionOptions,
     tutorialSeenVersion: state.tutorialSeenVersion,
   }), [
     state.customProfileLabel,
     state.globalExtractionOptions,
+    state.globalCodeRewriteOptions,
     state.globalSettings,
     state.selectedProfileId,
     state.tutorialSeenVersion,
@@ -146,6 +220,11 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     dispatch({ type: "focus/consumed" });
   }, [state.focusTarget]);
   useEffect(() => {
+    if (state.focusTarget !== "parameters") return;
+    parametersHeadingRef.current?.focus();
+    dispatch({ type: "focus/consumed" });
+  }, [state.focusTarget]);
+  useEffect(() => {
     const changed = previousMobileTabRef.current !== state.mobileTab;
     previousMobileTabRef.current = state.mobileTab;
     if (mode === "mobile" && changed && !state.focusTarget) {
@@ -154,27 +233,39 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
   }, [mode, state.focusTarget, state.mobileTab]);
 
   const context = useMemo(() => {
-    if (!selected || selected.status === "blocked" || selected.status === "error") return null;
+    if (!selectedItem || selectedItem.status === "blocked" || selectedItem.status === "error") return null;
     try {
-      return selectContextAssessment(state, selected.id);
+      return selectContextAssessment(state, selectedItem.id);
     } catch {
-      return assessContext(selected.extractedText, null);
+      return assessContext(selectedItem.kind === "document" ? selectedItem.extractedText : "", null);
     }
-  }, [selected, state]);
+  }, [selectedItem, state]);
 
-  const exportPanel = <ExportPanel
-    buildDisabled={Boolean(exporter.blocker)
+  const exportProps = {
+    buildDisabled: Boolean(exporter.blocker)
       || state.export.status === "building"
       || state.export.status === "downloading"
-      || Boolean(state.export.builtPackage)}
-    downloadDisabled={!state.export.builtPackage
+      || Boolean(state.export.builtPackage),
+    downloadDisabled: !state.export.builtPackage
       || state.export.builtRevision !== state.revision
       || state.export.status === "building"
-      || state.export.status === "downloading"}
-    status={state.export.status}
-    message={state.export.safeMessage}
-    onBuild={() => void exporter.build()}
-    onDownload={exporter.download}
+      || state.export.status === "downloading",
+    status: state.export.status,
+    message: state.export.safeMessage,
+    onBuild: () => void exporter.build(),
+    onDownload: exporter.download,
+  };
+  const primaryExportPanel = <ExportPanel {...exportProps} />;
+  const settingsMirrorExportPanel = <ExportPanel {...exportProps} announce={false} settingsMirror />;
+  const desktopExportDock = <ExportPanel
+    {...exportProps}
+    variant="dock"
+    guidance={exportDockGuidance(
+      exporter.blocker,
+      state.export.safeMessage,
+      state.export.status,
+      Boolean(state.export.builtPackage),
+    )}
   />;
 
   const settingsProps = {
@@ -185,6 +276,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     onProfileSelected: (profileId: string) => dispatch({ type: "profile/selected", profileId }),
     onProfileLabel: (value: string) => dispatch({ type: "profile/custom-label-changed", value }),
     onContextDraft: (value: string, parsed: number | null | undefined) => dispatch({ type: "profile/custom-context-draft-changed", value, parsed }),
+    onCodeRewriteOptionsChange: (options: import("../../domain").CodeRewriteOptions) => dispatch({ type: "code-rewrite/global-options-changed", options }),
     onExtractionOptionsChange: (options: import("../../domain").ExtractionOptions, reprocess: boolean) => {
       if (selected && reprocess) {
         dispatch({ type: "processing/options-changed", documentId: selected.id, options });
@@ -196,7 +288,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
       dispatch({ type: "preferences/reset-requested" });
     },
   };
-  const settings = <SettingsInspector {...settingsProps} exportPanel={mode === "desktop" ? exportPanel : undefined} />;
+  const settings = <SettingsInspector {...settingsProps} exportPanel={mode === "desktop" ? settingsMirrorExportPanel : undefined} />;
 
   const openSettings = () => {
     if (mode === "mobile") dispatch({ type: "mobile/tab-changed", tab: "settings" });
@@ -239,6 +331,69 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
       setBusyOcrCandidate(null);
     }
   };
+  const applyProjectReview = (
+    project: WorkspaceProject,
+    operation: (current: WorkspaceProject) => Promise<WorkspaceProject> | WorkspaceProject,
+    mutationTicket: number,
+  ) => {
+    const custody = projectMutationCustodyRef.current.get(mutationTicket);
+    if (!custody
+      || custody.itemId !== project.id
+      || custody.originalTreeHash !== project.originalTreeHash
+      || custody.projectOperationGeneration !== project.projectOperationGeneration
+      || custody.sessionGeneration !== projectReviewSessionGenerationRef.current
+      || custody.projectEpoch !== (projectReviewEpochsRef.current.get(project.id) ?? 0)) {
+      return Promise.resolve();
+    }
+    const sessionGeneration = custody.sessionGeneration;
+    const projectEpoch = custody.projectEpoch;
+    const previous = projectReviewQueuesRef.current.get(project.id) ?? Promise.resolve(project);
+    const queued = previous.catch(() => project).then(async (current) => {
+      const expectedReviewRevision = current.projectReviewRevision;
+      const expectedOriginalTreeHash = current.originalTreeHash;
+      const expectedOperationGeneration = current.projectOperationGeneration;
+      const updated = await operation(current);
+      if (sessionGeneration === projectReviewSessionGenerationRef.current
+        && projectEpoch === (projectReviewEpochsRef.current.get(project.id) ?? 0)) {
+        dispatch({ type: "project/review-updated", itemId: current.id, expectedOriginalTreeHash, expectedReviewRevision, expectedOperationGeneration, mutationTicket, project: updated });
+      }
+      return updated;
+    });
+    projectReviewQueuesRef.current.set(project.id, queued);
+    const finish = () => {
+      projectMutationCustodyRef.current.delete(mutationTicket);
+      if (projectReviewQueuesRef.current.get(project.id) === queued) {
+        projectReviewQueuesRef.current.delete(project.id);
+      }
+    };
+    void queued.then(finish, () => {
+      if (sessionGeneration === projectReviewSessionGenerationRef.current
+        && projectEpoch === (projectReviewEpochsRef.current.get(project.id) ?? 0)) {
+        dispatch({
+          type: "project/mutation-failed",
+          itemId: project.id,
+          originalTreeHash: project.originalTreeHash,
+          projectOperationGeneration: project.projectOperationGeneration,
+          ticket: mutationTicket,
+        });
+        dispatch({ type: "live/announced", message: "The project review change could not be applied safely." });
+      }
+      finish();
+    });
+    return queued.then(() => undefined);
+  };
+
+  const removeItem = (itemId: string) => {
+    const item = state.items.find((candidate) => candidate.id === itemId);
+    if (item?.kind === "project") {
+      projectReviewEpochsRef.current.set(item.id, (projectReviewEpochsRef.current.get(item.id) ?? 0) + 1);
+      projectReviewQueuesRef.current.delete(item.id);
+      for (const [ticket, custody] of projectMutationCustodyRef.current) {
+        if (custody.itemId === item.id) projectMutationCustodyRef.current.delete(ticket);
+      }
+    }
+    dispatch({ type: "item/removed", itemId });
+  };
 
   return <main className="workbench" aria-label="reword_nerd workbench">
     <Header
@@ -259,27 +414,30 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
       <aside
         id="panel-files"
         {...panelAccessibility(mode, state.mobileTab, "files", "Files")}
-        className={`files-panel mobile-panel${state.documents.length > 0 ? " has-documents" : ""}${state.mobileTab === "files" ? " is-mobile-active" : ""}`}
+        className={`files-panel mobile-panel${state.items.length > 0 ? " has-documents" : ""}${state.mobileTab === "files" ? " is-mobile-active" : ""}`}
         onDragEnter={intake.onDragEnter}
         onDragLeave={intake.onDragLeave}
         onDragOver={intake.onDragOver}
         onDrop={intake.onDrop}
       >
-        <div className="panel-heading"><h2>FILES [{state.documents.length}]</h2></div>
+        <div className="panel-heading"><h2>FILES [{state.items.length}]</h2></div>
         <UploadDropZone
           inputRef={intake.inputRef}
           addButtonRef={intake.addButtonRef}
           dragging={state.intake.dragging}
-          hasDocuments={state.documents.length > 0}
+          hasDocuments={state.items.length > 0}
           onOpen={intake.openFilePicker}
           onChange={intake.onInputChange}
+          folderInputRef={projectIntake.inputRef}
+          onOpenFolder={projectIntake.open}
+          onFolderChange={projectIntake.onChange}
         />
         <FileQueue
-          documents={state.documents}
-          selectedId={state.selectedDocumentId}
+          documents={state.items}
+          selectedId={state.selectedItemId}
           focusTarget={state.focusTarget}
-          onSelect={(documentId) => dispatch({ type: "selection/changed", documentId })}
-          onRemove={(documentId) => dispatch({ type: "document/removed", documentId })}
+          onSelect={(itemId) => dispatch({ type: "item/selection-changed", itemId })}
+          onRemove={removeItem}
           onFocusConsumed={() => dispatch({ type: "focus/consumed" })}
         />
         {state.intake.issues.length > 0 ? <ul className="intake-issues">{state.intake.issues.map((issue, index) => <li key={`${issue.filename}-${index}`}>{issue.filename}: {issue.message}</li>)}</ul> : null}
@@ -289,12 +447,12 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
         {...panelAccessibility(mode, state.mobileTab, "preview", "Extracted text preview")}
         className={`preview-panel mobile-panel${state.mobileTab === "preview" ? " is-mobile-active" : ""}`}
       >
-        {selected ? <div className="mobile-document-summary">
+        {selectedItem ? <div className="mobile-document-summary">
           <div className="mobile-document-identity">
             <DocumentIcon />
-            <div><strong>{selected.name}</strong><span>/files/{selected.name}</span></div>
-            <span className={`selected-status status-${selected.status}`}>{selected.status === "ready" ? "READY" : selected.status === "blocked" || selected.status === "error" ? "BLOCKED" : "NEEDS REVIEW"}</span>
-            <button type="button" aria-label={`Show ${selected.name} in files`} onClick={() => dispatch({ type: "mobile/tab-changed", tab: "files" })}><MoreIcon /></button>
+            <div><strong>{selectedItem.name}</strong><span>/files/{selectedItem.name}</span></div>
+            <span className={`selected-status status-${selectedItem.status}`}>{selectedItem.status === "ready" ? "READY" : selectedItem.status === "blocked" || selectedItem.status === "error" ? "BLOCKED" : "NEEDS REVIEW"}</span>
+            <button type="button" aria-label={`Show ${selectedItem.name} in files`} onClick={() => dispatch({ type: "mobile/tab-changed", tab: "files" })}><MoreIcon /></button>
           </div>
         </div> : null}
         <div className="panel-heading preview-heading">
@@ -335,34 +493,52 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
             onTabChange={(workflow) => dispatch({ type: "preview/workflow-changed", workflow })}
             downloadProgressCopy={services.downloadProgressCopy}
           /> : null}
-          {state.previewMode === "assets" ? <AssetGallery
+          {state.previewMode === "assets" && selected ? <AssetGallery
             assets={selected?.visualAssets ?? []}
             view={state.assetViewMode}
             selectedAssetId={selectedAsset?.id ?? null}
             onViewChange={(view) => dispatch({ type: "assets/view-changed", mode: view })}
             onSelect={(assetId) => { if (selected) dispatch({ type: "assets/selected", documentId: selected.id, assetId }); }}
             onInclusionChange={(assetId, included) => { if (selected) dispatch({ type: "visual-asset/inclusion-changed", documentId: selected.id, assetId, included }); }}
-          /> : state.previewMode === "source" ? <>
+          /> : state.previewMode === "source" && selected ? <SourceReview document={selected} extracted={<>
           <ExtractedTextEditor
             document={selected}
-            hashPending={selected ? state.editor[selected.id]?.hashPending ?? false : false}
-            onEdit={(text) => { if (selected) editor.edit(selected.id, text); }}
-            onConfirm={() => { if (selected) editor.confirm(selected.id); }}
+            hashPending={state.editor[selected.id]?.hashPending ?? false}
+            onEdit={(text) => editor.edit(selected.id, text)}
+            onConfirm={() => editor.confirm(selected.id)}
             onRemove={removeSelectedFromPreview}
-            onRetry={() => { if (selected) intake.retry(selected.id); }}
+            onRetry={() => intake.retry(selected.id)}
             onRevealFiles={() => dispatch({ type: "mobile/tab-changed", tab: "files" })}
-            onLatexMainFile={(mainFile) => { if (selected) dispatch({ type: "latex/main-file-selected", documentId: selected.id, mainFile }); }}
+            onLatexMainFile={(mainFile) => dispatch({ type: "latex/main-file-selected", documentId: selected.id, mainFile })}
             onAddFiles={intake.openFilePicker}
           />
-          {selected ? <OcrReview candidates={selected.ocrCandidates ?? []} busyId={busyOcrCandidate} onReview={(candidateId, status, text) => void reviewOcrCandidate(candidateId, status, text)} /> : null}
-          </> : null}
+          <OcrReview candidates={selected.ocrCandidates ?? []} busyId={busyOcrCandidate} onReview={(candidateId, status, text) => void reviewOcrCandidate(candidateId, status, text)} />
+          </>} /> : state.previewMode === "source" && selectedProject ? <ProjectReview
+            project={selectedProject}
+            onSelect={(path) => dispatch({ type: "project/selected-entry", itemId: selectedProject.id, path })}
+            onMutationIntent={beginProjectMutation}
+            onEdit={(path, text, ticket) => applyProjectReview(selectedProject, (project) => editProjectEntryText(project, path, text), ticket ?? beginProjectMutation(selectedProject))}
+            onInclusion={(path, promptIncluded, packageIncluded, ticket) => { void applyProjectReview(selectedProject, (project) => setProjectEntryInclusion(project, path, { promptIncluded, packageIncluded }), ticket ?? beginProjectMutation(selectedProject)).catch(() => undefined); }}
+            onClassification={(classification, rootDocument, ticket) => { void applyProjectReview(selectedProject, (project) => chooseProjectClassification(project, classification, rootDocument), ticket ?? beginProjectMutation(selectedProject)).catch(() => undefined); }}
+            onConfirm={(ticket) => { void applyProjectReview(selectedProject, (project) => confirmProjectReview(project), ticket ?? beginProjectMutation(selectedProject)).catch(() => undefined); }}
+          /> : state.previewMode === "source" ? <ExtractedTextEditor
+            hashPending={false}
+            onEdit={() => undefined}
+            onConfirm={() => undefined}
+            onRemove={() => undefined}
+            onRetry={() => undefined}
+            onRevealFiles={() => dispatch({ type: "mobile/tab-changed", tab: "files" })}
+            onLatexMainFile={() => undefined}
+            onAddFiles={intake.openFilePicker}
+          /> : null}
         </div>
-        {state.previewMode === "source" && context && selected ? <ContextMeter
+        {state.previewMode === "source" && context && selectedItem ? <ContextMeter
           assessment={context}
-          acknowledged={selected.contextWarningAcknowledged}
-          onAcknowledge={(acknowledged) => dispatch({ type: "context/acknowledged", documentId: selected.id, acknowledged })}
+          acknowledged={selectedItem.contextWarningAcknowledged}
+          onAcknowledge={(acknowledged) => dispatch({ type: "context/acknowledged", itemId: selectedItem.id, acknowledged })}
         /> : null}
-        {mode === "mobile" && selected?.status === "ready" ? exportPanel : null}
+        {mode === "desktop" && state.items.length > 0 ? desktopExportDock : null}
+        {mode === "mobile" && selectedItem?.status === "ready" ? primaryExportPanel : null}
         {mode === "mobile" ? <StatusSummary {...counts} compact /> : null}
       </section>
       <aside
@@ -380,7 +556,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
       <div className="saved-state" aria-label="Preferences save locally; documents and contents stay in this session.">Preferences save locally; documents and contents stay in this session <span /> v{APP_VERSION}</div>
     </footer>
     <SettingsDrawer open={state.activeOverlay === "settings"} onClose={() => dispatch({ type: "drawer/changed", open: false })} returnFocusRef={settingsButtonRef}>
-      <SettingsInspector {...settingsProps} exportPanel={exportPanel} />
+      <SettingsInspector {...settingsProps} exportPanel={primaryExportPanel} />
     </SettingsDrawer>
     <HelpDialog
       open={state.activeOverlay === "help"}
@@ -411,9 +587,17 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
       returnFocusRef={newSessionReturnFocusRef}
       onConfirm={() => {
         setBusyOcrCandidate(null);
+        projectReviewSessionGenerationRef.current += 1;
+        projectReviewQueuesRef.current.clear();
+        projectMutationCustodyRef.current.clear();
+        intakeCapacity.reset();
         intake.resetSession();
+        projectIntake.resetSession();
         editor.resetSession();
-        dispatch({ type: "session/reset-confirmed" });
+        dispatch({
+          type: "session/reset-confirmed",
+          focusAfterReset: mode === "desktop" ? "parameters" : "upload",
+        });
       }}
     />
     <ResetPreferencesDialog
@@ -429,6 +613,8 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
         queueMicrotask(() => resetPreferencesReturnFocusRef.current?.focus());
       }}
     />
-    <div className="visually-hidden" aria-live="polite" aria-atomic="true">{state.liveMessage}</div>
+    <div className="visually-hidden" aria-live="polite" aria-atomic="true">
+      {state.liveMessage === state.export.safeMessage ? "" : state.liveMessage}
+    </div>
   </main>;
 }

@@ -76,4 +76,42 @@ describe("conservative context sizing", () => {
       expect(() => context.assessContext("source", invalidLimit)).toThrow(context.ContextValidationError);
     }
   });
+
+  it("estimates project code, markup, and structured text at three code points per token plus framing", async () => {
+    // This catches prose token heuristics underestimating syntax-dense multi-file sources or omitting file framing.
+    const context = await import("../../src/domain/context");
+    const assessment = context.assessSourceContext({
+      kind: "project",
+      includedFiles: [
+        { path: "src/a.ts", text: "abcdef", previewKind: "code" },
+        { path: "data.json", text: "123", previewKind: "structured-data" },
+      ],
+    }, 10_000);
+
+    expect(assessment.sourceTokens).toBe(
+      Math.ceil(Array.from("abcdef").length / 3)
+      + Math.ceil(Array.from("123").length / 3)
+      + context.PROJECT_FILE_FRAMING_TOKENS * 2,
+    );
+    expect(assessment.includedFileCount).toBe(2);
+    expect(assessment.inspectDiffsAndRunTestsWarning).toBe(
+      "Inspect the generated diffs and run your normal tests/build after applying changes.",
+    );
+  });
+
+  it("shows amber risk at 25 included files or a one-shot ratio of at least fifty percent", async () => {
+    // This catches exact advisory thresholds being rounded away or incorrectly made into acknowledgments.
+    const context = await import("../../src/domain/context");
+    const files = Array.from({ length: 25 }, (_, index) => ({
+      path: `${index}.txt`,
+      text: "a",
+      previewKind: "plain-text" as const,
+    }));
+    const countRisk = context.assessSourceContext({ kind: "project", includedFiles: files }, null);
+    const ratioRisk = context.assessContext("abcd", 3_004);
+
+    expect(countRisk).toMatchObject({ amberRisk: true, amberRiskReasons: ["included-file-count"] });
+    expect(ratioRisk).toMatchObject({ amberRisk: true, amberRiskReasons: ["one-shot-ratio"] });
+    expect(ratioRisk.acknowledgmentRequired).toBe(false);
+  });
 });

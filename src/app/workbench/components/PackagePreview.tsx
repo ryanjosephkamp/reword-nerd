@@ -3,6 +3,7 @@ import type { PromptStage } from "../../../domain";
 import {
   createWorkbookProgress,
   editWorkbookPrompt,
+  PROJECT_ONE_SHOT_RESPONSE_LABEL,
   reapplyWorkbookPrompt,
   renderWorkbookProgressHtml,
   resetWorkbookPrompt,
@@ -314,7 +315,9 @@ export function PackagePreview({
         <div className="package-prompt-actions">
           <button type="button" onClick={() => restorePrompt("oneShot", "reset")}>Reset One-shot prompt</button>
         </div>
-        <label htmlFor="package-response-oneShot">One-shot final document and compact audit</label>
+        <label htmlFor="package-response-oneShot">{workbook.sourceKind === "project"
+          ? PROJECT_ONE_SHOT_RESPONSE_LABEL
+          : "One-shot final document and compact audit"}</label>
         <textarea
           id="package-response-oneShot"
           rows={12}

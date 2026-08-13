@@ -10,6 +10,21 @@ export interface RewriteSettings {
   customRequirements: string;
 }
 
+export interface CodeRewriteOptions {
+  documentationAndMarkup: boolean;
+  commentsAndDocstrings: boolean;
+  userFacingStrings: boolean;
+  narrativeStructuredDataValues: boolean;
+  honorRootGitignore: boolean;
+  excludeDependenciesBuildGenerated: boolean;
+  preserveSafeNonTextAssets: boolean;
+  readonly protectedExecutableSyntax: true;
+}
+
+export type CodeRewriteOptionsInput = Partial<Omit<CodeRewriteOptions, "protectedExecutableSyntax">> & {
+  protectedExecutableSyntax?: unknown;
+};
+
 export type SettingsOverride = Partial<RewriteSettings>;
 
 export const MAX_CUSTOM_REQUIREMENTS_LENGTH = 2_000;
@@ -20,6 +35,17 @@ export const DEFAULT_SETTINGS: Readonly<RewriteSettings> = Object.freeze({
   length: "preserve",
   outputLanguage: "Preserve source language",
   customRequirements: "",
+});
+
+export const DEFAULT_CODE_REWRITE_OPTIONS: Readonly<CodeRewriteOptions> = Object.freeze({
+  documentationAndMarkup: true,
+  commentsAndDocstrings: true,
+  userFacingStrings: true,
+  narrativeStructuredDataValues: false,
+  honorRootGitignore: true,
+  excludeDependenciesBuildGenerated: true,
+  preserveSafeNonTextAssets: true,
+  protectedExecutableSyntax: true,
 });
 
 export class SettingsValidationError extends Error {
@@ -73,6 +99,26 @@ function validateRequirements(value: unknown): string {
   }
 
   return requirements;
+}
+
+export function resolveCodeRewriteOptions(input: CodeRewriteOptionsInput = {}): CodeRewriteOptions {
+  const result = { ...DEFAULT_CODE_REWRITE_OPTIONS };
+  for (const key of [
+    "documentationAndMarkup",
+    "commentsAndDocstrings",
+    "userFacingStrings",
+    "narrativeStructuredDataValues",
+    "honorRootGitignore",
+    "excludeDependenciesBuildGenerated",
+    "preserveSafeNonTextAssets",
+  ] as const) {
+    const value = input[key];
+    if (value !== undefined) {
+      if (typeof value !== "boolean") settingError(`${key} must be on or off.`);
+      result[key] = value;
+    }
+  }
+  return result;
 }
 
 export function resolveSettings(

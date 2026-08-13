@@ -14,7 +14,7 @@ reword-nerd/
 ├── examples/                        # synthetic local examples
 ├── docs/
 │   ├── architecture.md, privacy.md, extraction-limitations.md
-│   ├── manifest-v1.md … manifest-v5.md
+│   ├── manifest-v1.md … manifest-v6.md
 │   ├── model-guidance/              # dated strategy evidence and parity
 │   ├── design-principles.md, design-system.md, design-qa.md
 │   └── design/references/           # approved visual references
@@ -24,9 +24,9 @@ reword-nerd/
 ├── video/remotion/                  # authoring-only deterministic demos
 ├── src/
 │   ├── version.ts                   # package-metadata application version
-│   ├── app/workbench/               # state, overlays, help, hooks, services, UI
-│   ├── domain/                      # admission, extraction, media, profiles, context
-│   ├── export/                      # runbook/workbooks, schema v5, ZIP/download
+│   ├── app/workbench/               # item state, safe previews, project review, hooks/UI
+│   ├── domain/                      # file/project admission, safety, extraction, context
+│   ├── export/                      # runbook/workbooks, schema v6, ZIP/download
 │   ├── prompting/                   # `PromptBundle` renderer
 │   ├── styles/                      # Night Terminal and responsive rules
 │   ├── types/                       # third-party declarations
@@ -43,7 +43,9 @@ logo/videos/posters are site assets only and are never added to a user ZIP.
 `output/playwright/` screenshots/download fixtures are generated and ignored;
 see [.gitignore](../.gitignore).
 
-## Exported schema-v5 package
+## Exported schema-v6 package
+
+Standalone files preserve every v5 archive path:
 
 ```text
 reword-nerd-prompt-package.zip
@@ -69,10 +71,31 @@ reword-nerd-prompt-package.zip
     │   ├── combined-prompts.html
     │   └── combined-prompts-full.html  # only within the media cap
     ├── assets/index.md, placement-map.json, and included bytes
-    ├── ocr/candidates.json
-    └── project/                     # safe LaTeX tree when applicable
+    └── ocr/candidates.json
+```
+
+Folder and ZIP workspaces use the same workflow/asset/OCR siblings and replace
+the standalone `original.<ext>` with reviewed project provenance:
+
+```text
+reword-nerd-prompt-package.zip
+├── OPEN-ME.html
+├── README.md
+├── manifest.json
+└── documents/<project-key>/
+    ├── reviewed-extraction.md
+    ├── project/
+    │   ├── index.md
+    │   ├── index.json
+    │   └── files/<safe-relative-path>
+    ├── one-shot/
+    ├── manual-prompts/
+    ├── combined-prompts/
+    ├── assets/
+    └── ocr/
 ```
 
 The ZIP contains file entries only; it does not emit directory entries. See
-[manifest v5](manifest-v5.md) for hashing, compression, deterministic ordering,
-and optional-artifact rules. Manifests v1–v4 remain historical contracts.
+[manifest v6](manifest-v6.md) for project provenance, hashing, compression,
+deterministic ordering, and optional-artifact rules. Manifests v1–v5 remain
+historical contracts.
