@@ -55,6 +55,42 @@ describe("project workbench state", () => {
     expect(state).toBe(current);
   });
 
+  it("rejects duplicate project tree hashes or IDs without aliasing selection and mutation custody", () => {
+    // This is reducer defense-in-depth for deterministic IDs and guards every ID-keyed update path from duplicate rows.
+    let state = workbenchReducer(createInitialWorkbenchState(), {
+      type: "project/admitted", project: project(), uploadOrdinal: 0,
+    } as never);
+    state = workbenchReducer(state, {
+      type: "project/mutation-started", itemId: "project-1", originalTreeHash: "original-tree",
+      projectOperationGeneration: 2, ticket: 7,
+    } as never);
+    const pending = state;
+
+    state = workbenchReducer(state, {
+      type: "project/admitted",
+      project: { ...project(), id: "project-copy", name: "copy" },
+      uploadOrdinal: 1,
+    } as never);
+    expect(state).toBe(pending);
+    expect(state.items).toHaveLength(1);
+    expect(state.selectedItemId).toBe("project-1");
+    expect((state.items[0] as WorkspaceProject).originalTreeHash).toBe("original-tree");
+    expect(state.projectMutationState["project-1"]).toMatchObject({ latestTicket: 7, status: "pending" });
+
+    state = workbenchReducer(state, {
+      type: "project/admitted",
+      project: { ...project(), originalTreeHash: "different-original-tree" },
+      uploadOrdinal: 2,
+    } as never);
+    expect(state).toBe(pending);
+
+    const stale = workbenchReducer(state, {
+      type: "project/review-updated", itemId: "project-1", expectedOriginalTreeHash: "different-original-tree",
+      expectedReviewRevision: 0, expectedOperationGeneration: 2, project: { ...project(1), originalTreeHash: "different-original-tree" },
+    } as never);
+    expect(stale).toBe(pending);
+  });
+
   it("ignores a late project edit after removal or a confirmed new session", () => {
     // This proves completed hashes cannot resurrect a project after destructive workspace boundaries.
     let state = workbenchReducer(createInitialWorkbenchState(), { type: "project/admitted", project: project(), uploadOrdinal: 0 } as never);

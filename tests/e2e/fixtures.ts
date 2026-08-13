@@ -1,10 +1,38 @@
 import { createHash } from "node:crypto";
+import type { Page } from "@playwright/test";
 import JSZip from "jszip";
 
 export interface BrowserFixture {
   name: string;
   mimeType: string;
   buffer: Buffer;
+}
+
+export interface FolderBrowserFixture {
+  path: string;
+  mimeType: string;
+  contents: string;
+}
+
+export async function setFolderInputFiles(
+  page: Page,
+  rootName: string,
+  fixtures: readonly FolderBrowserFixture[],
+) {
+  await page.getByLabel("Add folder project").evaluate((element, payload) => {
+    const transfer = new DataTransfer();
+    for (const fixture of payload.fixtures) {
+      const name = fixture.path.split("/").at(-1) ?? fixture.path;
+      const file = new File([fixture.contents], name, { type: fixture.mimeType });
+      Object.defineProperty(file, "webkitRelativePath", {
+        configurable: true,
+        value: `${payload.rootName}/${fixture.path}`,
+      });
+      transfer.items.add(file);
+    }
+    Object.defineProperty(element, "files", { configurable: true, value: transfer.files });
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+  }, { rootName, fixtures });
 }
 
 export const textFixture: BrowserFixture = {
@@ -18,6 +46,55 @@ export const markdownFixture: BrowserFixture = {
   mimeType: "text/markdown",
   buffer: Buffer.from(
     "# Browser fixture\n\nThe **stable Markdown fact** is 2718.\n\n- First item\n- Second item\n\n[Reference](https://example.invalid/reference)\n",
+    "utf8",
+  ),
+};
+
+export const strictCodeFixture: BrowserFixture = {
+  name: "strict-source.ts",
+  mimeType: "text/typescript",
+  buffer: Buffer.from(
+    "// Strict UTF-8 source: café 😀\nexport const greeting = \"Hello, local browser\";\n",
+    "utf8",
+  ),
+};
+
+export const unknownUtf8Fixture: BrowserFixture = {
+  name: "release-notes.unknown",
+  mimeType: "application/octet-stream",
+  buffer: Buffer.from("Unknown extension, strict UTF-8: naïve façade 東京.\n", "utf8"),
+};
+
+export const hostileHtmlFixture: BrowserFixture = {
+  name: "hostile.html",
+  mimeType: "text/html",
+  buffer: Buffer.from(
+    [
+      "<h1>Safe visible heading</h1>",
+      "<p><a href=\"https://example.invalid/remote\">Remote reference</a></p>",
+      "<img src=\"https://example.invalid/pixel.png\" alt=\"Remote pixel\">",
+      "<form action=\"https://example.invalid/submit\"><input value=\"must not render\"></form>",
+      "<script>globalThis.__hostileOriginalExecuted = true</script>",
+    ].join("\n"),
+    "utf8",
+  ),
+};
+
+export const hostileJsonFixture: BrowserFixture = {
+  name: "hostile.json",
+  mimeType: "application/json",
+  buffer: Buffer.from(JSON.stringify({
+    title: "Safe structured value",
+    markup: "<img src=https://example.invalid/json-pixel.png onerror=alert(1)>",
+    url: "https://example.invalid/json-reference",
+  }, null, 2), "utf8"),
+};
+
+export const hostileCsvFixture: BrowserFixture = {
+  name: "hostile.csv",
+  mimeType: "text/csv",
+  buffer: Buffer.from(
+    "label,value\nremote,https://example.invalid/csv-reference\nformula,=WEBSERVICE(\"https://example.invalid/formula\")\n",
     "utf8",
   ),
 };
@@ -89,6 +166,31 @@ export async function createDocxFixture(): Promise<BrowserFixture> {
     name: "brief.docx",
     mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     buffer,
+  };
+}
+
+export async function createGenericProjectZipFixture(): Promise<BrowserFixture> {
+  const zip = new JSZip();
+  const add = (path: string, value: string) => zip.file(path, value, {
+    date: zipDate,
+    createFolders: false,
+    compression: "DEFLATE",
+    compressionOptions: { level: 9 },
+    unixPermissions: "100644",
+  });
+  add("README.md", "# Generic ZIP workspace\n\nReviewed entirely in the browser.\n");
+  add("src/widget.ts", "// Original ZIP wording\nexport const widget = 7;\n");
+  add("dist/generated.js", "GENERATED_ZIP_BYTES_MUST_NOT_BE_PACKAGED\n");
+  return {
+    name: "generic-workspace.zip",
+    mimeType: "application/zip",
+    buffer: await zip.generateAsync({
+      type: "nodebuffer",
+      platform: "UNIX",
+      compression: "DEFLATE",
+      compressionOptions: { level: 9 },
+      streamFiles: false,
+    }),
   };
 }
 

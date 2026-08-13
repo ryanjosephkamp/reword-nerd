@@ -120,6 +120,21 @@ describe("schema v6 project packages", () => {
       headers: ["Document key", "Source", "One-shot", "Manual", "Combined", "Full HTML"],
     }));
     expect(first.workbooks[0].runbookMarkdown).toContain("Project assets are references, not rewriteable text");
+    expect(first.workbooks[0].sourceKind).toBe("project");
+    expect(first.workbooks[0].runbook.sourceKind).toBe("project");
+    expect(first.workbooks[0].runbookMarkdown).toContain(
+      "Expect exactly CHANGED\\_FILES, UNCHANGED\\_PATHS, EXCLUDED\\_PATHS, and RISK\\_MANIFEST",
+    );
+    expect(first.workbooks[0].runbookMarkdown).not.toContain(
+      "Expect only the marked final document and compact fidelity audit",
+    );
+    expect(first.workbooks[0].oneShot.html).toContain(
+      "One-shot project response: CHANGED_FILES, UNCHANGED_PATHS, EXCLUDED_PATHS, and RISK_MANIFEST",
+    );
+    expect(first.workbooks[0].combined.html).toContain(
+      "One-shot project response: CHANGED_FILES, UNCHANGED_PATHS, EXCLUDED_PATHS, and RISK_MANIFEST",
+    );
+    expect(first.workbooks[0].combined.html).not.toContain("One-shot final document and compact audit");
     expect(first.workbooks[0].combined.html).toContain("../../../documents/");
     expect(first.workbooks[0].combined.html).toContain("project/files/public/figure.png");
     expect(first.workbooks[0].combined.html).not.toContain("data:image/png");
@@ -136,6 +151,9 @@ describe("schema v6 project packages", () => {
     expect(paths).toContain(`${root}/project/files/public/figure.png`);
     expect(paths).not.toContain(`${root}/original.zip`);
     expect(paths).not.toContain(`${root}/project/files/dist/generated.js`);
+    await expect(archive.file("README.md")?.async("string")).resolves.toContain(
+      "Expect exactly CHANGED\\_FILES, UNCHANGED\\_PATHS, EXCLUDED\\_PATHS, and RISK\\_MANIFEST",
+    );
     await expect(archive.file(`${root}/project/files/src/main.ts`)?.async("string"))
       .resolves.toBe("// reviewed wording\nexport const answer = 42;\n");
     await expect(archive.file(record.prompts.oneShot.path)?.async("string")).resolves.toBe(input.promptBundle.oneShot);

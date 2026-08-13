@@ -146,6 +146,13 @@ export type ManifestSourceRecord =
     };
   };
 
+export type WorkbookSourceKind = ManifestSourceRecord["kind"];
+
+export const PROJECT_FINAL_RESPONSE_BLOCKS =
+  "CHANGED_FILES, UNCHANGED_PATHS, EXCLUDED_PATHS, and RISK_MANIFEST";
+export const PROJECT_ONE_SHOT_RESPONSE_LABEL =
+  `One-shot project response: ${PROJECT_FINAL_RESPONSE_BLOCKS}`;
+
 export type ManifestGeneratedArtifact =
   | { status: "generated"; path: string; sha256: string }
   | { status: "not-generated"; reason: "encoded-size-limit" };
@@ -232,6 +239,7 @@ export interface CombinedPromptRunbook {
   package: PromptPackageManifest["package"];
   documentKey: string;
   originalDisplayName: string;
+  sourceKind: WorkbookSourceKind;
   model: ManifestDocumentRecord["model"];
   settings: RewriteSettings;
   contextAssessment: ManifestDocumentRecord["contextAssessment"];
@@ -294,6 +302,7 @@ export interface WorkbookVisualAsset extends VisualAsset {
 export interface DocumentWorkbook {
   documentKey: string;
   originalDisplayName: string;
+  sourceKind: WorkbookSourceKind;
   runbook: Readonly<CombinedPromptRunbook>;
   /** Semantic source for v0.5+ workbooks. */
   runbookDocument?: Readonly<RunbookDocument>;

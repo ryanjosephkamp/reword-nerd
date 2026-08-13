@@ -4,10 +4,11 @@
   <img src="public/brand/reword-nerd-logo.webp" width="192" height="192" alt="reword-nerd logo">
 </p>
 
-`reword-nerd` is a local-first browser workbench for turning reviewed source
-documents into portable rewriting workbooks. It extracts supported files in the
-browser, keeps the source and prompts reviewable, and always generates both a
-One-shot workflow and a four-stage Manual workflow for the model you choose.
+`reword-nerd` is a local-first browser workbench for turning reviewed documents
+and safe text projects into portable rewriting workbooks. It extracts supported
+files in the browser, keeps source and prompts reviewable, and always generates
+both a One-shot workflow and a four-stage Manual workflow for the model you
+choose.
 
 The application does not rewrite documents or contact model providers. Build
 creates a revision-bound ZIP and immutable workbook preview in memory; download
@@ -39,14 +40,15 @@ On first visit, Quick start offers **REVIEW SETTINGS** as the primary action and
 **ADD FILES** as the secondary action. Help can replay the guide. In an empty
 Review panel, **ADD FILES** opens the same multi-file picker directly.
 
-For each accepted document:
+For each accepted source:
 
-1. inspect and, if needed, edit the extracted text;
-2. review extracted assets and OCR candidates;
-3. confirm the extraction;
-4. resolve any required Manual-context acknowledgement;
-5. choose **BUILD PACKAGE**;
-6. read the rich **RUNBOOK**, then use the in-site One-shot or Manual
+1. inspect the extracted text and the inert **ORIGINAL** preview;
+2. for a project, choose which safe files enter prompts and the package;
+3. review editable text, extracted assets, and OCR candidates;
+4. confirm the document or complete project workspace;
+5. resolve any required context acknowledgement;
+6. choose **BUILD PACKAGE** in Parameters or the desktop Preview Footer Dock;
+7. read the rich **RUNBOOK**, then use the in-site One-shot or Manual
    workspace, or explicitly **DOWNLOAD ZIP**.
 
 The Assets view opens in a focused one-at-a-time review and can switch to a
@@ -72,12 +74,12 @@ npm install
 npm run dev
 ```
 
-For the production bundle and exact release browser path:
+For the production bundle and exact GitHub Pages browser path:
 
 ```sh
-npm run build
-npm run preview
-PLAYWRIGHT_USE_PREVIEW=1 npm run e2e
+VITE_BASE_PATH=/reword-nerd/ npm run build
+VITE_BASE_PATH=/reword-nerd/ npm run preview
+PLAYWRIGHT_BASE_PATH=/reword-nerd/ PLAYWRIGHT_USE_PREVIEW=1 npm run e2e
 ```
 
 If port 4173 is already serving another local project, set an isolated test
@@ -89,8 +91,8 @@ Run all local release checks with:
 npm run lint
 npm run typecheck
 npm test -- --run
-npm run build
-PLAYWRIGHT_USE_PREVIEW=1 npm run e2e
+VITE_BASE_PATH=/reword-nerd/ npm run build
+PLAYWRIGHT_BASE_PATH=/reword-nerd/ PLAYWRIGHT_USE_PREVIEW=1 npm run e2e
 ```
 
 Use `npm run install:playwright` once if Chromium is not installed for Playwright.
@@ -98,14 +100,39 @@ Use `npm run install:playwright` once if Chromium is not installed for Playwrigh
 The first-visit Quick start includes a short, locally hosted overview video.
 Help provides Settings, Review, and Package chapter videos with transcripts;
 the controls never autoplay and reduced-motion users receive static posters.
+These unchanged clips demonstrate the document workflow and predate the v0.6
+project-workspace flow; current written guidance covers both.
 
-## Accepted files and v0.5 processing defaults
+## Accepted sources and v0.6 safety defaults
 
-The workbench accepts `.txt`, `.md`, `.markdown`, `.docx`, `.pdf`, `.tex`,
-`.ltx`, and safe LaTeX project `.zip` files. It admits at most 20 files, 20 MiB
-per file, and 100 MiB across the queue.
+The workbench accepts `.txt`, Markdown, DOCX, PDF, LaTeX, HTML/XML, CSV/TSV,
+JSON/JSONL/NDJSON, YAML/TOML/INI/config, CSS/SQL, and common programming and
+script files. An extensionless or otherwise unknown file is accepted as generic
+text only when all bounded bytes pass fatal UTF-8 decoding and binary/control
+checks. Original standalone bytes and line endings remain exact.
 
-For a new v0.5 preference state, embedded-image extraction is on and likely
+**ADD FOLDER** admits one folder as a text project; a general `.zip` can be
+added through the normal file picker. LaTeX projects are detected when a clear
+root document exists, while an ambiguous project requires an explicit
+classification. Project intake normalizes and checks every path, rejects links,
+encryption, traversal, collisions, and nested archives, drops likely secrets
+before retention, honors the configured root `.gitignore`, and conservatively
+excludes dependencies, caches, builds, generated output, source maps, minified
+files, and lockfiles. Excluded safe entries remain reviewable and restorable.
+
+Projects are bounded to 500 entries, 20 MiB per folder file, 100 MiB per ZIP
+container, 25 MiB per ZIP entry, 100 MiB uncompressed across projects and the session, and a 100:1 ZIP
+ratio. At most 250 text files and 5 MiB of decoded reviewed text may enter a
+prompt. Entries beyond that initial scope stay inspectable with a visible
+`prompt-limit` exclusion, are absent from prompt source, and cannot be restored
+beyond the cap. Users must review and confirm that visible scope before BUILD;
+prompt source is never silently truncated.
+
+Standalone intake remains bounded to 20 files and 20 MiB per file. Documents
+and projects share the 100 MiB session byte budget; a folder or ZIP is one
+workspace row rather than hundreds of document rows.
+
+For a new v0.6 preference state, embedded-image extraction is on and likely
 decorative images are excluded. PDF page capture, OCR, and OCR of extracted
 images are off. These are saved global processing preferences; changing them
 for an uploaded document reprocesses that document locally. Extraction remains
@@ -114,13 +141,23 @@ bounded, conservative, and review-first. See [extraction limitations](docs/extra
 ## Settings, preferences, and context
 
 Choose a model-family profile and global tone, formality, length, output
-language, custom requirements, context limit, and processing options. A file
-may use session-only overrides. Profiles are prompt-generation strategies, not
-provider integrations; their dated evidence is in the [model-guidance index](docs/model-guidance/README.md).
+language, custom requirements, context limit, processing options, and Code &
+Structured Text options. A standalone file may use session-only rewrite overrides. Profiles
+are prompt-generation strategies, not provider integrations; their dated
+evidence is in the [model-guidance index](docs/model-guidance/README.md).
+
+Code/project defaults include documentation and markup, comments/docstrings,
+and user-facing strings; narrative structured-data values are opt-in. Root
+`.gitignore`, safe dependency/build exclusions, and preservation of safe
+non-text assets are on. Executable syntax, control flow, identifiers, imports,
+signatures, paths, structural tokens, and data types are always protected and
+cannot be disabled. `reword-nerd` does not run, compile, or test code: apply
+changes to a copy, inspect every diff, and run the project's normal checks.
 
 One-shot and Manual have separate conservative context estimates. One-shot
 oversize is advisory; a Manual estimate over the selected limit requires an
-explicit per-document acknowledgement.
+explicit source acknowledgement. Projects also show an amber risk at 25
+included files or when One-shot reaches at least half the selected context.
 
 Every Settings label has contextual help available by hover, focus, click, or
 tap. On desktop, the gear collapses or expands Parameters without changing
@@ -134,17 +171,18 @@ built package after confirmation while retaining those saved global settings.
 **Reset saved preferences** has the opposite scope: it clears the saved key
 without deleting the current uploaded documents. See [privacy](docs/privacy.md).
 
-## Schema-v5 ZIP layout
+## Schema-v6 ZIP layout
 
 `reword-nerd-prompt-package.zip` is deterministic and has no directory entries.
 The root contains:
 
 - `OPEN-ME.html` — local document and workflow entry points;
 - `README.md` — the package runbook;
-- `manifest.json` — schema `5`, hashes, provenance, paths, workflow, processing,
-  context, asset/OCR, and optional LaTeX project records.
+- `manifest.json` — schema `6`, discriminated file/project provenance, paths,
+  hashes, workflow, processing, context, code-selection, asset, and OCR records.
 
-Every document is under `documents/<document-key>/` and includes:
+Every standalone file is under `documents/<document-key>/` and keeps its stable
+v5 paths:
 
 - the original upload and `reviewed-extraction.md`;
 - `one-shot/00-one-shot.md` plus `one-shot-prompt.md/html`;
@@ -153,8 +191,24 @@ Every document is under `documents/<document-key>/` and includes:
 - `combined-prompts/combined-prompts.md/html`, providing both workflows;
 - `combined-prompts/combined-prompts-full.html` when the encoded full-media form stays within
   the 150 MiB cap;
-- asset catalog/placement files, included visual bytes, OCR provenance, and a
-  safe LaTeX project tree when applicable.
+- asset catalog/placement files, included visual bytes, and OCR provenance.
+
+A folder or ZIP workspace uses the same One-shot, Manual, combined, asset, and
+OCR directories, plus `reviewed-extraction.md` and a sanitized project tree:
+
+```text
+documents/<project-key>/project/
+├── index.md
+├── index.json
+└── files/<safe-relative-path>
+```
+
+Only package-included non-sensitive entries appear under `project/files/`.
+Schema 6 records reviewed/original tree lineage and every retained safe entry;
+likely secrets contribute aggregate counts only. A ZIP's original container
+hash is provenance, not a copied archive. A folder has no fictitious original
+container. This package is AI context and a changed-files workflow—not a source
+control backup.
 
 In-site Package preview opens on a semantic **RUNBOOK** tab; One-shot and Manual
 tabs show only their editable prompts and response fields. Combined standalone
@@ -171,16 +225,19 @@ remote resources and automatic storage, and supports Clipboard API plus a
 selection fallback. Lightweight HTML links only to packaged sibling assets;
 the optional full companion embeds supported media as data URLs.
 
-The current contract is [manifest v5](docs/manifest-v5.md). Historical contracts
-remain available as [v4](docs/manifest-v4.md), [v3](docs/manifest-v3.md),
-[v2](docs/manifest-v2.md), and [v1](docs/manifest-v1.md).
+The current contract is [manifest v6](docs/manifest-v6.md). Historical contracts
+remain available as [v5](docs/manifest-v5.md), [v4](docs/manifest-v4.md),
+[v3](docs/manifest-v3.md), [v2](docs/manifest-v2.md), and
+[v1](docs/manifest-v1.md).
 
 ## Privacy and browser support
 
-Validation, extraction, hashing, review, prompt rendering, preview, clipboard
-handling, ZIP creation, and progress-copy creation occur locally. There is no
+Validation, project classification, extraction, hashing, review, inert ORIGINAL
+rendering, prompt rendering, preview, clipboard handling, ZIP creation, and
+progress-copy creation occur locally. There is no
 application backend, account system, provider call, telemetry, analytics, or
-runtime request that sends document data off-device. The bundled logo, posters,
+runtime request that sends source data off-device. Uploaded code is never
+executed, compiled, or tested. The bundled logo, posters,
 and demo videos are same-origin site assets and are never placed in a user
 package. Info offers
 four deliberate navigation links—to the repository, creator GitHub, creator
@@ -199,7 +256,7 @@ but do not have equivalent automated release coverage.
 - [Architecture](docs/architecture.md)
 - [Privacy](docs/privacy.md)
 - [Extraction limitations](docs/extraction-limitations.md)
-- [Manifest v5](docs/manifest-v5.md)
+- [Manifest v6](docs/manifest-v6.md)
 - [Directory structure](docs/directory-structure.md)
 - [Design system](docs/design-system.md)
 - [Model guidance](docs/model-guidance/README.md)

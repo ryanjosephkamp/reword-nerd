@@ -1,5 +1,5 @@
 import JSZip from "jszip";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 const encoder = new TextEncoder();
 
@@ -15,6 +15,20 @@ function folderFile(path: string, contents: string | Uint8Array, declaredSize?: 
 }
 
 describe("safe project domain", () => {
+  it("rejects an oversized ZIP container before cloning or parsing its bytes", async () => {
+    // This catches a forged/direct caller allocating another copy or opening ZipReader before the container-size gate.
+    const project = await import("../../src/domain/project");
+    const slice = vi.fn(() => { throw new Error("oversized bytes were cloned"); });
+    const bytes = {
+      byteLength: 100 * 1024 * 1024 + 1,
+      slice,
+    } as unknown as Uint8Array;
+
+    await expect(project.readZipProject({ kind: "zip", name: "oversized.zip", bytes }))
+      .rejects.toMatchObject({ code: "PROJECT_LIMIT_EXCEEDED" });
+    expect(slice).not.toHaveBeenCalled();
+  });
+
   it("normalizes safe paths to NFC and rejects absolute, drive, backslash, dot, traversal, empty, and control segments", async () => {
     // This catches a path spelling escaping or aliasing the immutable project namespace.
     const project = await import("../../src/domain/project");

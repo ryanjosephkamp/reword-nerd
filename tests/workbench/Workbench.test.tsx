@@ -26,6 +26,7 @@ function workbook(documentKey = "notes", name = "notes.md"): DocumentWorkbook {
   return {
     documentKey,
     originalDisplayName: name,
+    sourceKind: "file",
     runbook: {} as never,
     runbookMarkdown: "# reword-nerd prompt package\n\nRun each stage in order.",
     runbookDocument: {

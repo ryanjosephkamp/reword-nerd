@@ -1,5 +1,7 @@
 # Manifest v1
 
+> Historical contract. Current `0.6.0` packages use [manifest schema v6](manifest-v6.md).
+
 Every package includes `manifest.json` at its archive root. It records the
 package contents and the document-specific choices used to render the four
 prompts. The manifest is formatted as JSON with `schemaVersion: 1`.

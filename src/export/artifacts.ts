@@ -9,6 +9,7 @@ import type {
   WorkbookPromptState,
   WorkbookResponseStage,
 } from "./contracts";
+import { PROJECT_ONE_SHOT_RESPONSE_LABEL } from "./contracts";
 import { renderRunbookHtml, serializeRunbookMarkdown } from "./runbook";
 import { isSafeArchivePath } from "./paths";
 
@@ -326,6 +327,7 @@ function promptEditor(stage: ManualStage, state: Readonly<WorkbookPromptState>):
 interface StandaloneSource {
   documentKey: string;
   originalDisplayName: string;
+  sourceKind: DocumentWorkbook["sourceKind"];
   runbookDocument: Readonly<RunbookDocument>;
   promptBundle: Readonly<PromptBundle>;
   visualAssets: readonly ArtifactVisualAsset[];
@@ -367,12 +369,15 @@ function standaloneHtml(
   const workflowHidden = workflow === "combined";
   const title = workflow === "combined" ? "Combined prompts" : workflow === "one-shot" ? "One-shot prompt" : "Manual prompts";
   const responseValues = progress.responses;
+  const oneShotResponseLabel = source.sourceKind === "project"
+    ? PROJECT_ONE_SHOT_RESPONSE_LABEL
+    : "One-shot final document and compact audit";
   const manualMarkup = workflow === "one-shot" ? "" : manualStages.map((stage) => promptEditor(stage, progress.manual.prompts[stage])
     .replace(`data-response-stage="${stage}" rows="10"></textarea>`, `data-response-stage="${stage}" rows="10">${escapeHtml(responseValues[stage])}</textarea>`)).join("\n");
   const oneShotMarkup = workflow === "manual" ? "" : `<section id="panel-one-shot"${showTabs ? ' role="tabpanel" aria-labelledby="tab-one-shot" hidden' : ""}>
       <h2>One-shot</h2><label for="prompt-oneShot">Editable One-shot prompt</label><textarea id="prompt-oneShot" data-prompt-stage="oneShot" rows="20">${escapeHtml(progress.oneShotPrompt.text)}</textarea>
       <div class="prompt-actions"><button type="button" data-reset-stage="oneShot">Reset</button></div>
-      <label for="response-oneShot">One-shot final document and compact audit</label><textarea id="response-oneShot" data-response-stage="oneShot" rows="12">${escapeHtml(responseValues.oneShot)}</textarea>
+      <label for="response-oneShot">${oneShotResponseLabel}</label><textarea id="response-oneShot" data-response-stage="oneShot" rows="12">${escapeHtml(responseValues.oneShot)}</textarea>
     </section>`;
   return `<!doctype html>
 <html lang="en">
@@ -534,6 +539,7 @@ function sourceFromWorkbook(workbook: DocumentWorkbook): StandaloneSource {
   return {
     documentKey: workbook.documentKey,
     originalDisplayName: workbook.originalDisplayName,
+    sourceKind: workbook.sourceKind,
     runbookDocument,
     promptBundle: workbook.promptBundle,
     visualAssets: workbook.visualAssets.map((asset) => ({ asset, path: asset.packagedPath })),
@@ -594,6 +600,7 @@ export function createDocumentWorkbook(
     package: Object.freeze({ ...manifest.package }),
     documentKey: document.key,
     originalDisplayName: document.originalDisplayName,
+    sourceKind: document.source.kind,
     model: Object.freeze({ ...document.model, promptStrategy: Object.freeze({ ...document.model.promptStrategy }) }),
     settings: Object.freeze({ ...document.settings }),
     contextAssessment: Object.freeze({ ...document.contextAssessment }),
@@ -612,6 +619,7 @@ export function createDocumentWorkbook(
   const source: StandaloneSource = {
     documentKey: document.key,
     originalDisplayName: document.originalDisplayName,
+    sourceKind: document.source.kind,
     runbookDocument,
     promptBundle: frozenBundle,
     visualAssets: assets,
@@ -626,7 +634,7 @@ export function createDocumentWorkbook(
     combinedHtml: document.workbooks.combined.html.path,
     ...(document.workbooks.combined.fullHtml.status === "generated" ? { combinedFullHtml: document.workbooks.combined.fullHtml.path } : {}),
   });
-  const shell = { documentKey: document.key, originalDisplayName: document.originalDisplayName, runbook, runbookDocument, runbookMarkdown, paths, promptBundle: frozenBundle, promptBlocks, visualAssets: [] } as unknown as DocumentWorkbook;
+  const shell = { documentKey: document.key, originalDisplayName: document.originalDisplayName, sourceKind: document.source.kind, runbook, runbookDocument, runbookMarkdown, paths, promptBundle: frozenBundle, promptBlocks, visualAssets: [] } as unknown as DocumentWorkbook;
   const progress = createWorkbookProgress(shell);
   const oneShotMarkdown = workflowMarkdown(runbookMarkdown, document.originalDisplayName, promptBundle, assets, "one-shot", paths.oneShotMarkdown);
   const manualMarkdown = workflowMarkdown(runbookMarkdown, document.originalDisplayName, promptBundle, assets, "manual", paths.manualMarkdown);
@@ -659,6 +667,7 @@ export function createDocumentWorkbook(
   return Object.freeze({
     documentKey: document.key,
     originalDisplayName: document.originalDisplayName,
+    sourceKind: document.source.kind,
     runbook,
     runbookDocument,
     runbookMarkdown,

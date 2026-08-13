@@ -1,6 +1,8 @@
 # Prompt package manifest v5
 
-Manifest schema `5` is the current `reword-nerd` `0.5.1` contract. The package
+> Historical contract. Current `0.6.0` packages use [manifest schema v6](manifest-v6.md).
+
+Manifest schema `5` is the historical `reword-nerd` `0.5.1` contract. The package
 format remains the literal `dual-mode-prompt-package`, with both One-shot and
 Manual workflows and the canonical Manual stage order.
 

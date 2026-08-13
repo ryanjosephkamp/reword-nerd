@@ -61,9 +61,12 @@ documents/<key>/
 
 Only `packageIncluded` entries appear under `project/files/`. Text entries use
 the exact accepted reviewed text; safe binary assets retain their exact bytes.
-Excluded entries and sensitive-blocked content are absent from the archive,
-prompts, HTML, indexes, and runbook. Sensitive paths, names, bytes, and hashes
-never enter the manifest.
+Bytes from entries that are not package-included are absent from
+`project/files/`. Retained non-sensitive exclusions remain inspectable through
+their metadata and may be named in the manifest, project indexes, prompt risk/
+exclusion manifests, or runbook counts. Sensitive-blocked content is different:
+its paths, names, bytes, and hashes never enter the manifest, indexes, prompts,
+HTML, runbook, or archive; only aggregate safe-category counts remain.
 
 ## Changed-files workflow and safety
 
@@ -79,7 +82,8 @@ revalidated from a deep immutable snapshot before archive generation. Any
 mismatch rejects the build.
 
 Export repeats the fail-closed sensitive-content scan over both original and
-reviewed bytes. It also re-enforces canonical path order, at most 500 retained
+reviewed bytes. Intake rejects ZIP containers over 100 MiB before browser bytes
+are read or parsed. Export also re-enforces canonical path order, at most 500 retained
 entries, the source-kind per-entry cap (20 MiB folder, 25 MiB ZIP), at most 100
 MiB across all projects in one build, at most 250 prompt text files, and at most
 5 MiB of decoded prompt text. LaTeX roots must be normalized included `.tex` or

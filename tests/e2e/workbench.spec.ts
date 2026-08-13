@@ -87,8 +87,8 @@ function expectedKey(fixture: BrowserFixture): string {
   return `${base}--${sha256(fixture.buffer).slice(0, 12)}`;
 }
 
-test("mixed real formats produce a complete, previewed, byte-preserving schema-v5 prompt package", async ({ page }) => {
-  // This catches browser extraction/export drift that unit-level parser and archive adapters cannot see.
+test("mixed real formats preserve the complete historical document contract in a schema-v6 prompt package", async ({ page }) => {
+  // This catches browser extraction/export drift while preserving every pre-v6 document assertion.
   const runtimeErrors = monitorRuntime(page);
   const docx = await createDocxFixture();
   const pdf = createSelectablePdfFixture();
@@ -147,7 +147,7 @@ test("mixed real formats produce a complete, previewed, byte-preserving schema-v
       };
     }>;
   };
-  expect(manifest.schemaVersion).toBe(5);
+  expect(manifest.schemaVersion).toBe(6);
   expect(manifest.workflow.modes).toEqual(["one-shot", "manual"]);
   expect(manifest.workflow.manualStages).toEqual(["decompose", "rewrite", "verify", "final"]);
   expect(Object.values(manifest.workflow.responseMarkers)).toEqual(markers);
@@ -524,7 +524,7 @@ test("in-site package progress hydrates, survives navigation, downloads, and res
 
   await page.getByRole("button", { name: "SOURCE" }).click();
   await expect(page.getByLabel(`Extracted text for ${textFixture.name}`)).toBeVisible();
-  await page.getByRole("button", { name: "ASSETS" }).click();
+  await page.getByRole("button", { name: "ASSETS", exact: true }).click();
   await expect(page.getByText("No extracted visual assets.")).toBeVisible();
   await page.getByRole("button", { name: "PACKAGE", exact: true }).click();
   await expect(page.getByRole("tab", { name: "MANUAL" })).toHaveAttribute("aria-selected", "true");
@@ -550,8 +550,8 @@ test("in-site package progress hydrates, survives navigation, downloads, and res
   const archive = await JSZip.loadAsync(await downloadBytes(await zipPending), { checkCRC32: true });
   expect(archive.file("OPEN-ME.html")).not.toBeNull();
   expect(JSON.parse(await archive.file("manifest.json")!.async("string"))).toMatchObject({
-    schemaVersion: 5,
-    package: { format: "dual-mode-prompt-package", version: "0.5.1" },
+    schemaVersion: 6,
+    package: { format: "dual-mode-prompt-package", version: "0.6.0" },
   });
 });
 

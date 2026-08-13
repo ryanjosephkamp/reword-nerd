@@ -122,6 +122,11 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
         0,
       ),
     });
+    intakeCapacity.syncItems(state.items.map((item) => ({
+      id: item.id,
+      uploadOrdinal: item.uploadOrdinal,
+      ...(item.kind === "project" ? { projectTreeHash: item.originalTreeHash } : {}),
+    })));
   }, [intakeCapacity, state.documents.length, state.items]);
   const [busyOcrCandidate, setBusyOcrCandidate] = useState<string | null>(null);
   const mode = useResponsiveMode();

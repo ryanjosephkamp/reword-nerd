@@ -75,6 +75,130 @@ describe("project review", () => {
     expect(preflight).not.toHaveBeenCalled();
   });
 
+  it("rejects an oversized ZIP before reading its browser File bytes", async () => {
+    // This catches File.arrayBuffer allocating an unbounded ZIP container before project safety validation can run.
+    const testServices = services();
+    const readZipProject = vi.fn(testServices.readZipProject);
+    const arrayBuffer = vi.fn(async () => { throw new Error("oversized ZIP bytes were read"); });
+    const file = new File([new Uint8Array([80, 75, 3, 4])], "oversized.zip", { type: "application/zip" });
+    Object.defineProperty(file, "size", { value: 100 * 1024 * 1024 + 1 });
+    Object.defineProperty(file, "arrayBuffer", { value: arrayBuffer });
+    render(<App services={{ ...testServices, readZipProject }} />);
+
+    fireEvent.change(screen.getByLabelText("Add supported files"), { target: { files: [file] } });
+
+    expect(await screen.findByText(/oversized\.zip: this ZIP project could not be admitted safely/i)).toBeInTheDocument();
+    expect(arrayBuffer).not.toHaveBeenCalled();
+    expect(readZipProject).not.toHaveBeenCalled();
+  });
+
+  it("rejects a sequential duplicate folder without charging it to later project capacity", async () => {
+    // This catches an identical deterministic project being appended twice and consuming the shared byte budget twice.
+    const sixtyMiB = 60 * 1024 * 1024;
+    const readFolderProject = vi.fn<NonNullable<WorkbenchServices["readFolderProject"]>>(async (input, options) => {
+      void options;
+      return input.name === "other"
+        ? { ...project(), id: "project-other", name: "other", originalTreeHash: "tree-other", totalByteCount: 40 * 1024 * 1024 }
+        : { ...project(), totalByteCount: sixtyMiB };
+    });
+    render(<App services={{ ...services(), readFolderProject }} />);
+    const input = screen.getByLabelText("Add folder project");
+    const addFolder = (root: string) => {
+      const file = new File([root], "copy.md");
+      Object.defineProperty(file, "webkitRelativePath", { value: `${root}/copy.md` });
+      fireEvent.change(input, { target: { files: [file] } });
+    };
+
+    addFolder("demo");
+    await screen.findByRole("option", { name: /demo.*review/i });
+    addFolder("demo");
+    expect(await screen.findByText(/demo: this project duplicates an existing project and was not added/i)).toBeInTheDocument();
+    addFolder("other");
+    await screen.findByRole("option", { name: /other.*review/i });
+
+    expect(readFolderProject).toHaveBeenCalledTimes(3);
+    expect(readFolderProject.mock.calls[2]?.[1]).toEqual(expect.objectContaining({ existingSessionBytes: sixtyMiB }));
+    expect(within(screen.getByRole("listbox", { name: "Uploaded files" })).getAllByRole("option")).toHaveLength(2);
+  });
+
+  it("atomically rejects a concurrently queued duplicate folder", async () => {
+    // This catches the second queued read racing React state and observing no first project yet.
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const readFolderProject = vi.fn(async () => {
+      if (readFolderProject.mock.calls.length === 1) await firstGate;
+      return project();
+    });
+    render(<App services={{ ...services(), readFolderProject }} />);
+    const input = screen.getByLabelText("Add folder project");
+    const folder = new File(["text"], "copy.md");
+    Object.defineProperty(folder, "webkitRelativePath", { value: "demo/copy.md" });
+
+    fireEvent.change(input, { target: { files: [folder] } });
+    fireEvent.change(input, { target: { files: [folder] } });
+    await waitFor(() => expect(readFolderProject).toHaveBeenCalledTimes(1));
+    await act(async () => { releaseFirst(); await firstGate; });
+    expect(await screen.findByText(/demo: this project duplicates an existing project and was not added/i)).toBeInTheDocument();
+
+    expect(readFolderProject).toHaveBeenCalledTimes(2);
+    expect(within(screen.getByRole("listbox", { name: "Uploaded files" })).getAllByRole("option")).toHaveLength(1);
+  });
+
+  it("rejects duplicate ZIP projects in one picker batch and reserves their bytes once", async () => {
+    // This catches duplicate ZIP identities inflating capacity before the next distinct ZIP is read.
+    const sixtyMiB = 60 * 1024 * 1024;
+    const readZipProject = vi.fn<NonNullable<WorkbenchServices["readZipProject"]>>(async (input, options) => {
+      void options;
+      return input.name === "third.zip"
+        ? {
+          ...project(), id: "project-third", name: "third.zip", originalTreeHash: "tree-third",
+          sourceKind: "zip" as const, intake: { kind: "zip" as const, displayName: "third.zip" }, totalByteCount: 40 * 1024 * 1024,
+        }
+        : {
+          ...project(), id: "project-zip", name: "archive.zip", sourceKind: "zip" as const,
+          intake: { kind: "zip" as const, displayName: "archive.zip" }, totalByteCount: sixtyMiB,
+        };
+    });
+    render(<App services={{ ...services(), readZipProject }} />);
+    fireEvent.change(screen.getByLabelText("Add supported files"), { target: { files: [
+      new File([new Uint8Array([80, 75, 3, 4])], "first.zip"),
+      new File([new Uint8Array([80, 75, 3, 4])], "second.zip"),
+      new File([new Uint8Array([80, 75, 3, 4])], "third.zip"),
+    ] } });
+
+    expect(await screen.findByText(/second\.zip: this project duplicates an existing project and was not added/i)).toBeInTheDocument();
+    await waitFor(() => expect(readZipProject).toHaveBeenCalledTimes(3));
+    expect(readZipProject.mock.calls[2]?.[1]).toEqual(expect.objectContaining({ existingSessionBytes: sixtyMiB }));
+    expect(within(screen.getByRole("listbox", { name: "Uploaded files" })).getAllByRole("option")).toHaveLength(2);
+  });
+
+  it("atomically rejects a duplicate ZIP queued from a concurrent picker event", async () => {
+    // This catches a second intake batch slipping past identity custody before React publishes the first ZIP project.
+    const sixtyMiB = 60 * 1024 * 1024;
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const readZipProject = vi.fn<NonNullable<WorkbenchServices["readZipProject"]>>(async (zipInput, options) => {
+      void zipInput;
+      if (readZipProject.mock.calls.length === 1) await firstGate;
+      return {
+        ...project(), id: "project-zip", name: "archive.zip", sourceKind: "zip" as const,
+        intake: { kind: "zip" as const, displayName: "archive.zip" }, totalByteCount: sixtyMiB,
+        warnings: options?.existingSessionBytes === sixtyMiB ? ["second-reader-saw-reservation"] : [],
+      };
+    });
+    render(<App services={{ ...services(), readZipProject }} />);
+    const input = screen.getByLabelText("Add supported files");
+    fireEvent.change(input, { target: { files: [new File([new Uint8Array([80, 75, 3, 4])], "first.zip")] } });
+    fireEvent.change(input, { target: { files: [new File([new Uint8Array([80, 75, 3, 4])], "second.zip")] } });
+    await waitFor(() => expect(readZipProject).toHaveBeenCalledTimes(1));
+    await act(async () => { releaseFirst(); await firstGate; });
+
+    expect(await screen.findByText(/second\.zip: this project duplicates an existing project and was not added/i)).toBeInTheDocument();
+    expect(readZipProject).toHaveBeenCalledTimes(2);
+    expect(readZipProject.mock.calls[1]?.[1]).toEqual(expect.objectContaining({ existingSessionBytes: sixtyMiB }));
+    expect(within(screen.getByRole("listbox", { name: "Uploaded files" })).getAllByRole("option")).toHaveLength(1);
+  });
+
   it("requires an explicit ambiguous project classification before review confirmation", async () => {
     // This catches ambiguous project detection silently choosing a workflow without owner review.
     const ambiguous = {
@@ -443,5 +567,137 @@ describe("project review", () => {
     await waitFor(() => expect(preflight).toHaveBeenCalledTimes(1));
     expect(preflight.mock.calls[0]?.[1]).toEqual({ acceptedCount: 0, acceptedBytes: sixtyMiB });
     expect(within(screen.getByRole("listbox", { name: "Uploaded files" })).getAllByRole("option")).toHaveLength(1);
+  });
+
+  it("keeps one global ordinal sequence across concurrent folder events and ZIP batches", async () => {
+    // This catches each intake hook/batch reserving ordinal zero from lagging React state.
+    const buildPackage = vi.fn<WorkbenchServices["buildPackage"]>().mockResolvedValue({
+      ok: false,
+      error: { code: "ARCHIVE_GENERATION_FAILED", message: "captured" },
+    });
+    const readyProject = (id: string, sourceKind: "folder" | "zip") => ({
+      ...project(), id, name: id, sourceKind, originalTreeHash: `tree-${id}`, reviewedTreeHash: `reviewed-${id}`,
+      treeHash: `tree-${id}`, status: "ready" as const, requiresReview: false,
+      intake: { kind: sourceKind, displayName: id },
+    });
+    render(<App services={{
+      ...services(),
+      readFolderProject: async (input) => readyProject(input.name, "folder"),
+      readZipProject: async (input) => readyProject(input.name, "zip"),
+      preflight: async (files) => files.map((file) => ({ accepted: true as const, file, format: "markdown" as const, originalBytes: new ArrayBuffer(0) })),
+      extract: async (accepted) => ({ format: accepted.format, extractedText: accepted.file.name, warnings: [], originalHash: `hash-${accepted.file.name}`, extractedTextHash: `text-${accepted.file.name}`, requiresReview: false }),
+      buildPackage,
+    }} />);
+    const folderInput = screen.getByLabelText("Add folder project");
+    const folder = (root: string) => {
+      const file = new File([root], "copy.md");
+      Object.defineProperty(file, "webkitRelativePath", { value: `${root}/copy.md` });
+      return file;
+    };
+    fireEvent.change(folderInput, { target: { files: [folder("folder-a")] } });
+    fireEvent.change(folderInput, { target: { files: [folder("folder-b")] } });
+    const fileInput = screen.getByLabelText("Add supported files");
+    fireEvent.change(fileInput, { target: { files: [new File([new Uint8Array([80, 75, 3, 4])], "one.zip")] } });
+    fireEvent.change(fileInput, { target: { files: [new File([new Uint8Array([80, 75, 3, 4])], "two.zip")] } });
+
+    await waitFor(() => expect(within(screen.getByRole("listbox", { name: "Uploaded files" })).getAllByRole("option")).toHaveLength(4));
+    const build = screen.getByRole("button", { name: "BUILD PACKAGE" });
+    await waitFor(() => expect(build).toBeEnabled());
+    fireEvent.click(build);
+    await waitFor(() => expect(buildPackage).toHaveBeenCalledTimes(1));
+
+    expect(buildPackage.mock.calls[0]?.[0].map((item) => [item.kind, item.uploadOrdinal])).toEqual([
+      ["project", 0], ["project", 1], ["project", 2], ["project", 3],
+    ]);
+  });
+
+  it("rejects a document ID already held by a project without extraction or phantom capacity", async () => {
+    // This catches the file hook optimistically charging a document the reducer must cull.
+    const ids = ["batch-one", "shared-id", "batch-two", "later-id"];
+    const extract = vi.fn(services().extract);
+    const preflight = vi.fn(async (files: readonly File[], capacity: { acceptedCount: number; acceptedBytes: number }) => files.map((file) => ({ accepted: true as const, file, format: "markdown" as const, originalBytes: new ArrayBuffer(0), capacity })));
+    render(<App services={{
+      ...services(), createDocumentId: () => ids.shift() ?? "unexpected-id", extract, preflight,
+      readFolderProject: async () => ({ ...project(), id: "shared-id", originalTreeHash: "shared-tree" }),
+    }} />);
+    const folder = new File(["folder"], "copy.md");
+    Object.defineProperty(folder, "webkitRelativePath", { value: "shared/copy.md" });
+    fireEvent.change(screen.getByLabelText("Add folder project"), { target: { files: [folder] } });
+    await screen.findByRole("option", { name: /demo.*review/i });
+
+    const input = screen.getByLabelText("Add supported files");
+    fireEvent.change(input, { target: { files: [new File(["collision"], "collision.md")] } });
+    expect(await screen.findByText(/collision\.md: this file conflicts with an existing workspace item and was not added/i)).toBeInTheDocument();
+    expect(extract).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { files: [new File(["later"], "later.md")] } });
+    await waitFor(() => expect(extract).toHaveBeenCalledTimes(1));
+    expect(preflight.mock.calls[1]?.[1].acceptedBytes).toBe(project().totalByteCount);
+  });
+
+  it("rejects a project ID already held by a document without phantom project capacity", async () => {
+    // This catches project admission reporting success before the reducer rejects a same-ID document collision.
+    const ids = ["batch", "shared-id"];
+    const readFolderProject = vi.fn(async (input, options) => ({
+      ...project(), id: input.name === "collision" ? "shared-id" : "later-project", name: input.name,
+      originalTreeHash: input.name === "collision" ? "collision-tree" : "later-tree",
+      totalByteCount: 50,
+      warnings: [String(options?.existingSessionBytes ?? -1)],
+    }));
+    render(<App services={{
+      ...services(), createDocumentId: () => ids.shift() ?? "unused", readFolderProject,
+      preflight: async (files) => files.map((file) => ({ accepted: true as const, file, format: "markdown" as const, originalBytes: new ArrayBuffer(0) })),
+    }} />);
+    fireEvent.change(screen.getByLabelText("Add supported files"), { target: { files: [new File(["doc"], "first.md")] } });
+    await screen.findByRole("option", { name: /first\.md/i });
+    const folderInput = screen.getByLabelText("Add folder project");
+    const addFolder = (root: string) => {
+      const file = new File([root], "copy.md");
+      Object.defineProperty(file, "webkitRelativePath", { value: `${root}/copy.md` });
+      fireEvent.change(folderInput, { target: { files: [file] } });
+    };
+    addFolder("collision");
+    expect(await screen.findByText(/collision: this project duplicates an existing project and was not added/i)).toBeInTheDocument();
+    addFolder("later");
+    await screen.findByRole("option", { name: /later.*review/i });
+    expect(readFolderProject.mock.calls[1]?.[1]?.existingSessionBytes).toBe(3);
+  });
+
+  it("retains a dispatched ZIP reservation when later document preflight rejects", async () => {
+    // This catches a mixed intake failure releasing its already-dispatched ZIP before the next queued reader starts.
+    const sixtyMiB = 60 * 1024 * 1024;
+    const readFolderProject = vi.fn(async (input, options) => ({
+      ...project(),
+      id: "folder-after-failure",
+      name: input.name,
+      originalTreeHash: "tree-folder-after-failure",
+      totalByteCount: 40 * 1024 * 1024,
+      warnings: [String(options?.existingSessionBytes ?? -1)],
+    }));
+    render(<App services={{
+      ...services(),
+      readZipProject: async () => ({
+        ...project(),
+        id: "zip-before-failure",
+        name: "before.zip",
+        sourceKind: "zip",
+        intake: { kind: "zip", displayName: "before.zip" },
+        originalTreeHash: "tree-zip-before-failure",
+        totalByteCount: sixtyMiB,
+      }),
+      readFolderProject,
+      preflight: async () => { throw new Error("document preflight failed"); },
+    }} />);
+
+    fireEvent.change(screen.getByLabelText("Add supported files"), { target: { files: [
+      new File([new Uint8Array([80, 75, 3, 4])], "before.zip"),
+      new File(["document"], "fails.md"),
+    ] } });
+    const folder = new File(["folder"], "copy.md");
+    Object.defineProperty(folder, "webkitRelativePath", { value: "after/copy.md" });
+    fireEvent.change(screen.getByLabelText("Add folder project"), { target: { files: [folder] } });
+
+    await waitFor(() => expect(readFolderProject).toHaveBeenCalledTimes(1));
+    expect(readFolderProject.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ existingSessionBytes: sixtyMiB }));
+    await waitFor(() => expect(within(screen.getByRole("listbox", { name: "Uploaded files" })).getAllByRole("option")).toHaveLength(2));
   });
 });

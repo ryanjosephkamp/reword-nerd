@@ -1,4 +1,10 @@
-import type { PromptPackageManifest, RunbookBlock, RunbookDocument, RunbookInline } from "./contracts";
+import {
+  PROJECT_FINAL_RESPONSE_BLOCKS,
+  type PromptPackageManifest,
+  type RunbookBlock,
+  type RunbookDocument,
+  type RunbookInline,
+} from "./contracts";
 import { isSafeArchivePath } from "./paths";
 
 const text = (value: string): RunbookInline => Object.freeze({ type: "text", value });
@@ -38,6 +44,10 @@ export function createRunbookDocument(manifest: PromptPackageManifest): Readonly
     },
   ];
   for (const document of manifest.documents) {
+    const project = document.source.kind === "project";
+    const workflowNote = project
+      ? `Start a new conversation for each project, run the four prompts in order, and replace response markers with the previous stage outputs. Stage 4 and One-shot return exactly ${PROJECT_FINAL_RESPONSE_BLOCKS}.`
+      : document.model.workflowNote;
     const packagedProjectAssets = document.source.kind === "project"
       ? document.source.entries.filter((entry) => entry.contentKind === "asset" && entry.packageIncluded && entry.packaged)
       : [];
@@ -46,7 +56,7 @@ export function createRunbookDocument(manifest: PromptPackageManifest): Readonly
       { type: "paragraph", content: content(text(`Selected model: ${document.model.label}`)) },
       { type: "paragraph", content: content(text(`Reference model: ${document.model.promptStrategy.referenceModel}`)) },
       { type: "paragraph", content: content(text(`Guidance version: ${document.model.promptStrategy.version}`)) },
-      { type: "paragraph", content: content(text(`Workflow note: ${document.model.workflowNote}`)) },
+      { type: "paragraph", content: content(text(`Workflow note: ${workflowNote}`)) },
       { type: "paragraph", content: content(text(`Resolved settings: ${JSON.stringify(document.settings)}`)) },
       { type: "paragraph", content: content(text(`Context estimates: One-shot ${document.contextAssessment.oneShotWorkflowTokens}; Manual ${document.contextAssessment.manualWorkflowTokens}; known limit: ${document.contextAssessment.contextWindowTokens ?? "unknown"}; required Manual warning acknowledged: ${document.contextAssessment.acknowledgmentRequired ? (document.contextWarningAcknowledged ? "yes" : "no") : "not required"}.`)) },
       { type: "paragraph", content: content(text("Reviewed extraction: "), code(document.reviewedExtraction.path)) },
@@ -64,7 +74,13 @@ export function createRunbookDocument(manifest: PromptPackageManifest): Readonly
       { type: "paragraph", content: content(text("Canonical Manual prompts: "), ...(["decompose", "rewrite", "verify", "final"] as const).flatMap((stage, index) => [code(document.prompts[stage].path), text(index === 3 ? "." : "; ")])) },
       { type: "paragraph", content: content(text(`Visual assets: ${document.visualAssets.records.filter((asset) => asset.included).length} included, ${document.visualAssets.records.filter((asset) => !asset.included).length} omitted; OCR records: ${document.ocr.records.length}; page count: ${document.processing.pageCount ?? "not applicable"}.`)) },
       { type: "paragraph", content: content(text("When the model interface supports image input, attach included assets using the filenames in assets/index.md. Otherwise provide the asset catalog and reviewed OCR text. Preserve every stable asset ID and place each figure near the relevant rewritten discussion.")) },
-      { type: "paragraph", content: content(text("One-shot flow: copy "), code(document.prompts.oneShot.path), text(" into a new conversation. Expect only the marked final document and compact fidelity audit; intermediate reasoning remains internal.")) },
+      { type: "paragraph", content: content(
+        text("One-shot flow: copy "),
+        code(document.prompts.oneShot.path),
+        text(project
+          ? ` into a new conversation. Expect exactly ${PROJECT_FINAL_RESPONSE_BLOCKS}; intermediate reasoning remains internal.`
+          : " into a new conversation. Expect only the marked final document and compact fidelity audit; intermediate reasoning remains internal."),
+      ) },
       {
         type: "list",
         ordered: true,

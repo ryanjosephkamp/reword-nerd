@@ -15,6 +15,7 @@ export const MAX_PROJECT_ENTRIES = 500;
 export const MAX_FOLDER_FILE_BYTES = 20 * 1024 * 1024;
 export const MAX_ARCHIVE_ENTRY_BYTES = 25 * 1024 * 1024;
 export const MAX_PROJECT_BYTES = 100 * 1024 * 1024;
+export const MAX_ZIP_CONTAINER_BYTES = 100 * 1024 * 1024;
 export const MAX_PROJECT_ARCHIVE_RATIO = 100;
 export const MAX_PROMPT_TEXT_FILES = 250;
 export const MAX_PROMPT_DECODED_TEXT_BYTES = 5 * 1024 * 1024;
@@ -258,6 +259,9 @@ function isZipSymlink(entry: Entry): boolean {
 }
 
 async function readZipEntries(input: ZipProjectInput, options: ProjectReadOptions): Promise<RawProjectEntry[]> {
+  if (!Number.isSafeInteger(input.bytes.byteLength) || input.bytes.byteLength > MAX_ZIP_CONTAINER_BYTES) {
+    throw new ProjectReadError("PROJECT_LIMIT_EXCEEDED");
+  }
   const reader = new ZipReader(new Uint8ArrayReader(input.bytes.slice()));
   try {
     const zipEntries = await reader.getEntries();
@@ -590,6 +594,9 @@ export async function readZipProject(
   input: ZipProjectInput,
   options: ProjectReadOptions = {},
 ): Promise<WorkspaceProject> {
+  if (!Number.isSafeInteger(input.bytes.byteLength) || input.bytes.byteLength > MAX_ZIP_CONTAINER_BYTES) {
+    throw new ProjectReadError("PROJECT_LIMIT_EXCEEDED");
+  }
   // Capture caller-owned input synchronously so later mutation cannot change custody metadata or extraction.
   const containerBytes = input.bytes.slice();
   const displayName = input.name;

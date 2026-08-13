@@ -1,6 +1,8 @@
 # Prompt package manifest v4
 
-Manifest schema `4` is the current `reword-nerd` `0.4.0` contract. Its package
+> Historical contract. Current `0.6.0` packages use [manifest schema v6](manifest-v6.md).
+
+Manifest schema `4` is the historical `reword-nerd` `0.4.0` contract. Its package
 format is the literal `dual-mode-prompt-package`. It always declares both
 One-shot and Manual workflows and retains the canonical Manual stage order.
 

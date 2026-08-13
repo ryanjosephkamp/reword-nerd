@@ -62,15 +62,21 @@ is approved brand artwork rather than an interface-surface effect.
 - Main region: three columns. Files occupies about 24%, extracted-text preview
   about 50%, and parameters about 26%. Columns are separated with one-pixel
   `--color-border` rules.
-- Files: an uppercase heading with a square add-file button, then a vertical
-  list. The selected file has a green left rule and `--color-surface-raised`
-  fill. Every item has a file-type icon, filename, status, and overflow menu.
-- Preview: heading row, amber review warning, one file tab, a line-numbered
-  text editor, and a bottom metrics/context-meter strip.
+- Files: an uppercase heading with add-file and Add Folder actions, then a
+  vertical list. The selected file or project has a green left rule and
+  `--color-surface-raised` fill. Every item has an icon, name, status, and
+  overflow menu.
+- Preview: heading row, amber review warning, global Source/Assets/Package
+  navigation, nested Extracted Text/Original source tabs, a document editor or
+  project file-review surface, and a metrics/context strip.
 - Parameters: a per-file-override toggle, labelled selects, a labelled
-  textarea, document processing, contextual help disclosures, then the large
+  textarea, document/code processing, contextual help disclosures, then the large
   primary export action and privacy reassurance. The desktop gear may collapse
   this panel; Preview fills the freed width while Files retains its width.
+- Preview Footer Dock: when at least one source exists, the center column ends
+  with compact side-by-side Build Package and Download ZIP actions plus concise
+  local-processing or blocker copy. It shares export state with Parameters and
+  never covers the editor.
 - Footer: file-status summary at left; saved state and version at right.
 
 ### Mobile workbench
@@ -97,16 +103,19 @@ is approved brand artwork rather than an interface-surface effect.
 | Brand header | brand, session statement, utility icons | brand and overflow icon | default, utility focus |
 | Utility icon button | 40 px square, outlined | hidden except overflow | default, hover, focus-visible, disabled |
 | Section heading | uppercase chrome label | uppercase chrome label | default |
-| File queue item | icon, name, semantic status, overflow | represented by selected-file disclosure in Preview | default, selected, ready, review, blocked, keyboard focus |
+| Workspace queue item | file/project icon, name, semantic status, overflow | represented by selected-source disclosure in Preview | default, selected, ready, review, blocked, keyboard focus |
 | Add-file button | outlined square plus button | Files-tab action | default, hover, focus-visible, disabled |
 | Mobile tab | not used | full-width tab-strip item | inactive, active, focus-visible |
 | Extracted-text editor | line numbers, internal scroll, tab | line numbers, internal scroll | default, edited, review-warning, blocked/read-only, focus-visible |
+| ORIGINAL preview | nested Source tab with inert rich/raw rendering | same inside Preview | loading, rich, raw, approximate, bounded/truncated, error, disposed |
+| Project review | searchable safe file list, inclusion controls, editor | compact file selector plus editor | included, package-only, excluded, invalid, sensitive aggregate warning, confirmed |
 | File tab/disclosure | file tab with close icon | selected-file disclosure with chevron | default, expanded, collapsed, focus-visible |
 | Warning | amber outlined triangle plus text | same, above editor | visible, hidden when no review needed |
 | Form control | full-width outlined select/textarea | same in Settings tab | default, hover, focus-visible, disabled, invalid |
 | Toggle | green compact track with `--color-text` thumb | Settings-tab equivalent | on, off, focus-visible, disabled |
 | Context meter | labelled percentage bar | stacked card-like meter | normal, warned, acknowledged |
 | Primary action | outlined green full-width action | full-width action above persistent navigation | enabled, hover, focus-visible, disabled, busy, export failure |
+| Preview Footer Dock | side-by-side shared Build/Download below Preview | omitted; existing mobile actions remain | ready, blocked, building, downloadable, failed/retry |
 | Quick start | focus-trapped first-visit dialog, local overview video, Review settings primary | contained modal with poster/transcript fallback and Add files secondary | first visit, replay, dismiss, reduced motion |
 | Help | scrollable chapter guide with lazy local Settings/Review/Package videos | scrollable modal above navigation | open, close, chapter switch, replay |
 | Info | branded version/product/creator dialog | opened from mobile utility disclosure | open, close, deliberate external navigation |
@@ -184,8 +193,29 @@ are not replaced by this inventory.
 - `ALL CHANGES SAVED`, `v1.0.0`
 
 The version string in the visual reference is compositional sample copy. The
-current implementation renders its package version (`v0.5.1`) in that footer
+current implementation renders its package version (`v0.6.0`) in that footer
 position while preserving the same hierarchy and session-only meaning.
+
+## v0.6 source and project additions
+
+- Global SOURCE navigation contains an accessible `EXTRACTED TEXT | ORIGINAL`
+  tablist. ORIGINAL rendering is inert and view-only; opening it cannot change
+  review or package revision.
+- Folder and ZIP projects remain one workspace row. Project review adds a
+  searchable safe-file list, immutable path/status metadata, prompt/package
+  inclusion controls, a text editor, and one project-level confirmation.
+- Code & Structured Text is a permanent Settings fieldset. Its contextual help
+  covers documentation/markup, comments/docstrings, user-facing strings,
+  narrative structured data, root `.gitignore`, safe exclusions/assets, and
+  the always-on executable-syntax protection.
+- Desktop uses the approved Preview Footer Dock. The center action pair mirrors
+  Parameters without creating a second export path or live announcement.
+- Context presentation adds project file count/risk reasons and keeps the
+  inspect-diffs/run-tests warning visible without changing Night Terminal
+  semantic colors.
+- Existing demo video bytes and tutorial version remain unchanged. Quick Start
+  and Help label those clips as document-workflow demonstrations that predate
+  project-workspace support.
 
 ## v0.5.1 polish
 
@@ -251,6 +281,14 @@ position while preserving the same hierarchy and session-only meaning.
 | OCR | Off, textless selected PDF pages, or all selected pages; bundled English OCR requires review. |
 | OCR extracted raster images | Also recognizes recovered raster assets when image extraction is enabled. |
 | Exclude likely decorative images | Uses conservative size/type heuristics; Assets remains the review authority. |
+| Documentation and markup | Includes prose while protecting tags, attributes, links, and structure. |
+| Comments and docstrings | Includes comments/docstrings while protecting surrounding executable syntax. |
+| User-facing strings | Includes visible interface text while protecting identifiers, protocol values, and placeholders. |
+| Narrative structured-data values | Optionally includes prose-like values while preserving keys, types, numbers, and shape. |
+| Honor root .gitignore | Applies root ignore patterns locally during initial project inclusion. |
+| Exclude dependencies/build/generated | Excludes common dependency, vendor, cache, build, generated, minified, source-map, and lock content by default. |
+| Preserve safe non-text assets | Keeps eligible assets in the sanitized package without putting their bytes in prompts. |
+| Preserve executable syntax | Always on; protects control flow, identifiers, imports, signatures, paths, and structural tokens. |
 
 ### Editor sample content
 
@@ -280,9 +318,11 @@ position while preserving the same hierarchy and session-only meaning.
 
 ## Implemented interaction model
 
-- Files are added through the add-file affordance or a drop zone; queue status
+- Files are added through the add-file affordance or a drop zone; folder
+  workspaces use Add Folder and project ZIPs use the file affordance. Queue status
   changes are surfaced in the file item and status summary.
-- Selecting a file updates the preview and the optional per-file settings.
+- Selecting a file or project updates Preview; standalone files retain optional
+  per-file rewrite settings.
 - The extracted text is reviewable and editable before export; a warning remains
   visible until the review condition is resolved.
 - The per-file override toggle reveals or enables the selected file's parameter
@@ -292,6 +332,8 @@ position while preserving the same hierarchy and session-only meaning.
 - `BUILD PACKAGE` creates the revision-bound archive and structured preview in
   memory, switches Preview to Package, and moves focus to its heading. It never
   downloads automatically.
+- Desktop Preview Footer Dock and Parameters invoke that same build/download
+  state; dock failures name the safe retry action and are announced once.
 - `SOURCE`, `ASSETS`, and `PACKAGE` switch the Preview pane without adding a top-level
   mobile tab. Each package prompt has an accessible Copy control.
 - `DOWNLOAD ZIP` exports the accepted Blob explicitly. A download failure keeps

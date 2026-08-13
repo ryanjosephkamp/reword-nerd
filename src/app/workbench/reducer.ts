@@ -184,14 +184,20 @@ function isCurrentExportOperation(
     && state.export.operationRevision === revision;
 }
 
+function nextItemUploadOrdinal(items: readonly WorkbenchItem[]): number {
+  return items.reduce((next, item) => Math.max(next, item.uploadOrdinal + 1), 0);
+}
+
 function reduceWorkbenchState(state: WorkbenchState, action: WorkbenchAction): WorkbenchState {
   switch (action.type) {
     case "project/admitted": {
+      if (state.items.some((item) => item.id === action.project.id
+        || (item.kind === "project" && item.originalTreeHash === action.project.originalTreeHash))) return state;
       const admitted: WorkbenchProject = {
         ...action.project,
         entries: [...action.project.entries],
         warnings: [...action.project.warnings],
-        uploadOrdinal: action.uploadOrdinal,
+        uploadOrdinal: Math.max(action.uploadOrdinal, nextItemUploadOrdinal(state.items)),
       };
       return changed(state, {
         items: [...state.items, admitted],
@@ -308,19 +314,31 @@ function reduceWorkbenchState(state: WorkbenchState, action: WorkbenchAction): W
         liveMessage: action.message,
       };
     case "intake/accepted": {
-      const admitted = action.documents.map(({ document, uploadOrdinal }) => ({
-        ...document,
-        batchId: action.batchId,
-        uploadOrdinal,
-        settingsOverride: { ...document.settingsOverride },
-        warnings: [...document.warnings],
-        pageCount: document.pageCount ?? null,
-        visualAssets: [...(document.visualAssets ?? [])],
-        ocrCandidates: [...(document.ocrCandidates ?? [])],
-        baseExtractedText: document.baseExtractedText ?? document.extractedText,
-        extractionOptions: cloneExtractionOptions(document.extractionOptions ?? state.globalExtractionOptions),
-        processingOperationId: document.processingOperationId,
-      }));
+      const heldIds = new Set(state.items.map((item) => item.id));
+      const accepted = action.documents.filter(({ document }) => {
+        if (heldIds.has(document.id)) return false;
+        heldIds.add(document.id);
+        return true;
+      });
+      let nextOrdinal = nextItemUploadOrdinal(state.items);
+      const admitted = accepted.map(({ document, uploadOrdinal }) => {
+        const assignedOrdinal = Math.max(uploadOrdinal, nextOrdinal);
+        nextOrdinal = assignedOrdinal + 1;
+        return {
+          ...document,
+          batchId: action.batchId,
+          uploadOrdinal: assignedOrdinal,
+          settingsOverride: { ...document.settingsOverride },
+          warnings: [...document.warnings],
+          pageCount: document.pageCount ?? null,
+          visualAssets: [...(document.visualAssets ?? [])],
+          ocrCandidates: [...(document.ocrCandidates ?? [])],
+          baseExtractedText: document.baseExtractedText ?? document.extractedText,
+          extractionOptions: cloneExtractionOptions(document.extractionOptions ?? state.globalExtractionOptions),
+          processingOperationId: document.processingOperationId,
+        };
+      });
+      if (admitted.length === 0) return state;
       const editor = { ...state.editor };
       const overrideEnabled = { ...state.overrideEnabled };
       for (const document of admitted) {
