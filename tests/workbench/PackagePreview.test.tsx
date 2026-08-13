@@ -23,6 +23,7 @@ function workbook(documentKey = "notes", originalDisplayName = "notes.md"): Docu
       blocks: [
         { type: "heading", depth: 1, content: [{ type: "text", value: "reword-nerd prompt package" }] },
         { type: "paragraph", content: [{ type: "text", value: "Run each stage in order." }] },
+        { type: "paragraph", content: [{ type: "link", label: "assets/figure.png", href: "documents/notes/project/files/assets/figure.png" }] },
       ],
     },
     promptBundle: {
@@ -103,6 +104,8 @@ describe("PackagePreview workbook integration", () => {
     expect(screen.getByRole("heading", { name: "reword-nerd prompt package" })).toBeInTheDocument();
     expect(screen.queryByText(/^# reword-nerd prompt package/)).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Editable One-shot prompt" })).not.toBeInTheDocument();
+    expect(screen.getByText("assets/figure.png").tagName).toBe("CODE");
+    expect(screen.queryByRole("link", { name: "assets/figure.png" })).not.toBeInTheDocument();
 
     runbook.focus();
     fireEvent.keyDown(runbook, { key: "ArrowRight" });

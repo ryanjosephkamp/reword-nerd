@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
-import { renderPromptBundle } from "../../prompting";
-import type { ExportDocumentInput } from "../../export";
+import { createProjectPromptSnapshot } from "../../domain";
+import { renderPromptBundle, renderPromptSource } from "../../prompting";
+import type { ExportSourceInput } from "../../export";
 import type { WorkbenchServices, WorkbenchState } from "./contracts";
 import type { WorkbenchAction } from "./reducer";
 import {
@@ -50,9 +51,42 @@ export function useExportPackage(
     }
     try {
       const profile = selectWorkingProfile(state);
-      const snapshot: ExportDocumentInput[] = state.documents.map((document) => {
+      const snapshot: ExportSourceInput[] = state.items.map((document) => {
         const resolvedSettings = selectResolvedSettings(state, document.id);
+        if (document.kind === "project") {
+          const projectSnapshot = createProjectPromptSnapshot(document, 0);
+          const format = document.classification === "latex" ? "latex-project" as const : "text" as const;
+          const sourceContext = {
+            kind: "project" as const,
+            format,
+            assets: [],
+            reviewedTreeHash: projectSnapshot.reviewedTreeHash,
+            includedFiles: projectSnapshot.includedFiles,
+            excludedPaths: projectSnapshot.excludedPaths,
+            codeRewriteOptions: { ...state.globalCodeRewriteOptions, protectedExecutableSyntax: true as const },
+            latexMainFile: document.rootDocument,
+          };
+          const reviewedExtractedText = renderPromptSource(sourceContext);
+          return {
+            kind: "project",
+            projectId: document.id,
+            projectName: document.name,
+            project: document,
+            reviewedExtractedText,
+            resolvedSettings,
+            codeRewriteOptions: sourceContext.codeRewriteOptions,
+            chosenProfile: { ...profile },
+            promptBundle: renderPromptBundle(reviewedExtractedText, resolvedSettings, profile, sourceContext),
+            warnings: [...document.warnings],
+            sensitiveBlockedCounts: { ...document.sensitiveBlockedCounts },
+            contextAssessment: selectContextAssessment(state, document.id),
+            reviewed: document.status === "ready" && !document.requiresReview,
+            contextWarningAcknowledged: document.contextWarningAcknowledged,
+            uploadOrdinal: document.uploadOrdinal,
+          };
+        }
         return {
+          kind: "document",
           documentId: document.id,
           documentName: document.name,
           documentFormat: document.format,
@@ -72,6 +106,7 @@ export function useExportPackage(
               ...(asset.altText ? { altText: asset.altText } : {}),
               included: asset.included,
             })),
+            codeRewriteOptions: { ...state.globalCodeRewriteOptions, protectedExecutableSyntax: true as const },
             latexMainFile: document.latexProject?.mainFile,
           }),
           warnings: [...document.warnings],

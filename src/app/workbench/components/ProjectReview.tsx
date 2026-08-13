@@ -5,10 +5,11 @@ import { previewObjectUrls } from "../objectUrlRegistry";
 interface ProjectReviewProps {
   project: WorkspaceProject;
   onSelect(path: string): void;
-  onEdit(path: string, text: string): void;
-  onInclusion(path: string, promptIncluded: boolean, packageIncluded: boolean): void;
-  onClassification(classification: ProjectClassification, rootDocument: string | null): void;
-  onConfirm(): void;
+  onMutationIntent?(project: WorkspaceProject): number;
+  onEdit(path: string, text: string, mutationTicket?: number): void | Promise<void>;
+  onInclusion(path: string, promptIncluded: boolean, packageIncluded: boolean, mutationTicket?: number): void;
+  onClassification(classification: ProjectClassification, rootDocument: string | null, mutationTicket?: number): void;
+  onConfirm(mutationTicket?: number): void;
 }
 
 function entryStatus(entry: ProjectEntry): string {
@@ -43,25 +44,55 @@ function StaticAssetPreview({ entry }: { entry: ProjectEntry }) {
 
 function ProjectTextEditor({ entry, onEdit, onDirtyChange }: {
   entry: ProjectEntry;
-  onEdit(path: string, text: string): void;
-  onDirtyChange(dirty: boolean): void;
+  onEdit(path: string, text: string, mutationTicket?: number): void | Promise<void>;
+  onDirtyChange(dirty: boolean, mutationTicket?: number): number | undefined;
 }) {
   const [draft, setDraft] = useState(entry.reviewedText ?? "");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const submittedRef = useRef(entry.reviewedText ?? "");
-  useEffect(() => {
-    if ((entry.reviewedText ?? "") === submittedRef.current) onDirtyChange(false);
-  }, [entry.reviewedText, onDirtyChange]);
-  useEffect(() => () => {
-    if (timerRef.current !== null) clearTimeout(timerRef.current);
-  }, []);
-  const submit = useCallback((value: string) => {
+  const draftRef = useRef(entry.reviewedText ?? "");
+  const pathRef = useRef(entry.path);
+  const onEditRef = useRef(onEdit);
+  const onDirtyChangeRef = useRef(onDirtyChange);
+  const latestTicketRef = useRef<number | undefined>(undefined);
+  const inFlightRef = useRef<Readonly<{ ticket?: number; value: string }> | null>(null);
+  useEffect(() => { onEditRef.current = onEdit; }, [onEdit]);
+  useEffect(() => { onDirtyChangeRef.current = onDirtyChange; }, [onDirtyChange]);
+  const submitDraft = useCallback((value: string, mutationTicket = latestTicketRef.current) => {
     if (timerRef.current !== null) clearTimeout(timerRef.current);
     timerRef.current = null;
     if (submittedRef.current === value) return;
-    submittedRef.current = value;
-    onEdit(entry.path, value);
-  }, [entry.path, onEdit]);
+    const activeSubmission = inFlightRef.current;
+    if (activeSubmission && activeSubmission.ticket === mutationTicket && activeSubmission.value === value) return;
+    inFlightRef.current = { ticket: mutationTicket, value };
+    let result: void | Promise<void>;
+    try {
+      result = onEditRef.current(pathRef.current, value, mutationTicket);
+    } catch {
+      inFlightRef.current = null;
+      return;
+    }
+    void Promise.resolve(result).then(() => {
+      const completedSubmission = inFlightRef.current;
+      if (completedSubmission && completedSubmission.ticket === mutationTicket && completedSubmission.value === value) {
+        inFlightRef.current = null;
+      }
+      submittedRef.current = value;
+      if (latestTicketRef.current === mutationTicket) onDirtyChangeRef.current(false, mutationTicket);
+    }).catch(() => {
+      const failedSubmission = inFlightRef.current;
+      if (failedSubmission && failedSubmission.ticket === mutationTicket && failedSubmission.value === value) {
+        inFlightRef.current = null;
+      }
+    });
+  }, []);
+  const submit = useCallback((value: string) => {
+    submitDraft(value, latestTicketRef.current);
+  }, [submitDraft]);
+  useEffect(() => () => {
+    if (timerRef.current !== null) clearTimeout(timerRef.current);
+    submitDraft(draftRef.current);
+  }, [submitDraft]);
   return <textarea
     aria-label={`Reviewed text for ${entry.path}`}
     spellCheck={false}
@@ -69,22 +100,42 @@ function ProjectTextEditor({ entry, onEdit, onDirtyChange }: {
     onBlur={() => submit(draft)}
     onChange={(event) => {
       const value = event.currentTarget.value;
+      draftRef.current = value;
       setDraft(value);
-      onDirtyChange(value !== (entry.reviewedText ?? ""));
+      const ticket = onDirtyChange(true);
+      latestTicketRef.current = ticket;
       if (timerRef.current !== null) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => submit(value), 120);
+      timerRef.current = setTimeout(() => submitDraft(value, ticket), 120);
     }}
   />;
 }
 
-function ProjectReviewContent({ project, onSelect, onEdit, onInclusion, onClassification, onConfirm }: ProjectReviewProps) {
+function ProjectReviewContent({ project, onSelect, onMutationIntent, onEdit, onInclusion, onClassification, onConfirm }: ProjectReviewProps) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "included" | "excluded">("all");
   const [browserOpen, setBrowserOpen] = useState(false);
   const [classificationDraft, setClassificationDraft] = useState<ProjectClassification | "">(
     project.classificationChoiceRequired ? "" : project.classification,
   );
-  const [editorDirty, setEditorDirty] = useState(false);
+  const [dirtyState, setDirtyState] = useState<{ revision: number; dirty: boolean }>({
+    revision: project.projectReviewRevision,
+    dirty: false,
+  });
+  const editorDirty = dirtyState.revision === project.projectReviewRevision && dirtyState.dirty;
+  const latestEditorTicketRef = useRef<number | undefined>(undefined);
+  const handleEditorDirty = useCallback((dirty: boolean, settledTicket?: number) => {
+    if (dirty) {
+      const ticket = onMutationIntent?.(project);
+      latestEditorTicketRef.current = ticket;
+      setDirtyState({ revision: project.projectReviewRevision, dirty: true });
+      return ticket;
+    }
+    if (settledTicket === latestEditorTicketRef.current) {
+      setDirtyState({ revision: project.projectReviewRevision, dirty: false });
+    }
+    return settledTicket;
+  }, [onMutationIntent, project]);
+  const mutationTicket = () => onMutationIntent?.(project);
   const entries = useMemo(() => project.entries.filter((entry) => entry.path.toLocaleLowerCase().includes(query.toLocaleLowerCase())
     && (filter === "all" || (filter === "included" ? entry.promptIncluded || entry.packageIncluded : !entry.promptIncluded && !entry.packageIncluded))), [filter, project.entries, query]);
   const selected = project.entries.find((entry) => entry.path === project.selectedEntryPath) ?? project.entries[0];
@@ -104,21 +155,21 @@ function ProjectReviewContent({ project, onSelect, onEdit, onInclusion, onClassi
         <label>PROJECT CLASSIFICATION<select aria-label="Project classification" value={classificationDraft} onChange={(event) => {
           const classification = event.currentTarget.value as ProjectClassification;
           setClassificationDraft(classification);
-          if (classification === "general-text") onClassification(classification, null);
+          if (classification === "general-text") onClassification(classification, null, mutationTicket());
         }}>
           {project.classificationChoiceRequired ? <option value="">Choose classification</option> : null}
           {project.classificationChoices.map((classification) => <option key={classification} value={classification}>{classification === "latex" ? "LaTeX project" : "General text project"}</option>)}
         </select></label>
         {classificationDraft === "latex" ? <label>ROOT DOCUMENT<select aria-label="LaTeX root document" value={project.rootDocument ?? ""} onChange={(event) => {
-          if (event.currentTarget.value) onClassification("latex", event.currentTarget.value);
+          if (event.currentTarget.value) onClassification("latex", event.currentTarget.value, mutationTicket());
         }}><option value="">Choose root document</option>{latexRoots.map((entry) => <option key={entry.path} value={entry.path}>{entry.path}</option>)}</select></label> : null}
       </div> : null}
       <div className="project-entry-inclusion">
-        <label><input type="checkbox" checked={selected.promptIncluded} disabled={selected.contentKind !== "text"} onChange={(event) => onInclusion(selected.path, event.currentTarget.checked, event.currentTarget.checked || selected.packageIncluded)} />Include in prompt</label>
-        <label><input type="checkbox" checked={selected.packageIncluded} onChange={(event) => onInclusion(selected.path, selected.promptIncluded && event.currentTarget.checked, event.currentTarget.checked)} />Include in package</label>
+        <label><input type="checkbox" checked={selected.promptIncluded} disabled={selected.contentKind !== "text"} onChange={(event) => onInclusion(selected.path, event.currentTarget.checked, event.currentTarget.checked || selected.packageIncluded, mutationTicket())} />Include in prompt</label>
+        <label><input type="checkbox" checked={selected.packageIncluded} onChange={(event) => onInclusion(selected.path, selected.promptIncluded && event.currentTarget.checked, event.currentTarget.checked, mutationTicket())} />Include in package</label>
       </div>
-      {selected.contentKind === "text" ? <ProjectTextEditor key={selected.path} entry={selected} onEdit={onEdit} onDirtyChange={setEditorDirty} /> : <div className="project-asset-preview"><p>Safe static asset. It can be retained in the package but is never prompt text or executable content.</p><StaticAssetPreview key={selected.originalHash} entry={selected} /></div>}
-      <button type="button" className="confirm-project-review" disabled={!canConfirm} onClick={onConfirm}>Confirm project review</button>
+      {selected.contentKind === "text" ? <ProjectTextEditor key={selected.path} entry={selected} onEdit={onEdit} onDirtyChange={handleEditorDirty} /> : <div className="project-asset-preview"><p>Safe static asset. It can be retained in the package but is never prompt text or executable content.</p><StaticAssetPreview key={selected.originalHash} entry={selected} /></div>}
+      <button type="button" className="confirm-project-review" disabled={!canConfirm} onClick={() => onConfirm(mutationTicket())}>Confirm project review</button>
     </section> : null}
   </div>;
 }

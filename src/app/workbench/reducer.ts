@@ -22,8 +22,10 @@ type IntakeDocument = { document: WorkspaceDocument; uploadOrdinal: number };
 
 export type WorkbenchAction =
   | { type: "project/admitted"; project: WorkspaceProject; uploadOrdinal: number }
-  | { type: "project/review-updated"; itemId: string; expectedOriginalTreeHash: string; expectedReviewRevision: number; expectedOperationGeneration: number; project: WorkspaceProject }
+  | { type: "project/review-updated"; itemId: string; expectedOriginalTreeHash: string; expectedReviewRevision: number; expectedOperationGeneration: number; mutationTicket?: number; project: WorkspaceProject }
   | { type: "project/selected-entry"; itemId: string; path: string }
+  | { type: "project/mutation-started"; itemId: string; originalTreeHash: string; projectOperationGeneration: number; ticket: number }
+  | { type: "project/mutation-failed"; itemId: string; originalTreeHash: string; projectOperationGeneration: number; ticket: number }
   | { type: "item/selection-changed"; itemId: string }
   | { type: "item/removed"; itemId: string }
   | { type: "intake/drag-changed"; dragging: boolean }
@@ -62,7 +64,7 @@ export type WorkbenchAction =
   | { type: "profile/context-limit-changed"; value: number | null }
   | { type: "profile/custom-label-changed"; value: string }
   | { type: "profile/custom-context-draft-changed"; value: string; parsed: number | null | undefined }
-  | { type: "context/acknowledged"; documentId: string; acknowledged: boolean }
+  | { type: "context/acknowledged"; itemId: string; acknowledged: boolean }
   | { type: "mobile/tab-changed"; tab: MobileTab }
   | { type: "preview/mode-changed"; mode: PreviewMode }
   | { type: "assets/view-changed"; mode: AssetViewMode }
@@ -135,6 +137,7 @@ export function createInitialWorkbenchState(preferences: SavedPreferencesPatch |
     tutorialSeenVersion: preferences?.tutorialVersion ?? null,
     intake: { dragging: false, activeBatchId: null, issues: [] },
     editor: {},
+    projectMutationState: {},
     export: { status: "idle", safeMessage: "" },
     liveMessage: "",
     revision: 0,
@@ -209,8 +212,17 @@ function reduceWorkbenchState(state: WorkbenchState, action: WorkbenchAction): W
         selectedEntryPath: current.selectedEntryPath,
         uploadOrdinal: current.uploadOrdinal,
       };
+      const projectMutationState = { ...state.projectMutationState };
+      const pending = projectMutationState[current.id];
+      if (action.mutationTicket !== undefined
+        && pending?.originalTreeHash === action.expectedOriginalTreeHash
+        && pending.projectOperationGeneration === action.expectedOperationGeneration
+        && pending.latestTicket === action.mutationTicket) {
+        delete projectMutationState[current.id];
+      }
       return changed(state, {
         items: state.items.map((item) => item.id === current.id ? project : item),
+        projectMutationState,
         liveMessage: project.requiresReview ? "Project review changed. Confirm the project again." : "Project review complete.",
       });
     }
@@ -220,6 +232,46 @@ function reduceWorkbenchState(state: WorkbenchState, action: WorkbenchAction): W
       return {
         ...state,
         items: state.items.map((item) => item.id === current.id ? { ...current, selectedEntryPath: action.path } : item),
+      };
+    }
+    case "project/mutation-started": {
+      const project = state.items.find((item): item is WorkbenchProject => item.kind === "project" && item.id === action.itemId);
+      if (!project
+        || project.originalTreeHash !== action.originalTreeHash
+        || project.projectOperationGeneration !== action.projectOperationGeneration) return state;
+      const current = state.projectMutationState[action.itemId];
+      if (current?.originalTreeHash === action.originalTreeHash
+        && current.projectOperationGeneration === action.projectOperationGeneration
+        && action.ticket < current.latestTicket) return state;
+      if (current?.originalTreeHash === action.originalTreeHash
+        && current.projectOperationGeneration === action.projectOperationGeneration
+        && current.latestTicket === action.ticket
+        && current.status === "pending") return state;
+      const projectMutationState = { ...state.projectMutationState };
+      projectMutationState[action.itemId] = {
+        originalTreeHash: action.originalTreeHash,
+        projectOperationGeneration: action.projectOperationGeneration,
+        latestTicket: action.ticket,
+        status: "pending",
+      };
+      return changed(state, { projectMutationState, liveMessage: "Project review change is being applied." });
+    }
+    case "project/mutation-failed": {
+      const project = state.items.find((item): item is WorkbenchProject => item.kind === "project" && item.id === action.itemId);
+      const current = state.projectMutationState[action.itemId];
+      if (!project
+        || project.originalTreeHash !== action.originalTreeHash
+        || project.projectOperationGeneration !== action.projectOperationGeneration
+        || current?.originalTreeHash !== action.originalTreeHash
+        || current.projectOperationGeneration !== action.projectOperationGeneration
+        || current.latestTicket !== action.ticket) return state;
+      return {
+        ...state,
+        projectMutationState: {
+          ...state.projectMutationState,
+          [action.itemId]: { ...current, status: "failed" },
+        },
+        liveMessage: "The project review change failed. Retry it before export.",
       };
     }
     case "item/selection-changed": {
@@ -240,6 +292,7 @@ function reduceWorkbenchState(state: WorkbenchState, action: WorkbenchAction): W
         selectedDocumentId: next?.kind === "document" ? next.id : null,
         focusTarget: next ? `document:${next.id}` : "upload",
         liveMessage: `${item.name} removed from the session.`,
+        projectMutationState: Object.fromEntries(Object.entries(state.projectMutationState).filter(([id]) => id !== item.id)),
       });
     }
     case "intake/drag-changed":
@@ -613,7 +666,10 @@ function reduceWorkbenchState(state: WorkbenchState, action: WorkbenchAction): W
       });
     case "context/acknowledged":
       return changed(state, {
-        documents: updateDocument(state.documents, action.documentId, (document) => ({
+        items: state.items.map((item) => item.id === action.itemId
+          ? { ...item, contextWarningAcknowledged: action.acknowledged }
+          : item),
+        documents: updateDocument(state.documents, action.itemId, (document) => ({
           ...document,
           contextWarningAcknowledged: action.acknowledged,
         })),
@@ -672,6 +728,7 @@ function reduceWorkbenchState(state: WorkbenchState, action: WorkbenchAction): W
         activeOverlay: null,
         intake: { dragging: false, activeBatchId: null, issues: [] },
         editor: {},
+        projectMutationState: {},
         export: { status: "idle", safeMessage: "" },
         liveMessage: "New session ready. Settings kept.",
         revision,

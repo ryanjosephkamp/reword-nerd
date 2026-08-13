@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { assessContext, chooseProjectClassification, composeExtractionWithOcr, confirmProjectReview, editProjectEntryText, setProjectEntryInclusion, type OcrReviewStatus, type RewriteSettings, type WorkspaceProject } from "../../domain";
 import type { MobileTab, WorkbenchServices, WorkbenchState } from "./contracts";
 import { createInitialWorkbenchState, workbenchReducer } from "./reducer";
@@ -139,6 +139,19 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
   const intake = useFileIntake(state, dispatch, services, projectIntake.intakeZip, intakeCapacity);
   const editor = useReviewEditor(state, dispatch, services);
   const exporter = useExportPackage(state, dispatch, services);
+  const projectMutationTicketsRef = useRef(new Map<string, number>());
+  const beginProjectMutation = useCallback((project: WorkspaceProject) => {
+    const ticket = (projectMutationTicketsRef.current.get(project.id) ?? 0) + 1;
+    projectMutationTicketsRef.current.set(project.id, ticket);
+    dispatch({
+      type: "project/mutation-started",
+      itemId: project.id,
+      originalTreeHash: project.originalTreeHash,
+      projectOperationGeneration: project.projectOperationGeneration,
+      ticket,
+    });
+    return ticket;
+  }, []);
   const selectedItem = selectSelectedItem(state);
   const selected = selectedItem?.kind === "document" ? selectedItem : selectSelectedDocument(state);
   const selectedProject = selectedItem?.kind === "project" ? selectedItem : undefined;
@@ -201,13 +214,13 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
   }, [mode, state.focusTarget, state.mobileTab]);
 
   const context = useMemo(() => {
-    if (!selected || selected.status === "blocked" || selected.status === "error") return null;
+    if (!selectedItem || selectedItem.status === "blocked" || selectedItem.status === "error") return null;
     try {
-      return selectContextAssessment(state, selected.id);
+      return selectContextAssessment(state, selectedItem.id);
     } catch {
-      return assessContext(selected.extractedText, null);
+      return assessContext(selectedItem.kind === "document" ? selectedItem.extractedText : "", null);
     }
-  }, [selected, state]);
+  }, [selectedItem, state]);
 
   const exportProps = {
     buildDisabled: Boolean(exporter.blocker)
@@ -244,6 +257,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     onProfileSelected: (profileId: string) => dispatch({ type: "profile/selected", profileId }),
     onProfileLabel: (value: string) => dispatch({ type: "profile/custom-label-changed", value }),
     onContextDraft: (value: string, parsed: number | null | undefined) => dispatch({ type: "profile/custom-context-draft-changed", value, parsed }),
+    onCodeRewriteOptionsChange: (options: import("../../domain").CodeRewriteOptions) => dispatch({ type: "code-rewrite/global-options-changed", options }),
     onExtractionOptionsChange: (options: import("../../domain").ExtractionOptions, reprocess: boolean) => {
       if (selected && reprocess) {
         dispatch({ type: "processing/options-changed", documentId: selected.id, options });
@@ -301,32 +315,50 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
   const applyProjectReview = (
     project: WorkspaceProject,
     operation: (current: WorkspaceProject) => Promise<WorkspaceProject> | WorkspaceProject,
+    mutationTicket: number,
   ) => {
+    dispatch({
+      type: "project/mutation-started",
+      itemId: project.id,
+      originalTreeHash: project.originalTreeHash,
+      projectOperationGeneration: project.projectOperationGeneration,
+      ticket: mutationTicket,
+    });
     const sessionGeneration = projectReviewSessionGenerationRef.current;
     const projectEpoch = projectReviewEpochsRef.current.get(project.id) ?? 0;
     const previous = projectReviewQueuesRef.current.get(project.id) ?? Promise.resolve(project);
-    const queued = previous.then(async (current) => {
+    const queued = previous.catch(() => project).then(async (current) => {
       const expectedReviewRevision = current.projectReviewRevision;
       const expectedOriginalTreeHash = current.originalTreeHash;
       const expectedOperationGeneration = current.projectOperationGeneration;
       const updated = await operation(current);
       if (sessionGeneration === projectReviewSessionGenerationRef.current
         && projectEpoch === (projectReviewEpochsRef.current.get(project.id) ?? 0)) {
-        dispatch({ type: "project/review-updated", itemId: current.id, expectedOriginalTreeHash, expectedReviewRevision, expectedOperationGeneration, project: updated });
+        dispatch({ type: "project/review-updated", itemId: current.id, expectedOriginalTreeHash, expectedReviewRevision, expectedOperationGeneration, mutationTicket, project: updated });
       }
       return updated;
     });
     projectReviewQueuesRef.current.set(project.id, queued);
-    void queued.catch(() => {
-      if (sessionGeneration === projectReviewSessionGenerationRef.current
-        && projectEpoch === (projectReviewEpochsRef.current.get(project.id) ?? 0)) {
-        dispatch({ type: "live/announced", message: "The project review change could not be applied safely." });
-      }
-    }).finally(() => {
+    const finish = () => {
       if (projectReviewQueuesRef.current.get(project.id) === queued) {
         projectReviewQueuesRef.current.delete(project.id);
       }
+    };
+    void queued.then(finish, () => {
+      if (sessionGeneration === projectReviewSessionGenerationRef.current
+        && projectEpoch === (projectReviewEpochsRef.current.get(project.id) ?? 0)) {
+        dispatch({
+          type: "project/mutation-failed",
+          itemId: project.id,
+          originalTreeHash: project.originalTreeHash,
+          projectOperationGeneration: project.projectOperationGeneration,
+          ticket: mutationTicket,
+        });
+        dispatch({ type: "live/announced", message: "The project review change could not be applied safely." });
+      }
+      finish();
     });
+    return queued.then(() => undefined);
   };
 
   const removeItem = (itemId: string) => {
@@ -459,10 +491,11 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
           </>} /> : state.previewMode === "source" && selectedProject ? <ProjectReview
             project={selectedProject}
             onSelect={(path) => dispatch({ type: "project/selected-entry", itemId: selectedProject.id, path })}
-            onEdit={(path, text) => void applyProjectReview(selectedProject, (project) => editProjectEntryText(project, path, text))}
-            onInclusion={(path, promptIncluded, packageIncluded) => void applyProjectReview(selectedProject, (project) => setProjectEntryInclusion(project, path, { promptIncluded, packageIncluded }))}
-            onClassification={(classification, rootDocument) => void applyProjectReview(selectedProject, (project) => chooseProjectClassification(project, classification, rootDocument))}
-            onConfirm={() => void applyProjectReview(selectedProject, (project) => confirmProjectReview(project))}
+            onMutationIntent={beginProjectMutation}
+            onEdit={(path, text, ticket) => applyProjectReview(selectedProject, (project) => editProjectEntryText(project, path, text), ticket ?? beginProjectMutation(selectedProject))}
+            onInclusion={(path, promptIncluded, packageIncluded, ticket) => { void applyProjectReview(selectedProject, (project) => setProjectEntryInclusion(project, path, { promptIncluded, packageIncluded }), ticket ?? beginProjectMutation(selectedProject)).catch(() => undefined); }}
+            onClassification={(classification, rootDocument, ticket) => { void applyProjectReview(selectedProject, (project) => chooseProjectClassification(project, classification, rootDocument), ticket ?? beginProjectMutation(selectedProject)).catch(() => undefined); }}
+            onConfirm={(ticket) => { void applyProjectReview(selectedProject, (project) => confirmProjectReview(project), ticket ?? beginProjectMutation(selectedProject)).catch(() => undefined); }}
           /> : state.previewMode === "source" ? <ExtractedTextEditor
             hashPending={false}
             onEdit={() => undefined}
@@ -474,10 +507,10 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
             onAddFiles={intake.openFilePicker}
           /> : null}
         </div>
-        {state.previewMode === "source" && context && selected ? <ContextMeter
+        {state.previewMode === "source" && context && selectedItem ? <ContextMeter
           assessment={context}
-          acknowledged={selected.contextWarningAcknowledged}
-          onAcknowledge={(acknowledged) => dispatch({ type: "context/acknowledged", documentId: selected.id, acknowledged })}
+          acknowledged={selectedItem.contextWarningAcknowledged}
+          onAcknowledge={(acknowledged) => dispatch({ type: "context/acknowledged", itemId: selectedItem.id, acknowledged })}
         /> : null}
         {mode === "desktop" && state.items.length > 0 ? desktopExportDock : null}
         {mode === "mobile" && selected?.status === "ready" ? primaryExportPanel : null}
@@ -531,6 +564,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
         setBusyOcrCandidate(null);
         projectReviewSessionGenerationRef.current += 1;
         projectReviewQueuesRef.current.clear();
+        projectMutationTicketsRef.current.clear();
         intakeCapacity.reset();
         intake.resetSession();
         projectIntake.resetSession();

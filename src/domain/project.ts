@@ -123,6 +123,8 @@ export interface WorkspaceProject {
     clearCredentials: number;
   }>;
   intake: Readonly<{ kind: ProjectSourceKind; displayName: string }>;
+  /** Immutable provenance for ZIP intake. Folder projects deliberately omit a fictitious container. */
+  originalContainer?: Readonly<{ displayName: string; byteCount: number; sha256: string }>;
   settingsOverride: SettingsOverride;
   contextWarningAcknowledged: boolean;
 }
@@ -345,6 +347,17 @@ function sensitiveCategory(raw: RawProjectEntry): SensitiveCategory | null {
   return sensitiveContentCategory(raw.bytes);
 }
 
+/** Fail-closed sensitive classifier shared by intake and the public export boundary. */
+export function classifySensitiveProjectEntry(path: string, bytes: Uint8Array): SensitiveCategory | null {
+  let normalized: string;
+  try {
+    normalized = normalizeProjectPath(path);
+  } catch {
+    return "credentialFiles";
+  }
+  return sensitiveCategory({ path: normalized, bytes: bytes.slice() });
+}
+
 function rootGitignore(entries: readonly RawProjectEntry[], enabled: boolean): ((path: string) => boolean) | null {
   if (!enabled) return null;
   const candidate = entries.find((entry) => entry.path === ".gitignore");
@@ -514,8 +527,7 @@ async function buildProject(
         });
   }));
   const limitedEntries = applyPromptLimits(entries);
-  const treeMaterial = limitedEntries.map((entry) => `${entry.path}\t${entry.byteCount}\t${entry.originalHash}\n`).join("");
-  const originalTreeHash = await hashBytes(bytesBuffer(new TextEncoder().encode(treeMaterial)), options.hasher);
+  const originalTreeHash = await hashOriginalProjectTree(limitedEntries, options.hasher);
   const classification = classifyProject(limitedEntries);
   const reviewedTreeHash = await hashReviewedTree(
     limitedEntries,
@@ -564,14 +576,40 @@ export async function readZipProject(
   input: ZipProjectInput,
   options: ProjectReadOptions = {},
 ): Promise<WorkspaceProject> {
-  return buildProject(input.name, "zip", await readZipEntries(input, options), options);
+  // Capture caller-owned input synchronously so later mutation cannot change custody metadata or extraction.
+  const containerBytes = input.bytes.slice();
+  const displayName = input.name;
+  const [entries, sha256] = await Promise.all([
+    readZipEntries({ kind: "zip", name: displayName, bytes: containerBytes }, options),
+    hashBytes(bytesBuffer(containerBytes), options.hasher),
+  ]);
+  const project = await buildProject(displayName, "zip", entries, options);
+  return {
+    ...project,
+    originalContainer: Object.freeze({
+      displayName,
+      byteCount: containerBytes.byteLength,
+      sha256,
+    }),
+  };
 }
 
 function cloneEntry(entry: ProjectEntry, change: Partial<ProjectEntry>): ProjectEntry {
   return Object.freeze({ ...entry, ...change, originalBytes: entry.originalBytes.slice() });
 }
 
-async function hashReviewedTree(
+export async function hashOriginalProjectTree(
+  entries: readonly Pick<ProjectEntry, "path" | "byteCount" | "originalHash">[],
+  hasher?: HashAdapter | null,
+): Promise<string> {
+  const material = [...entries]
+    .sort((left, right) => comparePaths(left.path, right.path))
+    .map((entry) => `${entry.path}\t${entry.byteCount}\t${entry.originalHash}\n`)
+    .join("");
+  return hashBytes(bytesBuffer(new TextEncoder().encode(material)), hasher);
+}
+
+export async function hashReviewedTree(
   entries: readonly ProjectEntry[],
   hasher?: HashAdapter | null,
   classification: ProjectClassification = "general-text",

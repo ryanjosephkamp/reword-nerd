@@ -98,7 +98,7 @@ function assetMarkdown(assets: readonly ArtifactVisualAsset[], workbookPath: str
     asset.caption ? `caption: ${escapeMarkdownText(asset.caption)}` : undefined,
     asset.altText ? `alt: ${escapeMarkdownText(asset.altText)}` : "description: missing",
   ].filter(Boolean).join("; "));
-  return `## Visual assets\n\n${assetLines.length > 0 ? assetLines.join("\n") : "No extracted visual assets are included."}`;
+  return `## Visual assets\n\n${assetLines.length > 0 ? assetLines.join("\n") : "No separately extracted visual assets are included. For project sources, see Project assets in the Package README."}`;
 }
 
 function workflowMarkdown(
@@ -136,7 +136,7 @@ function supportsInlinePreview(asset: VisualAsset): boolean {
 
 function assetHtml(assets: readonly ArtifactVisualAsset[], mode: "lightweight" | "full", workbookPath: string): string {
   const included = assets.filter(({ asset }) => asset.included);
-  if (included.length === 0) return "<p>No extracted visual assets are included.</p>";
+  if (included.length === 0) return "<p>No separately extracted visual assets are included. For project sources, see Project assets in the Package README.</p>";
   return `<div class="asset-grid">${included.map(({ asset, path }) => {
     const source = mode === "full" && supportsInlinePreview(asset)
       ? `data:${asset.mimeType};base64,${bytesToBase64(asset.bytes)}`

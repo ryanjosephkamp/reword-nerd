@@ -10,7 +10,7 @@ import type {
   ProjectReadOptions,
   ZipProjectInput,
 } from "../../domain";
-import type { DownloadResult, ExportDocumentInput, PromptPackageResult } from "../../export";
+import type { DownloadResult, ExportSourceInput, PromptPackageResult } from "../../export";
 import type { ModelProfile } from "../../domain/profiles";
 import type { CodeRewriteOptions, RewriteSettings } from "../../domain/settings";
 import type { ExtractionOptions } from "../../domain/media";
@@ -76,6 +76,13 @@ export interface WorkbenchState {
     issues: IntakeIssue[];
   };
   editor: Record<string, EditorRevisionState>;
+  /** Latest project-review intent. Only that exact ticket may release the export guard. */
+  projectMutationState: Record<string, Readonly<{
+    originalTreeHash: string;
+    projectOperationGeneration: number;
+    latestTicket: number;
+    status: "pending" | "failed";
+  }>>;
   export: {
     status: "idle" | "building" | "ready" | "downloading" | "success" | "failure";
     safeMessage: string;
@@ -100,7 +107,7 @@ export interface WorkbenchServices {
     onProgress?: (progress: ProcessingProgress) => void,
   ): Promise<ExtractionResult>;
   hashText(text: string): Promise<string>;
-  buildPackage(inputs: readonly ExportDocumentInput[]): Promise<PromptPackageResult>;
+  buildPackage(inputs: readonly ExportSourceInput[]): Promise<PromptPackageResult>;
   download(blob: Blob): DownloadResult;
   downloadProgressCopy(html: string, filename: string): DownloadResult;
   createDocumentId(): string;

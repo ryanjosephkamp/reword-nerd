@@ -3,6 +3,7 @@ import { isSafeArchivePath } from "./paths";
 
 const text = (value: string): RunbookInline => Object.freeze({ type: "text", value });
 const code = (value: string): RunbookInline => Object.freeze({ type: "code", value });
+const link = (label: string, href: string): RunbookInline => Object.freeze({ type: "link", label, href });
 const content = (...values: RunbookInline[]): readonly RunbookInline[] => Object.freeze(values);
 
 function freezeBlock(block: RunbookBlock): RunbookBlock {
@@ -23,10 +24,10 @@ export function createRunbookDocument(manifest: PromptPackageManifest): Readonly
     { type: "paragraph", content: content(text("Open "), code("OPEN-ME.html"), text(" for immediate document entry points. No exported HTML makes network requests or stores document data automatically.")) },
     {
       type: "table",
-      headers: ["Document key", "Original", "One-shot", "Manual", "Combined", "Full HTML"],
+      headers: ["Document key", "Source", "One-shot", "Manual", "Combined", "Full HTML"],
       rows: manifest.documents.map((document) => [
         code(document.key),
-        code(document.original.path),
+        code(document.source.kind === "file" ? document.source.original.path : document.source.index.markdown.path),
         code(document.workbooks.oneShot.html.path),
         code(document.workbooks.manual.html.path),
         code(document.workbooks.combined.html.path),
@@ -37,6 +38,9 @@ export function createRunbookDocument(manifest: PromptPackageManifest): Readonly
     },
   ];
   for (const document of manifest.documents) {
+    const packagedProjectAssets = document.source.kind === "project"
+      ? document.source.entries.filter((entry) => entry.contentKind === "asset" && entry.packageIncluded && entry.packaged)
+      : [];
     blocks.push(
       { type: "heading", depth: 2, content: content(code(document.key)) },
       { type: "paragraph", content: content(text(`Selected model: ${document.model.label}`)) },
@@ -46,6 +50,17 @@ export function createRunbookDocument(manifest: PromptPackageManifest): Readonly
       { type: "paragraph", content: content(text(`Resolved settings: ${JSON.stringify(document.settings)}`)) },
       { type: "paragraph", content: content(text(`Context estimates: One-shot ${document.contextAssessment.oneShotWorkflowTokens}; Manual ${document.contextAssessment.manualWorkflowTokens}; known limit: ${document.contextAssessment.contextWindowTokens ?? "unknown"}; required Manual warning acknowledged: ${document.contextAssessment.acknowledgmentRequired ? (document.contextWarningAcknowledged ? "yes" : "no") : "not required"}.`)) },
       { type: "paragraph", content: content(text("Reviewed extraction: "), code(document.reviewedExtraction.path)) },
+      ...(document.source.kind === "project" ? [
+        { type: "paragraph" as const, content: content(text("Reviewed project index: "), code(document.source.index.markdown.path), text(" and "), code(document.source.index.json.path), text(". This sanitized tree is AI context, not a source-control backup.")) },
+        { type: "paragraph" as const, content: content(text("Project workflow: ask the model to return changed text files only, apply those blocks to a copy, inspect every diff, and run the project's normal tests/build. reword-nerd does not execute project code.")) },
+        { type: "paragraph" as const, content: content(text("Project assets are references, not rewriteable text. When the model interface accepts attachments, attach the safe files listed below from "), code(`documents/${document.key}/project/files/`), text(" and ask the model to preserve their paths and use them where relevant.")) },
+        ...(packagedProjectAssets.length > 0 ? [{
+          type: "list" as const,
+          ordered: false,
+          items: packagedProjectAssets.map((entry) => content(link(entry.path, entry.packaged!.path))),
+        }] : [{ type: "paragraph" as const, content: content(text("No safe non-text project assets are included.")) }]),
+        { type: "paragraph" as const, content: content(text(`Project provenance: ${document.source.intakeKind} intake; ${document.source.entries.filter((entry) => entry.promptIncluded).length} prompt files; ${document.source.entries.filter((entry) => entry.packageIncluded).length} packaged entries; ${Object.values(document.source.sensitiveBlockedCounts).reduce((total, count) => total + count, 0)} sensitive files dropped before retention.`)) },
+      ] : []),
       { type: "paragraph", content: content(text("Canonical Manual prompts: "), ...(["decompose", "rewrite", "verify", "final"] as const).flatMap((stage, index) => [code(document.prompts[stage].path), text(index === 3 ? "." : "; ")])) },
       { type: "paragraph", content: content(text(`Visual assets: ${document.visualAssets.records.filter((asset) => asset.included).length} included, ${document.visualAssets.records.filter((asset) => !asset.included).length} omitted; OCR records: ${document.ocr.records.length}; page count: ${document.processing.pageCount ?? "not applicable"}.`)) },
       { type: "paragraph", content: content(text("When the model interface supports image input, attach included assets using the filenames in assets/index.md. Otherwise provide the asset catalog and reviewed OCR text. Preserve every stable asset ID and place each figure near the relevant rewritten discussion.")) },

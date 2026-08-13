@@ -619,7 +619,7 @@ describe("workbench reducer", () => {
     state = workbenchReducer(state, { type: "export/download-started", revision: builtRevision });
     state = workbenchReducer(state, {
       type: "context/acknowledged",
-      documentId: "alpha",
+      itemId: "alpha",
       acknowledged: false,
     });
     const invalidated = state;

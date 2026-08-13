@@ -77,7 +77,7 @@ async function sha256(bytes: Uint8Array): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-describe("v5 workbook package", () => {
+describe("v6 workbook package", () => {
   it("emits the full dual-mode suite with exact prompt parity and hashes every generated artifact", async () => {
     // This catches a v5 package that drops a workflow companion, alters canonical prompt bytes, or records stale hashes.
     const { buildPromptPackage } = await import("../../src/export");
@@ -87,8 +87,8 @@ describe("v5 workbook package", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("fixture should export");
     expect(result.manifest).toMatchObject({
-      schemaVersion: 5,
-      package: { name: "reword-nerd", version: "0.5.1", format: "dual-mode-prompt-package" },
+      schemaVersion: 6,
+      package: { name: "reword-nerd", version: "0.6.0", format: "dual-mode-prompt-package" },
       workflow: {
         modes: ["one-shot", "manual"],
         manualStages: ["decompose", "rewrite", "verify", "final"],

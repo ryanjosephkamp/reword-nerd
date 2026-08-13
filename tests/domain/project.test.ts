@@ -199,6 +199,32 @@ describe("safe project domain", () => {
     })).rejects.toMatchObject({ code: "PROJECT_LIMIT_EXCEEDED" });
   });
 
+  it("captures immutable ZIP container provenance while folders have no fictitious container", async () => {
+    // This catches export metadata being derived from a mutable caller buffer or inventing a folder archive.
+    const project = await import("../../src/domain/project");
+    const archive = new JSZip();
+    archive.file("src/main.ts", "export const answer = 42;\n");
+    const bytes = await archive.generateAsync({ type: "uint8array" });
+    const original = bytes.slice();
+    const pending = project.readZipProject({ kind: "zip", name: "source.zip", bytes });
+    bytes.fill(0);
+    const zip = await pending;
+    const expectedHash = await crypto.subtle.digest("SHA-256", original);
+    const expectedHex = Array.from(new Uint8Array(expectedHash), (value) => value.toString(16).padStart(2, "0")).join("");
+
+    expect(zip.originalContainer).toEqual({
+      displayName: "source.zip",
+      byteCount: original.byteLength,
+      sha256: expectedHex,
+    });
+    const folder = await project.readFolderProject({
+      kind: "folder",
+      name: "source",
+      files: [folderFile("src/main.ts", "export const answer = 42;\n")],
+    });
+    expect(folder).not.toHaveProperty("originalContainer");
+  });
+
   it("caps prompt-included files and decoded text without silently truncating reviewable content", async () => {
     // This catches prompt limits truncating source bytes or allowing an oversized prompt to be built silently.
     const project = await import("../../src/domain/project");

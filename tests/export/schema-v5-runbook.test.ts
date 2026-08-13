@@ -41,17 +41,18 @@ function input(): ExportDocumentInput {
   };
 }
 
-describe("schema-v5 archive and semantic runbook", () => {
+describe("schema-v6 archive and semantic runbook", () => {
   it("emits the exact nested v5 document tree without a legacy prompts directory", async () => {
     const { buildPromptPackage } = await import("../../src/export");
     const result = await buildPromptPackage([input()]);
     if (!result.ok) throw new Error("fixture should export");
+    if (!result.manifest.documents[0].original) throw new Error("file fixture requires original record");
     const archive = await JSZip.loadAsync(result.blob, { checkCRC32: true });
     const key = result.manifest.documents[0].key;
     const paths = Object.keys(archive.files).filter((path) => path.startsWith(`documents/${key}/`));
 
-    expect(result.manifest.schemaVersion).toBe(5);
-    expect(result.manifest.package.version).toBe("0.5.1");
+    expect(result.manifest.schemaVersion).toBe(6);
+    expect(result.manifest.package.version).toBe("0.6.0");
     expect(paths).toEqual(expect.arrayContaining([
       `documents/${key}/one-shot/00-one-shot.md`,
       `documents/${key}/one-shot/one-shot-prompt.md`,
@@ -104,6 +105,8 @@ describe("schema-v5 archive and semantic runbook", () => {
     const { buildPromptPackage } = await import("../../src/export");
     const result = await buildPromptPackage([input()]);
     if (!result.ok) throw new Error("fixture should export");
+    const original = result.manifest.documents[0].original;
+    if (!original) throw new Error("file fixture requires original record");
     const parsed = new DOMParser().parseFromString(result.workbooks[0].combined.html, "text/html");
 
     expect(Array.from(parsed.querySelectorAll('[role="tab"]'), (node) => node.textContent)).toEqual(["README", "ONE-SHOT", "MANUAL"]);
@@ -122,9 +125,11 @@ describe("schema-v5 archive and semantic runbook", () => {
     const { buildPromptPackage } = await import("../../src/export");
     const result = await buildPromptPackage([input()]);
     if (!result.ok) throw new Error("fixture should export");
+    const original = result.manifest.documents[0].original;
+    if (!original) throw new Error("file fixture requires original record");
     const parsed = new DOMParser().parseFromString(result.workbooks[0].combined.html, "text/html");
     expect(parsed.querySelector("#panel-readme a[href]")).toBeNull();
-    expect(parsed.querySelector("#panel-readme")?.textContent).toContain(result.manifest.documents[0].original.path);
+    expect(parsed.querySelector("#panel-readme")?.textContent).toContain(original.path);
   });
 
   it("derives safe workbook links from canonical archive paths", async () => {

@@ -108,6 +108,28 @@ describe("project review", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Confirm project review" })).toBeEnabled());
   });
 
+  it.each([
+    ["inclusion", (view: typeof screen) => fireEvent.click(view.getByRole("checkbox", { name: "Include in package" }))],
+    ["classification", (view: typeof screen) => fireEvent.change(view.getByRole("combobox", { name: "Project classification" }), { target: { value: "general-text" } })],
+  ] as const)("blocks BUILD synchronously while a project %s hash is deferred", async (_label, mutate) => {
+    const ready = { ...project(), status: "ready" as const, requiresReview: false };
+    render(<App services={{ ...services(), readFolderProject: async () => ready }} />);
+    const file = new File(["text"], "copy.md");
+    Object.defineProperty(file, "webkitRelativePath", { value: "demo/copy.md" });
+    fireEvent.change(screen.getByLabelText("Add folder project"), { target: { files: [file] } });
+    await screen.findByRole("textbox", { name: "Reviewed text for src/copy.md" });
+
+    let release!: (value: ArrayBuffer) => void;
+    const digest = vi.spyOn(globalThis.crypto.subtle, "digest").mockImplementationOnce(
+      () => new Promise<ArrayBuffer>((resolve) => { release = resolve; }),
+    );
+    mutate(screen);
+    expect(screen.getAllByRole("button", { name: /build package/i }).every((button) => button.hasAttribute("disabled"))).toBe(true);
+    await waitFor(() => expect(release).toBeTypeOf("function"));
+    await act(async () => release(new Uint8Array(32).buffer));
+    digest.mockRestore();
+  });
+
   it("charges project bytes to later document preflight without consuming document count", async () => {
     // This catches a project plus standalone documents bypassing the shared 100 MiB session budget.
     const projectBytes = 100 * 1024 * 1024 - 4;
@@ -152,8 +174,8 @@ describe("project review", () => {
     expect(preflight.mock.calls[0]?.[1]).toEqual({ acceptedCount: 0, acceptedBytes: projectBytes });
   });
 
-  it("keeps the latest rapid editor draft and cancels a pending edit when the project disappears", () => {
-    // This catches per-keystroke async hashes reverting text and late callbacks surviving reset/removal unmounts.
+  it("keeps the latest rapid editor draft and flushes a pending edit before the editor disappears", () => {
+    // This catches an entry switch/removal silently discarding the visible text before its debounce expires.
     vi.useFakeTimers();
     const onEdit = vi.fn();
     const { unmount } = render(<ProjectReview
@@ -173,11 +195,12 @@ describe("project review", () => {
 
     act(() => vi.advanceTimersByTime(150));
     expect(onEdit).toHaveBeenCalledOnce();
-    expect(onEdit).toHaveBeenLastCalledWith("src/copy.md", "Rapid final");
+    expect(onEdit).toHaveBeenLastCalledWith("src/copy.md", "Rapid final", undefined);
     fireEvent.change(editor, { target: { value: "Must be cancelled" } });
     unmount();
     act(() => vi.runAllTimers());
-    expect(onEdit).toHaveBeenCalledOnce();
+    expect(onEdit).toHaveBeenCalledTimes(2);
+    expect(onEdit).toHaveBeenLastCalledWith("src/copy.md", "Must be cancelled", undefined);
     vi.useRealTimers();
   });
 

@@ -17,10 +17,24 @@ export function normalizeDocumentBase(name: string): string {
   return capped || "document";
 }
 
-export function extensionForFormat(format: unknown): "txt" | "md" | "docx" | "pdf" | "tex" | "zip" | undefined {
+export function extensionForFormat(format: unknown): string | undefined {
   switch (format) {
     case "text": return "txt";
     case "markdown": return "md";
+    case "html": return "html";
+    case "xml": return "xml";
+    case "json": return "json";
+    case "jsonl": return "jsonl";
+    case "ndjson": return "ndjson";
+    case "csv": return "csv";
+    case "tsv": return "tsv";
+    case "yaml": return "yaml";
+    case "toml": return "toml";
+    case "ini": return "ini";
+    case "config": return "conf";
+    case "css": return "css";
+    case "sql": return "sql";
+    case "code": return "txt";
     case "docx": return "docx";
     case "pdf": return "pdf";
     case "latex": return "tex";

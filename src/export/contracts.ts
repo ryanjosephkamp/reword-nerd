@@ -3,9 +3,18 @@ import type { DocumentFormat, ManifestDocumentInput, PromptBundle, PromptSet } f
 import type { HashAdapter } from "../domain/extraction";
 import type { ModelProfile, PromptStage } from "../domain/profiles";
 import type { RewriteSettings } from "../domain/settings";
+import type { CodeRewriteOptions } from "../domain/settings";
 import type { ExtractionOptions, LatexProjectMetadata, OcrCandidate, VisualAsset } from "../domain/media";
+import type {
+  ProjectClassification,
+  ProjectContentKind,
+  ProjectExclusionReason,
+  ProjectSourceKind,
+  WorkspaceProject,
+} from "../domain/project";
 
 export interface ExportDocumentInput extends ManifestDocumentInput {
+  kind?: "document";
   original: File;
   reviewed: boolean;
   contextWarningAcknowledged: boolean;
@@ -16,6 +25,32 @@ export interface ExportDocumentInput extends ManifestDocumentInput {
   ocrCandidates?: readonly OcrCandidate[];
   latexProject?: LatexProjectMetadata & { projectRoot?: string };
 }
+
+export interface ExportProjectInput {
+  kind: "project";
+  projectId: string;
+  projectName: string;
+  /** Complete reviewed in-memory project. Export independently snapshots and revalidates it. */
+  project: WorkspaceProject;
+  reviewedExtractedText: string;
+  resolvedSettings: RewriteSettings;
+  codeRewriteOptions: CodeRewriteOptions;
+  chosenProfile: ModelProfile;
+  promptBundle: PromptBundle;
+  warnings: string[];
+  /** Aggregate only. Sensitive paths, names, hashes, and bytes are never export inputs. */
+  sensitiveBlockedCounts: {
+    credentialFiles: number;
+    privateKeys: number;
+    clearCredentials: number;
+  };
+  contextAssessment: ContextAssessment;
+  reviewed: boolean;
+  contextWarningAcknowledged: boolean;
+  uploadOrdinal: number;
+}
+
+export type ExportSourceInput = ExportDocumentInput | ExportProjectInput;
 
 export type ExportFailureCode =
   | "NO_DOCUMENTS"
@@ -71,6 +106,46 @@ export interface ManifestOcrRecord {
   reviewedTextSha256: string;
 }
 
+export interface ManifestProjectEntryRecord {
+  path: string;
+  originalByteCount: number;
+  originalSha256: string;
+  reviewedSha256: string | null;
+  reviewRevision: number;
+  contentKind: ProjectContentKind;
+  languageId: string | null;
+  promptIncluded: boolean;
+  packageIncluded: boolean;
+  exclusionReason: ProjectExclusionReason;
+  packaged?: ManifestPromptRecord;
+}
+
+export type ManifestSourceRecord =
+  | {
+    kind: "file";
+    original: { path: string; byteCount: number; sha256: string };
+  }
+  | {
+    kind: "project";
+    intakeKind: ProjectSourceKind;
+    rootName: string;
+    classification: ProjectClassification;
+    rootDocument: string | null;
+    originalTreeHash: string;
+    reviewedTreeHash: string;
+    reviewRevision: number;
+    totalByteCount: number;
+    codeRewriteOptions: CodeRewriteOptions;
+    originalContainer?: { displayName: string; byteCount: number; sha256: string };
+    index: { markdown: ManifestPromptRecord; json: ManifestPromptRecord };
+    entries: ManifestProjectEntryRecord[];
+    sensitiveBlockedCounts: {
+      credentialFiles: number;
+      privateKeys: number;
+      clearCredentials: number;
+    };
+  };
+
 export type ManifestGeneratedArtifact =
   | { status: "generated"; path: string; sha256: string }
   | { status: "not-generated"; reason: "encoded-size-limit" };
@@ -80,7 +155,9 @@ export interface ManifestDocumentRecord {
   exportOrdinal: number;
   originalDisplayName: string;
   format: DocumentFormat;
-  original: { path: string; byteCount: number; sha256: string };
+  source: ManifestSourceRecord;
+  /** Compatibility field retained for file sources; deliberately absent for projects. */
+  original?: { path: string; byteCount: number; sha256: string };
   reviewedExtraction: { path: string; unicodeCodePointCount: number; sha256: string; warnings: string[] };
   settings: RewriteSettings;
   model: Pick<ModelProfile, "id" | "family" | "label" | "contextWindowTokens" | "lastReviewed" | "workflowNote"> & {
@@ -101,6 +178,10 @@ export interface ManifestDocumentRecord {
     | "ratio"
     | "oversized"
     | "acknowledgmentRequired"
+    | "includedFileCount"
+    | "amberRisk"
+    | "amberRiskReasons"
+    | "inspectDiffsAndRunTestsWarning"
   >;
   contextWarningAcknowledged: boolean;
   prompts: Record<"oneShot" | keyof PromptSet, ManifestPromptRecord>;
@@ -124,8 +205,8 @@ export interface ManifestDocumentRecord {
 }
 
 export interface PromptPackageManifest {
-  schemaVersion: 5;
-  package: { name: "reword-nerd"; version: "0.5.1"; format: "dual-mode-prompt-package" };
+  schemaVersion: 6;
+  package: { name: "reword-nerd"; version: "0.6.0"; format: "dual-mode-prompt-package" };
   archive: {
     entryOrder: "lexicographic-code-unit-ascending";
     timestamp: "1980-01-01T00:00:00.000Z";
