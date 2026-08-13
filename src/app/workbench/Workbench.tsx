@@ -7,6 +7,7 @@ import {
   selectCounts,
   selectDirty,
   selectSelectedDocument,
+  selectSelectedVisualAsset,
 } from "./selectors";
 import { defaultWorkbenchServices } from "./services";
 import { useBeforeUnloadWarning } from "./useBeforeUnloadWarning";
@@ -104,6 +105,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
   const editor = useReviewEditor(state, dispatch, services);
   const exporter = useExportPackage(state, dispatch, services);
   const selected = selectSelectedDocument(state);
+  const selectedAsset = selected ? selectSelectedVisualAsset(state, selected.id) : undefined;
   const counts = selectCounts(state);
   const dirty = selectDirty(state);
   const preferenceSnapshot = useMemo(() => snapshotPreferences({
@@ -294,11 +296,6 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
             <span className={`selected-status status-${selected.status}`}>{selected.status === "ready" ? "READY" : selected.status === "blocked" || selected.status === "error" ? "BLOCKED" : "NEEDS REVIEW"}</span>
             <button type="button" aria-label={`Show ${selected.name} in files`} onClick={() => dispatch({ type: "mobile/tab-changed", tab: "files" })}><MoreIcon /></button>
           </div>
-          <div className="mobile-document-stats">
-            <span><strong>{selected.pageCount ?? "—"}</strong><small>PAGES</small></span>
-            <span><strong>{selected.visualAssets?.filter((asset) => asset.included).length ?? 0}</strong><small>IMAGES</small></span>
-            <span><strong>{selected.ocrCandidates?.length ?? 0}</strong><small>OCR ITEMS</small></span>
-          </div>
         </div> : null}
         <div className="panel-heading preview-heading">
           <h2 ref={packageHeadingRef} tabIndex={-1}>{state.previewMode === "package" ? "PACKAGE PREVIEW" : "EXTRACTED_TEXT"}</h2>
@@ -323,6 +320,11 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
           </div>
         </div>
         <div className="preview-content">
+          {selected ? <div className="mobile-document-stats">
+            <span><strong>{selected.pageCount ?? "—"}</strong><small>PAGES</small></span>
+            <span><strong>{selected.visualAssets?.filter((asset) => asset.included).length ?? 0}</strong><small>IMAGES</small></span>
+            <span><strong>{selected.ocrCandidates?.length ?? 0}</strong><small>OCR ITEMS</small></span>
+          </div> : null}
           {state.export.builtPackage ? <PackagePreview
             key={state.export.builtRevision}
             workbooks={state.export.builtPackage.workbooks}
@@ -335,6 +337,10 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
           /> : null}
           {state.previewMode === "assets" ? <AssetGallery
             assets={selected?.visualAssets ?? []}
+            view={state.assetViewMode}
+            selectedAssetId={selectedAsset?.id ?? null}
+            onViewChange={(view) => dispatch({ type: "assets/view-changed", mode: view })}
+            onSelect={(assetId) => { if (selected) dispatch({ type: "assets/selected", documentId: selected.id, assetId }); }}
             onInclusionChange={(assetId, included) => { if (selected) dispatch({ type: "visual-asset/inclusion-changed", documentId: selected.id, assetId, included }); }}
           /> : state.previewMode === "source" ? <>
           <ExtractedTextEditor

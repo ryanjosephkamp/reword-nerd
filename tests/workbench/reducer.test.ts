@@ -67,6 +67,34 @@ describe("workbench reducer", () => {
     expect(selectDirty(state)).toBe(false);
   });
 
+  it("keeps gallery navigation view-only and preserves the selected asset while inclusion invalidates export", () => {
+    // This catches gallery selection being lost across Preview modes or Include ejecting the user to Source.
+    const alpha = document("alpha");
+    alpha.visualAssets = [
+      { id: "asset-1", filename: "one.png", mimeType: "image/png", bytes: new Uint8Array([1]), byteCount: 1, sha256: "one", order: 1, kind: "pdf-raster", included: true, decorative: false, warnings: [] },
+      { id: "asset-2", filename: "two.png", mimeType: "image/png", bytes: new Uint8Array([2]), byteCount: 1, sha256: "two", order: 2, kind: "pdf-raster", included: true, decorative: false, warnings: [] },
+    ];
+    let state = createInitialWorkbenchState();
+    state = workbenchReducer(state, { type: "intake/accepted", batchId: "batch-a", documents: [{ document: alpha, uploadOrdinal: 0 }] });
+    const revision = state.revision;
+    state = workbenchReducer(state, { type: "assets/view-changed", mode: "gallery" });
+    state = workbenchReducer(state, { type: "assets/selected", documentId: "alpha", assetId: "asset-2" });
+    expect(state.assetViewMode).toBe("gallery");
+    expect(state.selectedAssetIdByDocument.alpha).toBe("asset-2");
+    expect(state.revision).toBe(revision);
+
+    state = workbenchReducer(state, { type: "preview/mode-changed", mode: "assets" });
+    state = workbenchReducer(state, { type: "preview/mode-changed", mode: "source" });
+    state = workbenchReducer(state, { type: "preview/mode-changed", mode: "assets" });
+    expect(state.selectedAssetIdByDocument.alpha).toBe("asset-2");
+    state = workbenchReducer(state, { type: "visual-asset/inclusion-changed", documentId: "alpha", assetId: "asset-2", included: false });
+    expect(state.previewMode).toBe("assets");
+    expect(state.assetViewMode).toBe("gallery");
+    expect(state.selectedAssetIdByDocument.alpha).toBe("asset-2");
+    expect(state.documents[0].visualAssets?.[1].included).toBe(false);
+    expect(state.revision).toBe(revision + 1);
+  });
+
   it("opens only one overlay and cancels the prior surface", () => {
     // This catches independently managed dialogs stacking and trapping focus twice.
     let state = createInitialWorkbenchState({ tutorialVersion: CURRENT_TUTORIAL_VERSION });

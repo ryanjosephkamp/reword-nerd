@@ -90,7 +90,7 @@ test("captures the built package preview without responsive clipping", async ({ 
     if (width < 768) await page.getByRole("tab", { name: "REVIEW" }).click();
     const runbookTab = page.getByRole("tab", { name: "RUNBOOK" });
     if (await runbookTab.getAttribute("aria-selected") !== "true") await runbookTab.click();
-    await page.locator(".package-preview").evaluate((element) => { element.scrollTop = 0; });
+    await page.locator(".preview-content").evaluate((element) => { element.scrollTop = 0; });
     const filenameGeometry = await page.evaluate(() => {
       const heading = document.querySelector<HTMLElement>(".package-document-heading h3")!.getBoundingClientRect();
       const sticky = document.querySelector<HTMLElement>(".package-sticky-header")!.getBoundingClientRect();
@@ -102,6 +102,40 @@ test("captures the built package preview without responsive clipping", async ({ 
     const oneShotCopy = page.getByRole("button", { name: "COPY ONE-SHOT PROMPT" });
     await expect(oneShotCopy).toHaveCount(1);
     await page.screenshot({ path: `${screenshotDirectory}/${name}`, fullPage: false, animations: "disabled" });
+    if (width < 768) {
+      const beforeScroll = await page.evaluate(() => {
+        const rect = (selector: string) => document.querySelector<HTMLElement>(selector)!.getBoundingClientRect();
+        const content = document.querySelector<HTMLElement>(".preview-content")!;
+        return {
+          contentHeight: content.clientHeight,
+          contentScrollHeight: content.scrollHeight,
+          headingTop: rect(".preview-heading").top,
+          exportTop: rect(".preview-panel > .export-panel").top,
+          metricsTop: rect(".mobile-document-stats").top,
+          controlsTop: rect(".package-preview-controls").top,
+        };
+      });
+      expect(beforeScroll.contentHeight).toBeGreaterThanOrEqual(240);
+      expect(beforeScroll.contentScrollHeight).toBeGreaterThan(beforeScroll.contentHeight + 100);
+      const scrolled = await page.locator(".preview-content").evaluate((element) => {
+        element.scrollTop = Math.min(280, element.scrollHeight - element.clientHeight);
+        return element.scrollTop;
+      });
+      expect(scrolled).toBeGreaterThanOrEqual(100);
+      const afterScroll = await page.evaluate(() => {
+        const rect = (selector: string) => document.querySelector<HTMLElement>(selector)!.getBoundingClientRect();
+        return {
+          headingTop: rect(".preview-heading").top,
+          exportTop: rect(".preview-panel > .export-panel").top,
+          metricsTop: rect(".mobile-document-stats").top,
+          controlsTop: rect(".package-preview-controls").top,
+        };
+      });
+      expect(afterScroll.headingTop).toBeCloseTo(beforeScroll.headingTop, 0);
+      expect(afterScroll.exportTop).toBeCloseTo(beforeScroll.exportTop, 0);
+      expect(afterScroll.metricsTop).toBeLessThan(beforeScroll.metricsTop - 90);
+      expect(afterScroll.controlsTop).toBeLessThan(beforeScroll.controlsTop - 90);
+    }
     const manualTab = page.getByRole("tab", { name: "MANUAL" });
     if (await manualTab.getAttribute("aria-selected") !== "true") await manualTab.click();
     const response = page.getByRole("textbox", { name: "Stage 1 — Decompose model response" });

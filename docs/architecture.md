@@ -28,6 +28,8 @@ prevent late extraction results from restoring removed or stale documents.
 The reducer holds original `File` objects, extracted text and hashes, warnings,
 review state, assets/OCR, selection, global settings, and per-file overrides in
 memory. A confirmed extraction becomes review-required again after editing.
+Asset detail/gallery navigation and per-document asset selection are view-only;
+changing Include/Omit remains a review mutation and invalidates the built package.
 
 ## Prompt and context contracts
 
@@ -103,7 +105,7 @@ contains only global model/context, rewrite, processing, and tutorial-version
 preferences. Workbench documents and workbook progress are never included.
 
 `src/version.ts` exposes `APP_VERSION` from package metadata. The footer and
-Info dialog render `0.5.0` from that source, while schema-v5 contracts and tests
+Info dialog render `0.5.1` from that source, while schema-v5 contracts and tests
 require the manifest package version to match the release.
 
 ## Overlay, guidance, and layout boundary
@@ -123,6 +125,9 @@ Desktop Parameters visibility is session-only view state. The gear collapses
 the third column and allows Preview to fill the freed width; it does not alter
 settings, revision identity, or workbook progress. Tablet retains a modal
 Settings drawer, and mobile retains the Settings destination.
+Mobile Preview uses one content scroller: its mode navigation and export actions
+remain outside that scroller, while metrics and Package-local controls move with
+the runbook or prompt content.
 
 ## Main modules
 

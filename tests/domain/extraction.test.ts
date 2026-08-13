@@ -293,8 +293,24 @@ describe("PDF adapter core", () => {
     });
 
     expect(result.text).toBe("--- Page 1 ---\n\nFirst\nline\n\n--- Page 2 ---\n\n\n\n--- Page 3 ---\n\nThird");
-    expect(result.warnings).toEqual(["Pages 2 do not contain selectable text."]);
+    expect(result.warnings).toEqual(["Page 2 does not contain selectable text."]);
     expect(destroyed).toEqual(["document", "loading"]);
+  });
+
+  it("uses a grammatical conjunction when multiple PDF pages lack selectable text", async () => {
+    const extraction = await import("../../src/domain/extraction");
+    const result = await extraction.extractPdfWithAdapter(new Uint8Array([1]), {
+      load: () => ({
+        promise: Promise.resolve({
+          numPages: 4,
+          getPage: async (pageNumber: number) => ({
+            getTextContent: async () => ({ items: pageNumber === 1 || pageNumber === 3 ? [{ str: "Text" }] : [] }),
+          }),
+        }),
+      }),
+    });
+
+    expect(result.warnings).toEqual(["Pages 2 and 4 do not contain selectable text."]);
   });
 
   it("classifies encrypted, invalid, generic, and fully textless PDFs safely while cleaning up", async () => {

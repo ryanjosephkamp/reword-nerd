@@ -337,14 +337,15 @@ test("reload clears edited workspace state and retains only validated global pre
   expect((await context.cookies()).filter((cookie) => cookie.domain === "127.0.0.1")).toEqual([]);
 });
 
-test("initial load, real extraction, and ZIP export make no HTTP requests outside the local app origin", async ({ page }) => {
+test("initial load, real extraction, and ZIP export make no HTTP requests outside the local app origin", async ({ page, baseURL }) => {
   // This catches a remote asset, parser fetch, analytics call, or upload transport crossing the browser boundary.
   const docx = await createDocxFixture();
   const pdf = createSelectablePdfFixture();
   const externalRequests: string[] = [];
+  const appOrigin = new URL(baseURL!).origin;
   page.on("request", (request) => {
     const url = new URL(request.url());
-    if ((url.protocol === "http:" || url.protocol === "https:") && url.origin !== "http://127.0.0.1:4173") {
+    if ((url.protocol === "http:" || url.protocol === "https:") && url.origin !== appOrigin) {
       externalRequests.push(request.url());
     }
   });
@@ -550,7 +551,7 @@ test("in-site package progress hydrates, survives navigation, downloads, and res
   expect(archive.file("OPEN-ME.html")).not.toBeNull();
   expect(JSON.parse(await archive.file("manifest.json")!.async("string"))).toMatchObject({
     schemaVersion: 5,
-    package: { format: "dual-mode-prompt-package", version: "0.5.0" },
+    package: { format: "dual-mode-prompt-package", version: "0.5.1" },
   });
 });
 

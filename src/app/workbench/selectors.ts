@@ -12,6 +12,13 @@ export function selectSelectedDocument(state: WorkbenchState): WorkbenchDocument
   return state.documents.find((document) => document.id === state.selectedDocumentId);
 }
 
+export function selectSelectedVisualAsset(state: WorkbenchState, documentId: string) {
+  const document = state.documents.find((item) => item.id === documentId);
+  if (!document) return undefined;
+  const selectedId = state.selectedAssetIdByDocument[documentId];
+  return document.visualAssets?.find((asset) => asset.id === selectedId) ?? document.visualAssets?.[0];
+}
+
 export function selectResolvedSettings(state: WorkbenchState, documentId: string): RewriteSettings {
   const document = state.documents.find((item) => item.id === documentId);
   return resolveSettings(

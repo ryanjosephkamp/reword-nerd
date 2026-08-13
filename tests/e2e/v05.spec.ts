@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { asPayload, textFixture } from "./fixtures";
 
 const screenshotDirectory = "output/playwright/v05";
@@ -136,7 +136,7 @@ test("Info is branded, versioned, exact-link-only, and dismisses from the backdr
   const infoButton = page.getByRole("button", { name: "Info" });
   await infoButton.click();
   const info = page.getByRole("dialog", { name: "About reword-nerd" });
-  await expect(info).toContainText("reword-nerd v0.5.0");
+  await expect(info).toContainText("reword-nerd v0.5.1");
   await expect(info).toContainText("Files, extraction, package generation, and previews remain on this device.");
   const logo = info.getByRole("img", { name: "reword-nerd logo" });
   await expect(logo).toHaveAttribute("src", /\/brand\/reword-nerd-logo\.webp$/u);
@@ -145,7 +145,7 @@ test("Info is branded, versioned, exact-link-only, and dismisses from the backdr
 
   const expectedLinks = [
     ["Repository", "https://github.com/ryanjosephkamp/reword-nerd"],
-    ["GitHub", "https://github.com/ryanjosephkamp/"],
+    ["GitHub profile", "https://github.com/ryanjosephkamp/"],
     ["Website", "https://ryanjosephkamp.github.io"],
     ["Sponsor", "https://github.com/sponsors/ryanjosephkamp"],
   ] as const;
@@ -156,10 +156,74 @@ test("Info is branded, versioned, exact-link-only, and dismisses from the backdr
     await expect(link).toHaveAttribute("rel", "noopener noreferrer");
   }
   await expect(info.getByText("Built by").getByRole("link", { name: "Ryan Kamp" })).toHaveAttribute("href", "https://ryanjosephkamp.github.io");
+  const creator = info.getByRole("region", { name: "Built by Ryan Kamp" });
+  await expect(creator).toBeVisible();
+  await expect(creator.getByRole("link", { name: "GitHub profile" })).toBeVisible();
+  await expect(creator.getByRole("link", { name: "Repository" })).toHaveCount(0);
+  mkdirSync(screenshotDirectory, { recursive: true });
+  await page.screenshot({ path: `${screenshotDirectory}/info-desktop.png`, animations: "disabled" });
 
   await page.locator(".dialog-backdrop").click({ position: { x: 4, y: 4 } });
   await expect(info).toBeHidden();
   await expect(infoButton).toBeFocused();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const menu = page.getByRole("button", { name: "Menu" });
+  await menu.click();
+  await page.getByLabel("Mobile utilities").getByRole("button", { name: "Info" }).click();
+  await expect(info).toBeVisible();
+  await assertContained(page);
+  await page.screenshot({ path: `${screenshotDirectory}/info-mobile-390x844.png`, animations: "disabled" });
+  await page.locator(".dialog-backdrop").click({ position: { x: 4, y: 4 } });
+  await expect(menu).toBeFocused();
+});
+
+test("mobile visual assets support a persistent detail selection and compact gallery", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openWorkbench(page);
+  const firstPng = readFileSync("public/brand/favicon-16.png").toString("base64");
+  const secondPng = readFileSync("public/brand/favicon-32.png").toString("base64");
+  const source = `# Gallery fixture\n\n![Figure one](data:image/png;base64,${firstPng})\n\n![Figure two](data:image/png;base64,${secondPng})\n`;
+  await page.getByLabel("Add supported files").setInputFiles({
+    name: "gallery.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from(source, "utf8"),
+  });
+  await expect(page.getByLabel("Extracted text for gallery.md")).toHaveValue(/asset:asset-/u);
+  await page.getByRole("button", { name: "ASSETS" }).click();
+  await expect(page.getByRole("heading", { name: "Figure one" })).toBeVisible();
+  await page.getByRole("button", { name: "GALLERY", exact: true }).click();
+  const gallery = page.getByRole("list", { name: "Visual asset gallery" });
+  await expect(gallery.getByRole("listitem")).toHaveCount(2);
+  await gallery.getByRole("button", { name: "Select Figure two, included" }).click();
+  await expect(gallery.getByRole("button", { name: "Select Figure two, included" })).toHaveAttribute("aria-pressed", "true");
+  mkdirSync(screenshotDirectory, { recursive: true });
+  await page.screenshot({ path: `${screenshotDirectory}/asset-gallery-mobile-390x844.png`, animations: "disabled" });
+  await page.getByRole("button", { name: "DETAIL", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Figure two" })).toBeVisible();
+  await expect(page.getByText("2 / 2")).toBeVisible();
+  await assertContained(page);
+});
+
+test("mobile One-shot exposes a contextual copy control for the edited prompt", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openWorkbench(page);
+  await buildTextPackage(page);
+  await page.getByRole("tab", { name: "ONE-SHOT" }).click();
+  const prompt = page.getByRole("textbox", { name: "Editable One-shot prompt" });
+  await prompt.fill("EXACT MOBILE ONE-SHOT\nWITH A SECOND LINE");
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: (value: string) => { (window as unknown as { copiedPrompt: string }).copiedPrompt = value; } },
+    });
+  });
+  const contextualCopy = page.getByRole("button", { name: "Copy One-shot", exact: true });
+  await contextualCopy.click();
+  await expect(page.getByRole("status")).toHaveText("One-shot prompt copied.");
+  expect(await page.evaluate(() => (window as unknown as { copiedPrompt: string }).copiedPrompt))
+    .toBe("EXACT MOBILE ONE-SHOT\nWITH A SECOND LINE");
+  await expect(contextualCopy).toBeFocused();
 });
 
 test("desktop Settings collapses into Preview without moving Files or invalidating a built package", async ({ page }) => {

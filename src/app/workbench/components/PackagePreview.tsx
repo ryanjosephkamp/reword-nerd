@@ -299,7 +299,10 @@ export function PackagePreview({
       hidden={tab !== "one-shot"}
     >
       <div className="prompt-preview-block">
-        <header><h4>ONE-SHOT</h4></header>
+        <header><h4>ONE-SHOT</h4><button
+          type="button"
+          onClick={(event) => void copyPrompt("oneShot", "One-shot", event.currentTarget)}
+        >Copy One-shot</button></header>
         <label htmlFor="package-prompt-oneShot">Editable One-shot prompt</label>
         <textarea
           id="package-prompt-oneShot"

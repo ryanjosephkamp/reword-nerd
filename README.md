@@ -49,6 +49,10 @@ For each accepted document:
 6. read the rich **RUNBOOK**, then use the in-site One-shot or Manual
    workspace, or explicitly **DOWNLOAD ZIP**.
 
+The Assets view opens in a focused one-at-a-time review and can switch to a
+compact gallery for choosing any extracted figure directly. The selected asset
+and Include/Omit decision remain inspectable when moving between those views.
+
 Build does not auto-download. Any source, review, asset, processing, profile, or
 rewrite-setting mutation invalidates the built Blob and workbooks together.
 Switching Source/Assets/Package, workflows, or package documents does not.
@@ -75,6 +79,9 @@ npm run build
 npm run preview
 PLAYWRIGHT_USE_PREVIEW=1 npm run e2e
 ```
+
+If port 4173 is already serving another local project, set an isolated test
+port, for example `PLAYWRIGHT_PORT=4187`.
 
 Run all local release checks with:
 
@@ -154,6 +161,10 @@ tabs show only their editable prompts and response fields. Combined standalone
 HTML opens on a rich **README** tab, followed by One-shot and Manual. The
 single-workflow HTML companions retain their rich README so each is usable on
 its own.
+
+On mobile, Source/Assets/Package navigation and Build/Download remain reachable
+while document metrics and package-local controls scroll away with the content,
+leaving the prompt or runbook as the primary reading surface.
 
 Standalone HTML is escaped, keyboard accessible, responsive to 320px, free of
 remote resources and automatic storage, and supports Clipboard API plus a

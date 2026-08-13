@@ -125,7 +125,7 @@ export interface ManifestDocumentRecord {
 
 export interface PromptPackageManifest {
   schemaVersion: 5;
-  package: { name: "reword-nerd"; version: "0.5.0"; format: "dual-mode-prompt-package" };
+  package: { name: "reword-nerd"; version: "0.5.1"; format: "dual-mode-prompt-package" };
   archive: {
     entryOrder: "lexicographic-code-unit-ascending";
     timestamp: "1980-01-01T00:00:00.000Z";

@@ -197,6 +197,18 @@ const ISSUE_MESSAGES: Record<FileIssueCode, string> = {
   INVALID_LATEX_PROJECT: "This archive is not a valid LaTeX project.",
 };
 
+function formatPageNumbers(pages: readonly number[]): string {
+  if (pages.length < 2) return String(pages[0]);
+  if (pages.length === 2) return `${pages[0]} and ${pages[1]}`;
+  return `${pages.slice(0, -1).join(", ")}, and ${pages.at(-1)}`;
+}
+
+function textlessPagesWarning(pages: readonly number[]): string {
+  return pages.length === 1
+    ? `Page ${pages[0]} does not contain selectable text.`
+    : `Pages ${formatPageNumbers(pages)} do not contain selectable text.`;
+}
+
 function issue(code: FileIssueCode): FileIssue {
   return { code, message: ISSUE_MESSAGES[code] };
 }
@@ -469,7 +481,7 @@ export async function extractPdfWithAdapter(
       throw new FileExtractionError(issue("PDF_TEXTLESS"));
     }
     const warnings = textlessPages.length > 0
-      ? [`Pages ${textlessPages.join(", ")} do not contain selectable text.`]
+      ? [textlessPagesWarning(textlessPages)]
       : [];
     if (limitWarningAdded) warnings.push("The PDF visual-asset limit was reached; additional visuals were omitted.");
     if (ocrCandidates.length > 0) warnings.push("Review every OCR candidate before confirming the extraction.");
