@@ -12,6 +12,7 @@ import {
   Question,
   SlidersHorizontal,
   ArrowCounterClockwise,
+  ShareNetwork,
   Warning,
   X,
   type IconProps,
@@ -24,6 +25,7 @@ export const GearIcon = (props: IconProps) => <Gear {...defaults} {...props} />;
 export const HelpIcon = (props: IconProps) => <Question {...defaults} {...props} />;
 export const InfoIcon = (props: IconProps) => <Info {...defaults} {...props} />;
 export const RestartIcon = (props: IconProps) => <ArrowCounterClockwise {...defaults} {...props} />;
+export const ShareIcon = (props: IconProps) => <ShareNetwork {...defaults} {...props} />;
 export const DocumentIcon = (props: IconProps) => <FileText {...defaults} {...props} />;
 export const WarningIcon = (props: IconProps) => <Warning {...defaults} {...props} />;
 export const CubeIcon = (props: IconProps) => <Cube {...defaults} {...props} />;

@@ -62,6 +62,9 @@ All complaints will be reviewed and investigated promptly and fairly.
 All community leaders are obligated to respect the privacy and security of the
 reporter of any incident.
 
+For contribution expectations, see [Contributing](CONTRIBUTING.md). Security
+reports follow the private process in the [Security policy](SECURITY.md).
+
 ## Attribution
 
 This Code of Conduct is adapted from the [Contributor Covenant][homepage],

@@ -96,3 +96,5 @@ When changing a root prompt template:
 ## Community standards
 
 Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+For suspected vulnerabilities, do not open a public Issue. Follow the private, synthetic-evidence-only process in the [Security policy](SECURITY.md).

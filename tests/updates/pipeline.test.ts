@@ -10,7 +10,9 @@ async function fixtureRoot(overrides: { version?: string; markdown?: string; sta
   const root = await mkdtemp(join(tmpdir(), "reword-nerd-updates-"));
   roots.push(root);
   await mkdir(join(root, "content/updates"), { recursive: true });
+  await mkdir(join(root, "public/updates"), { recursive: true });
   await mkdir(join(root, "src/export"), { recursive: true });
+  await writeFile(join(root, "public/updates/share.js"), "/* local Share enhancement */\n");
   await writeFile(join(root, "package.json"), JSON.stringify({ name: "reword-nerd", version: overrides.version ?? "0.7.0" }));
   await writeFile(join(root, "package-lock.json"), JSON.stringify({ name: "reword-nerd", version: overrides.version ?? "0.7.0", packages: { "": { version: overrides.version ?? "0.7.0" } } }));
   await writeFile(join(root, "src/version.ts"), `import packageMetadata from "../package.json";
@@ -164,7 +166,7 @@ describe("Updates validation and rendering", () => {
     expect(post).toContain('property="og:type" content="article"');
     expect(post).toContain('name="twitter:card" content="summary_large_image"');
     expect(post).toContain('"@type":"BlogPosting"');
-    expect(post).not.toMatch(/<script\b(?![^>]*application\/ld\+json)/u);
+    expect(post).toContain('<script type="module" src="/reword-nerd/updates/share.js"></script>');
     expect(feed).toContain("<rss version=\"2.0\">");
     expect(feed).toContain("A static Updates journal.");
     expect(sitemap).toContain("/reword-nerd/updates/v0-7-0/");
@@ -189,6 +191,27 @@ describe("Updates validation and rendering", () => {
     expect(() => validateRenderedPageScripts('<main>Complete static content</main><script type="module" src="/reword-nerd/updates/share.js" onload="fetch(\'/secret\')"></script>')).toThrow(/script/i);
     expect(() => validateRenderedPageScripts('<main>Complete static content</main><script src="https://cdn.example/share.js"></script>')).toThrow(/script/i);
     expect(() => validateRenderedPageScripts('<main>Complete static content</main><script>location.href="/"</script>')).toThrow(/script/i);
+  });
+
+  it("renders useful no-JavaScript Updates pages with canonical Share controls, feedback footer links, and one optional local module", async () => {
+    // This catches generated Updates pages depending on JavaScript, using the current location, or sending feedback to an unreviewed destination.
+    const root = await fixtureRoot();
+    await renderUpdates(root, join(root, "dist"));
+    const archive = await readFile(join(root, "dist/updates/index.html"), "utf8");
+    const post = await readFile(join(root, "dist/updates/v0-7-0/index.html"), "utf8");
+
+    for (const html of [archive, post]) {
+      expect(html).toContain('<button class="share-control" type="button" data-share-url="https://ryanjosephkamp.github.io/reword-nerd/updates/');
+      expect(html).toContain('href="https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=bug_report.yml"');
+      expect(html).toContain('href="https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=feature_request.yml"');
+      expect(html).toContain('href="https://github.com/ryanjosephkamp/reword-nerd/security/advisories/new"');
+      expect(html).toContain('src="/reword-nerd/updates/share.js"');
+      expect(validateRenderedPageScripts(html)).toBe(html);
+    }
+    expect(archive).toContain('href="/reword-nerd/updates/v0-7-0/"');
+    expect(archive).toContain("A static Updates journal.");
+    expect([...archive.matchAll(/src="\/reword-nerd\/updates\/share\.js"/gu)]).toHaveLength(1);
+    expect([...post.matchAll(/src="\/reword-nerd\/updates\/share\.js"/gu)]).toHaveLength(1);
   });
 
   it("rejects GitHub links outside the exact editorial destination allowlist", async () => {

@@ -27,7 +27,10 @@ import { QuickStartDialog } from "./components/QuickStartDialog";
 import { ResetPreferencesDialog } from "./components/ResetPreferencesDialog";
 import { InfoDialog } from "./components/InfoDialog";
 import { NewSessionDialog } from "./components/NewSessionDialog";
+import { ShareFallbackDialog } from "./components/ShareFallbackDialog";
 import { APP_VERSION } from "../../version";
+import { CURRENT_RELEASE_POST_PATH } from "../../updates/currentRelease";
+import { shareCanonicalUrl } from "./share";
 import { MobileTabs } from "./components/MobileTabs";
 import { PackagePreview } from "./components/PackagePreview";
 import { SettingsDrawer } from "./components/SettingsDrawer";
@@ -129,10 +132,12 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     })));
   }, [intakeCapacity, state.documents.length, state.items]);
   const [busyOcrCandidate, setBusyOcrCandidate] = useState<string | null>(null);
+  const [shareMessage, setShareMessage] = useState("");
   const mode = useResponsiveMode();
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const helpReturnFocusRef = useRef<HTMLButtonElement>(null);
   const infoReturnFocusRef = useRef<HTMLButtonElement>(null);
+  const shareReturnFocusRef = useRef<HTMLButtonElement>(null);
   const newSessionReturnFocusRef = useRef<HTMLButtonElement>(null);
   const parametersHeadingRef = useRef<HTMLHeadingElement>(null);
   const packageHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -394,6 +399,15 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     }
     dispatch({ type: "item/removed", itemId });
   };
+  const share = (returnFocus: HTMLButtonElement) => {
+    shareReturnFocusRef.current = returnFocus;
+    setShareMessage("");
+    void shareCanonicalUrl().then((result) => {
+      if (result === "shared") setShareMessage("Link shared.");
+      else if (result === "copied") setShareMessage("Link copied.");
+      else if (result === "manual") dispatch({ type: "overlay/opened", overlay: "share" });
+    });
+  };
 
   return <main className="workbench" aria-label="reword_nerd workbench">
     <Header
@@ -404,6 +418,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
         dispatch({ type: "overlay/opened", overlay: "help" });
       }}
       onOpenInfo={(returnFocus) => { infoReturnFocusRef.current = returnFocus; dispatch({ type: "overlay/opened", overlay: "info" }); }}
+      onShare={share}
       onNewSession={(returnFocus) => { newSessionReturnFocusRef.current = returnFocus; dispatch({ type: "session/reset-requested" }); }}
       settingsExpanded={mode === "tablet" ? state.activeOverlay === "settings" : state.desktopSettingsExpanded}
       settingsControls={mode === "tablet" ? "settings-drawer" : "panel-settings"}
@@ -553,7 +568,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     </div>
     <footer className="workbench-footer">
       <StatusSummary {...counts} />
-      <div className="saved-state" aria-label="Preferences save locally; documents and contents stay in this session.">Preferences save locally; documents and contents stay in this session <span /> v{APP_VERSION}</div>
+      <div className="saved-state" aria-label="Preferences save locally; documents and contents stay in this session.">Preferences save locally; documents and contents stay in this session <span /> <a className="release-link" href={CURRENT_RELEASE_POST_PATH}>v{APP_VERSION}</a></div>
     </footer>
     <SettingsDrawer open={state.activeOverlay === "settings"} onClose={() => dispatch({ type: "drawer/changed", open: false })} returnFocusRef={settingsButtonRef}>
       <SettingsInspector {...settingsProps} exportPanel={primaryExportPanel} />
@@ -578,6 +593,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
       onDismiss={() => dispatch({ type: "tutorial/dismissed" })}
     />
     <InfoDialog open={state.activeOverlay === "info"} onClose={() => dispatch({ type: "overlay/closed" })} returnFocusRef={infoReturnFocusRef} />
+    <ShareFallbackDialog open={state.activeOverlay === "share"} onClose={() => dispatch({ type: "overlay/closed" })} returnFocusRef={shareReturnFocusRef} />
     <NewSessionDialog
       open={state.activeOverlay === "new-session"}
       onCancel={() => {
@@ -613,6 +629,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
         queueMicrotask(() => resetPreferencesReturnFocusRef.current?.focus());
       }}
     />
+    {shareMessage ? <p className="visually-hidden" role="status" aria-live="polite">{shareMessage}</p> : null}
     <div className="visually-hidden" aria-live="polite" aria-atomic="true">
       {state.liveMessage === state.export.safeMessage ? "" : state.liveMessage}
     </div>

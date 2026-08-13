@@ -143,8 +143,13 @@ test("Info is branded, versioned, exact-link-only, and dismisses from the backdr
   expect(await logo.evaluate((image) => ({ width: (image as HTMLImageElement).naturalWidth, height: (image as HTMLImageElement).naturalHeight })))
     .toEqual({ width: 512, height: 512 });
 
+  const product = info.getByRole("region", { name: "Product" });
+  await expect(product.getByRole("link", { name: "Updates" })).toHaveAttribute("href", "/reword-nerd/updates/v0-7-0/");
   const expectedLinks = [
     ["Repository", "https://github.com/ryanjosephkamp/reword-nerd"],
+    ["Report a bug", "https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=bug_report.yml"],
+    ["Suggest a feature", "https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=feature_request.yml"],
+    ["Security reporting", "https://github.com/ryanjosephkamp/reword-nerd/security/advisories/new"],
     ["GitHub profile", "https://github.com/ryanjosephkamp/"],
     ["Website", "https://ryanjosephkamp.github.io"],
     ["Sponsor", "https://github.com/sponsors/ryanjosephkamp"],
@@ -155,8 +160,7 @@ test("Info is branded, versioned, exact-link-only, and dismisses from the backdr
     await expect(link).toHaveAttribute("target", "_blank");
     await expect(link).toHaveAttribute("rel", "noopener noreferrer");
   }
-  await expect(info.getByText("Built by").getByRole("link", { name: "Ryan Kamp" })).toHaveAttribute("href", "https://ryanjosephkamp.github.io");
-  const creator = info.getByRole("region", { name: "Built by Ryan Kamp" });
+  const creator = info.getByRole("region", { name: "Creator" });
   await expect(creator).toBeVisible();
   await expect(creator.getByRole("link", { name: "GitHub profile" })).toBeVisible();
   await expect(creator.getByRole("link", { name: "Repository" })).toHaveCount(0);
@@ -176,6 +180,27 @@ test("Info is branded, versioned, exact-link-only, and dismisses from the backdr
   await page.screenshot({ path: `${screenshotDirectory}/info-mobile-390x844.png`, animations: "disabled" });
   await page.locator(".dialog-backdrop").click({ position: { x: 4, y: 4 } });
   await expect(menu).toBeFocused();
+});
+
+test("mobile utilities keep Share after Info and before New session", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openWorkbench(page);
+  const menu = page.getByRole("button", { name: "Menu" });
+  await menu.click();
+  const utilities = page.getByLabel("Mobile utilities");
+  await expect(utilities.getByRole("button")).toHaveText(["Settings", "Help", "Info", "Share", "New session"]);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: (payload: ShareData) => { (window as typeof window & { sharedPayload?: ShareData }).sharedPayload = payload; return Promise.resolve(); },
+    });
+  });
+  await utilities.getByRole("button", { name: "Share" }).click();
+  expect(await page.evaluate(() => (window as typeof window & { sharedPayload?: ShareData }).sharedPayload)).toEqual({
+    title: "reword-nerd",
+    url: "https://ryanjosephkamp.github.io/reword-nerd/",
+  });
+  await expect(page.getByRole("status")).toHaveText("Link shared.");
 });
 
 test("mobile visual assets support a persistent detail selection and compact gallery", async ({ page }) => {

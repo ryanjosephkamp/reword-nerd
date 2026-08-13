@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest a scoped improvement without sharing documents or confidential material.
+title: "feature: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        GitHub Issues are public. Do not attach or paste source documents, prompt packages, prompts, credentials, session content, or confidential material. Use synthetic-only examples.
+  - type: checkboxes
+    id: searched
+    attributes:
+      label: Existing requests
+      options:
+        - label: I searched existing Issues and did not find this request.
+          required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy confirmation
+      options:
+        - label: I used synthetic-only evidence and included no source document, package, prompt, credential, session content, or confidential material.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Explain the workflow need with a minimal synthetic example.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Describe the smallest useful behavior and any privacy or accessibility considerations.
+    validations:
+      required: true

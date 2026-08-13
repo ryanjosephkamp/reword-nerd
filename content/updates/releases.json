@@ -37,8 +37,8 @@
     {
       "kind": "release",
       "slug": "v0-7-0",
-      "title": "reword-nerd v0.7: Static Updates journal",
-      "summary": "A static Updates journal, a release ledger, and deterministic offline release preparation.",
+      "title": "reword-nerd v0.7: Updates, feedback, and Share",
+      "summary": "A static Updates journal, privacy-safe feedback routes, and canonical Share controls.",
       "status": "current",
       "date": "2026-08-13",
       "author": "Ryan Joseph Kamp",

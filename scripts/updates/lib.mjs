@@ -11,7 +11,7 @@ const SAFE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/u;
 const RAW_HTML_OR_MDX = /<!--|<![^>]*>|<\/?[A-Za-z][^>]*>|<\/?>|^\s*(?:import|export)(?:\s|\{)/mu;
-const MDX_EXPRESSION = /(?<!\\)\{\s*(?:\/\*[\s\S]*?\*\/|[A-Za-z_$][\w$]*(?:\s*(?:\}|[.\[(+*/%?:=!<>-]))|[\d'"\[({])/u;
+const MDX_EXPRESSION = /(?<!\\)\{\s*(?:\/\*[\s\S]*?\*\/|[A-Za-z_$][\w$]*(?:\s*(?:\}|[.\x5B(+*/%?:=!<>-]))|[\d'"\x5B({])/u;
 
 function isValidIsoDate(value) {
   if (typeof value !== "string" || !ISO_DATE.test(value)) return false;
@@ -328,7 +328,9 @@ function safeLinkDestination(destination) {
   const approved = new Set([
     "https://github.com/ryanjosephkamp/reword-nerd",
     "https://github.com/ryanjosephkamp/reword-nerd/issues",
-    "https://github.com/ryanjosephkamp/reword-nerd/discussions",
+    "https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=bug_report.yml",
+    "https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=feature_request.yml",
+    "https://github.com/ryanjosephkamp/reword-nerd/security/advisories/new",
     "https://github.com/ryanjosephkamp/reword-nerd/blob/main/CONTRIBUTING.md",
     "https://github.com/sponsors/ryanjosephkamp",
     "https://ryanjosephkamp.github.io",
@@ -433,11 +435,12 @@ function pageShell({ site, title, description, canonicalPath, type, body, jsonLd
   <meta name="twitter:description" content="${escapeHtml(description)}">
   <meta name="twitter:image" content="${escapeHtml(image)}">
   <script type="application/ld+json">${JSON.stringify(jsonLd).replaceAll("<", "\\u003c")}</script>
+  <script type="module" src="/reword-nerd/updates/share.js"></script>
 </head>
 <body>
   <header class="site-header"><a href="/reword-nerd/">reword-nerd</a><span aria-hidden="true">/</span><a aria-current="page" href="/reword-nerd/updates/">Updates</a></header>
   ${body}
-  <footer><p>Built in public, processed locally. No analytics or remote assets.</p></footer>
+  <footer><p id="share-status" class="share-status" aria-live="polite"></p><p>Built in public, processed locally. No analytics or remote assets.</p><nav aria-label="Feedback links"><a href="https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=bug_report.yml">Report a bug</a> <span aria-hidden="true">·</span> <a href="https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=feature_request.yml">Suggest a feature</a> <span aria-hidden="true">·</span> <a href="https://github.com/ryanjosephkamp/reword-nerd/security/advisories/new">Security reporting</a></nav></footer>
 </body>
 </html>
 `;
@@ -446,6 +449,8 @@ function pageShell({ site, title, description, canonicalPath, type, body, jsonLd
 
 const UPDATES_CSS = `:root{color-scheme:dark;--bg:#070b0d;--panel:#0d1417;--line:#233238;--text:#e4eee9;--muted:#94aaa1;--mint:#83f0bd;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);line-height:1.65}a{color:var(--mint);text-underline-offset:.2em}.site-header,main,footer{width:min(100% - 2rem,72rem);margin-inline:auto}.site-header{display:flex;gap:.65rem;padding:1.25rem 0;border-bottom:1px solid var(--line)}main{padding:2.5rem 0 4rem}.eyebrow,.meta{color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-size:.78rem}h1{font-size:clamp(2rem,8vw,4.6rem);line-height:1.04;letter-spacing:-.05em;margin:.35rem 0 1rem}h2{margin-top:2.5rem;font-size:clamp(1.25rem,4vw,1.8rem)}p,li{max-width:72ch}.release-list{list-style:none;padding:0;display:grid;gap:1rem}.release-card{display:block;border:1px solid var(--line);background:var(--panel);padding:1.25rem;border-radius:.4rem}.release-card h2{margin:.35rem 0}.tags{display:flex;flex-wrap:wrap;gap:.5rem;padding:0;list-style:none}.tags li{border:1px solid var(--line);padding:.15rem .45rem}article{max-width:52rem}footer{border-top:1px solid var(--line);padding:1.25rem 0;color:var(--muted)}@media(max-width:420px){.site-header,main,footer{width:min(100% - 1.25rem,72rem)}main{padding-top:1.5rem}.release-card{padding:1rem}}
 `;
+
+const UPDATES_SHARE_CSS = ".share-control{margin:1rem 0 0;padding:.6rem .9rem;border:1px solid var(--mint);border-radius:.3rem;color:var(--mint);background:transparent;font:inherit;cursor:pointer}.share-control:hover,.share-control:focus-visible{color:var(--bg);background:var(--mint)}.share-status{min-height:1.65em;color:var(--mint)}.share-fallback-backdrop{position:fixed;inset:0;z-index:10;display:grid;place-items:center;padding:1rem;background:rgb(0 0 0 / .7)}.share-fallback{width:min(100%,36rem);padding:1.25rem;border:1px solid var(--mint);background:var(--panel)}.share-fallback textarea{width:100%;min-height:5.5rem;margin:.75rem 0;padding:.6rem;color:var(--text);background:var(--bg);border:1px solid var(--line);font:inherit}.share-fallback button{padding:.55rem .8rem;color:var(--mint);background:transparent;border:1px solid var(--mint);font:inherit;cursor:pointer}";
 
 async function writeOutput(path, content) {
   await mkdir(dirname(path), { recursive: true });
@@ -457,15 +462,16 @@ export async function renderUpdates(rootDirectory, outputDirectory = resolve(roo
   const entries = [...ledger.entries].sort((left, right) => right.date.localeCompare(left.date) || left.slug.localeCompare(right.slug));
   const archivePath = "/reword-nerd/updates/";
   await rm(resolve(outputDirectory, "updates"), { recursive: true, force: true });
-  const archiveBody = `<main itemscope itemtype="https://schema.org/Blog"><p class="eyebrow">Builder's journal</p><h1>Updates</h1><p>${escapeHtml(ledger.site.description)}</p><ol class="release-list">${entries.map((entry) => `<li class="release-card"><p class="meta"><time datetime="${entry.date}">${entry.date}</time> · ${escapeHtml(entry.kind)}</p><h2><a href="/reword-nerd/updates/${entry.slug}/">${escapeHtml(entry.title)}</a></h2><p>${escapeHtml(entry.summary)}</p><ul class="tags">${entry.tags.map((tag) => `<li>${escapeHtml(tag)}</li>`).join("")}</ul></li>`).join("")}</ol></main>`;
+  const archiveBody = `<main itemscope itemtype="https://schema.org/Blog"><p class="eyebrow">Builder's journal</p><h1>Updates</h1><p>${escapeHtml(ledger.site.description)}</p><button class="share-control" type="button" data-share-url="${escapeHtml(`${ledger.site.canonicalOrigin}${archivePath}`)}" data-share-title="${escapeHtml(ledger.site.title)}">Share</button><ol class="release-list">${entries.map((entry) => `<li class="release-card"><p class="meta"><time datetime="${entry.date}">${entry.date}</time> · ${escapeHtml(entry.kind)}</p><h2><a href="/reword-nerd/updates/${entry.slug}/">${escapeHtml(entry.title)}</a></h2><p>${escapeHtml(entry.summary)}</p><ul class="tags">${entry.tags.map((tag) => `<li>${escapeHtml(tag)}</li>`).join("")}</ul></li>`).join("")}</ol></main>`;
   const blogJsonLd = { "@context": "https://schema.org", "@type": "Blog", name: ledger.site.title, description: ledger.site.description, url: `${ledger.site.canonicalOrigin}${archivePath}` };
   await writeOutput(resolve(outputDirectory, "updates/index.html"), pageShell({ site: ledger.site, title: ledger.site.title, description: ledger.site.description, canonicalPath: archivePath, type: "website", body: archiveBody, jsonLd: blogJsonLd }));
-  await writeOutput(resolve(outputDirectory, "updates/updates.css"), UPDATES_CSS);
+  await writeOutput(resolve(outputDirectory, "updates/updates.css"), `${UPDATES_CSS}${UPDATES_SHARE_CSS}`);
+  await writeOutput(resolve(outputDirectory, "updates/share.js"), await readFile(resolve(rootDirectory, "public/updates/share.js"), "utf8"));
 
   for (const entry of entries) {
     const canonicalPath = `/reword-nerd/updates/${entry.slug}/`;
     const video = entry.video.policy === "required" ? `<figure><video controls preload="metadata" poster="${escapeHtml(entry.video.posterPath)}"><source src="${escapeHtml(entry.video.mp4Path)}" type="video/mp4"><a href="${escapeHtml(entry.video.mp4Path)}">Download the demonstration video</a></video><figcaption><a href="${escapeHtml(entry.video.transcriptPath)}">Read the transcript</a></figcaption></figure>` : "";
-    const body = `<main><article itemscope itemtype="https://schema.org/BlogPosting"><p class="eyebrow">${escapeHtml(entry.kind === "release" ? `${entry.classification} release` : "retrospective")}</p><p class="meta"><time itemprop="datePublished" datetime="${entry.date}">${entry.date}</time> · ${escapeHtml(entry.author)}</p>${renderMarkdown(posts.get(entry.slug))}${video}</article><p><a href="/reword-nerd/updates/">← All Updates</a></p></main>`;
+    const body = `<main><article itemscope itemtype="https://schema.org/BlogPosting"><p class="eyebrow">${escapeHtml(entry.kind === "release" ? `${entry.classification} release` : "retrospective")}</p><p class="meta"><time itemprop="datePublished" datetime="${entry.date}">${entry.date}</time> · ${escapeHtml(entry.author)}</p>${renderMarkdown(posts.get(entry.slug))}${video}</article><button class="share-control" type="button" data-share-url="${escapeHtml(`${ledger.site.canonicalOrigin}${canonicalPath}`)}" data-share-title="${escapeHtml(entry.title)}">Share</button><p><a href="/reword-nerd/updates/">← All Updates</a></p></main>`;
     const jsonLd = { "@context": "https://schema.org", "@type": "BlogPosting", headline: entry.title, description: entry.summary, datePublished: entry.date, author: { "@type": "Person", name: entry.author }, url: `${ledger.site.canonicalOrigin}${canonicalPath}` };
     await writeOutput(resolve(outputDirectory, `updates/${entry.slug}/index.html`), pageShell({ site: ledger.site, title: `${entry.title} · Updates`, description: entry.summary, canonicalPath, type: "article", body, jsonLd }));
   }

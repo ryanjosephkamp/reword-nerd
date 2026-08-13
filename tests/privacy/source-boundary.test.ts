@@ -15,9 +15,13 @@ describe("production privacy boundary", () => {
     const root = join(process.cwd(), "src");
     const deliberateNavigationDestinations = [
       "https://github.com/ryanjosephkamp/reword-nerd",
+      "https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=bug_report.yml",
+      "https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=feature_request.yml",
+      "https://github.com/ryanjosephkamp/reword-nerd/security/advisories/new",
       "https://github.com/ryanjosephkamp/",
       "https://ryanjosephkamp.github.io",
       "https://github.com/sponsors/ryanjosephkamp",
+      "https://ryanjosephkamp.github.io/reword-nerd/",
     ] as const;
     const forbidden = [
       /https?:\/\//u,
