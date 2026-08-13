@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { execFile as execFileCallback } from "node:child_process";
 import { dirname, resolve, sep } from "node:path";
 import { promisify } from "node:util";
@@ -175,6 +175,61 @@ async function readJson(path, label) {
   }
 }
 
+function stripTypeScriptComments(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//gu, "")
+    .replace(/(^|[^:])\/\/.*$/gmu, "$1");
+}
+
+function extractNamedBlock(source, startPattern, label) {
+  const match = startPattern.exec(source);
+  if (!match) throw new Error(`${label} declaration is missing`);
+  const openingBrace = source.indexOf("{", match.index);
+  let depth = 0;
+  for (let index = openingBrace; index < source.length; index += 1) {
+    if (source[index] === "{") depth += 1;
+    if (source[index] === "}") {
+      depth -= 1;
+      if (depth === 0) return { signature: match, body: source.slice(openingBrace + 1, index) };
+    }
+  }
+  throw new Error(`${label} declaration is malformed`);
+}
+
+function readSourceContracts(versionSource, exportContracts) {
+  const cleanVersionSource = stripTypeScriptComments(versionSource);
+  const versionGuard = extractNamedBlock(
+    cleanVersionSource,
+    /function\s+assertCurrentVersion\s*\(\s*version\s*:\s*string\s*\)\s*:\s*asserts\s+version\s+is\s+"([^"]+)"\s*\{/u,
+    "APP_VERSION guard",
+  );
+  const comparedVersion = /\bif\s*\(\s*version\s*!==\s*"([^"]+)"\s*\)/u.exec(versionGuard.body)?.[1];
+  if (!comparedVersion) throw new Error("APP_VERSION guard comparison is missing");
+  if (!/\bconst\s+packageVersion\s*=\s*packageMetadata\.version\s*;[\s\S]*\bassertCurrentVersion\s*\(\s*packageVersion\s*\)\s*;[\s\S]*\bexport\s+const\s+APP_VERSION\s*=\s*packageVersion\s*;/u.test(cleanVersionSource)) {
+    throw new Error("APP_VERSION is not derived through the package version guard");
+  }
+
+  const cleanExportContracts = stripTypeScriptComments(exportContracts);
+  const manifest = extractNamedBlock(cleanExportContracts, /export\s+interface\s+PromptPackageManifest\s*\{/u, "PromptPackageManifest");
+  const progress = extractNamedBlock(cleanExportContracts, /export\s+interface\s+WorkbookProgress\s*\{/u, "WorkbookProgress");
+  const packageContract = extractNamedBlock(manifest.body, /\bpackage\s*:\s*\{/u, "PromptPackageManifest package");
+  const manifestSchema = /\bschemaVersion\s*:\s*(\d+)\s*;/u.exec(manifest.body)?.[1];
+  const packageName = /\bname\s*:\s*"([^"]+)"\s*;?/u.exec(packageContract.body)?.[1];
+  const packageVersion = /\bversion\s*:\s*"([^"]+)"\s*;?/u.exec(packageContract.body)?.[1];
+  const packageFormat = /\bformat\s*:\s*"([^"]+)"\s*;?/u.exec(packageContract.body)?.[1];
+  const progressSchema = /\bschemaVersion\s*:\s*(\d+)\s*;/u.exec(progress.body)?.[1];
+  if (!manifestSchema || packageName !== "reword-nerd" || !packageVersion || packageFormat !== "dual-mode-prompt-package" || !progressSchema) {
+    throw new Error(`Export version or schema declaration is malformed: ${JSON.stringify({ manifestSchema, packageName, packageVersion, packageFormat, progressSchema })}`);
+  }
+  return {
+    assertedVersion: versionGuard.signature[1],
+    comparedVersion,
+    packageVersion,
+    manifestSchema: Number(manifestSchema),
+    progressSchema: Number(progressSchema),
+  };
+}
+
 function localPathForWebPath(rootDirectory, webPath) {
   const prefix = "/reword-nerd/";
   const relativePath = webPath.slice(prefix.length);
@@ -195,10 +250,11 @@ export async function checkUpdates(rootDirectory) {
 
   const versionSource = await readFile(resolve(root, "src/version.ts"), "utf8");
   const exportContracts = await readFile(resolve(root, "src/export/contracts.ts"), "utf8");
-  if (!versionSource.includes(`"${version}"`)) throw new Error("Central APP_VERSION contract disagrees with package version");
-  if (!exportContracts.includes(`version: "${version}"`)) throw new Error("Export package version contract disagrees with package version");
-  if (!/schemaVersion:\s*6\b/u.test(exportContracts)) throw new Error("Manifest schema must remain 6");
-  if (!/schemaVersion:\s*1\b/u.test(exportContracts)) throw new Error("Workbook progress schema must remain 1");
+  const sourceContracts = readSourceContracts(versionSource, exportContracts);
+  if (sourceContracts.assertedVersion !== version || sourceContracts.comparedVersion !== version) throw new Error("Central APP_VERSION contract disagrees with package version");
+  if (sourceContracts.packageVersion !== version) throw new Error("Export package version contract disagrees with package version");
+  if (sourceContracts.manifestSchema !== 6) throw new Error("Manifest schema must remain 6");
+  if (sourceContracts.progressSchema !== 1) throw new Error("Workbook progress schema must remain 1");
 
   const current = ledger.entries.filter((entry) => entry.kind === "release" && entry.status === "current");
   if (current.length !== 1) throw new Error("Exactly one current release is required");
@@ -373,6 +429,7 @@ export async function renderUpdates(rootDirectory, outputDirectory = resolve(roo
   const { ledger, posts } = await checkUpdates(rootDirectory);
   const entries = [...ledger.entries].sort((left, right) => right.date.localeCompare(left.date) || left.slug.localeCompare(right.slug));
   const archivePath = "/reword-nerd/updates/";
+  await rm(resolve(outputDirectory, "updates"), { recursive: true, force: true });
   const archiveBody = `<main itemscope itemtype="https://schema.org/Blog"><p class="eyebrow">Builder's journal</p><h1>Updates</h1><p>${escapeHtml(ledger.site.description)}</p><ol class="release-list">${entries.map((entry) => `<li class="release-card"><p class="meta"><time datetime="${entry.date}">${entry.date}</time> · ${escapeHtml(entry.kind)}</p><h2><a href="/reword-nerd/updates/${entry.slug}/">${escapeHtml(entry.title)}</a></h2><p>${escapeHtml(entry.summary)}</p><ul class="tags">${entry.tags.map((tag) => `<li>${escapeHtml(tag)}</li>`).join("")}</ul></li>`).join("")}</ol></main>`;
   const blogJsonLd = { "@context": "https://schema.org", "@type": "Blog", name: ledger.site.title, description: ledger.site.description, url: `${ledger.site.canonicalOrigin}${archivePath}` };
   await writeOutput(resolve(outputDirectory, "updates/index.html"), pageShell({ site: ledger.site, title: ledger.site.title, description: ledger.site.description, canonicalPath: archivePath, type: "website", body: archiveBody, jsonLd: blogJsonLd }));

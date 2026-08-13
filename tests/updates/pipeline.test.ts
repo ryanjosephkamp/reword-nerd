@@ -13,8 +13,20 @@ async function fixtureRoot(overrides: { version?: string; markdown?: string; sta
   await mkdir(join(root, "src/export"), { recursive: true });
   await writeFile(join(root, "package.json"), JSON.stringify({ name: "reword-nerd", version: overrides.version ?? "0.7.0" }));
   await writeFile(join(root, "package-lock.json"), JSON.stringify({ name: "reword-nerd", version: overrides.version ?? "0.7.0", packages: { "": { version: overrides.version ?? "0.7.0" } } }));
-  await writeFile(join(root, "src/version.ts"), `const CURRENT_VERSION = "${overrides.version ?? "0.7.0"}";`);
-  await writeFile(join(root, "src/export/contracts.ts"), `version: "${overrides.version ?? "0.7.0"}"; schemaVersion: 6; schemaVersion: 1;`);
+  await writeFile(join(root, "src/version.ts"), `import packageMetadata from "../package.json";
+function assertCurrentVersion(version: string): asserts version is "${overrides.version ?? "0.7.0"}" {
+  if (version !== "${overrides.version ?? "0.7.0"}") throw new Error(version);
+}
+const packageVersion = packageMetadata.version;
+assertCurrentVersion(packageVersion);
+export const APP_VERSION = packageVersion;
+`);
+  await writeFile(join(root, "src/export/contracts.ts"), `export interface PromptPackageManifest {
+  schemaVersion: 6;
+  package: { name: "reword-nerd"; version: "${overrides.version ?? "0.7.0"}"; format: "dual-mode-prompt-package" };
+}
+export interface WorkbookProgress { schemaVersion: 1; }
+`);
   const ledger = {
     schemaVersion: 1,
     site: {
@@ -107,6 +119,22 @@ describe("Updates validation and rendering", () => {
     await expect(checkUpdates(await fixtureRoot({ markdown: "# TODO\n\n<script>alert(1)</script>" }))).rejects.toThrow(/placeholder|raw HTML/i);
   });
 
+  it("reads the actual version and schema declarations instead of matching unrelated text", async () => {
+    const versionRoot = await fixtureRoot();
+    await writeFile(
+      join(versionRoot, "src/version.ts"),
+      'import packageMetadata from "../package.json";\nfunction assertCurrentVersion(version: string): asserts version is "0.6.0" { if (version !== "0.6.0") throw new Error(version); }\nconst packageVersion = packageMetadata.version;\nassertCurrentVersion(packageVersion);\nexport const APP_VERSION = packageVersion;\n// "0.7.0"\n',
+    );
+    await expect(checkUpdates(versionRoot)).rejects.toThrow(/APP_VERSION|package version/i);
+
+    const schemaRoot = await fixtureRoot();
+    await writeFile(
+      join(schemaRoot, "src/export/contracts.ts"),
+      'export interface PromptPackageManifest { schemaVersion: 5; package: { name: "reword-nerd"; version: "0.6.0"; format: "dual-mode-prompt-package" }; }\nexport interface WorkbookProgress { schemaVersion: 2; }\n// version: "0.7.0"; schemaVersion: 6; schemaVersion: 1;\n',
+    );
+    await expect(checkUpdates(schemaRoot)).rejects.toThrow(/package version|schema/i);
+  });
+
   it("renders deterministic semantic pages, feed, and sitemap without client JavaScript", async () => {
     // Removing the static outputs or public metadata must make these literal boundary checks fail.
     const root = await fixtureRoot();
@@ -126,6 +154,18 @@ describe("Updates validation and rendering", () => {
     expect(feed).toContain("<rss version=\"2.0\">");
     expect(feed).toContain("A static Updates journal.");
     expect(sitemap).toContain("/reword-nerd/updates/v0-7-0/");
+  });
+
+  it("removes stale generated post routes before a standalone re-render", async () => {
+    const root = await fixtureRoot();
+    const output = join(root, "dist");
+    await renderUpdates(root, output);
+    const staleRoute = join(output, "updates/removed-release/index.html");
+    await mkdir(join(output, "updates/removed-release"), { recursive: true });
+    await writeFile(staleRoute, "stale");
+
+    await renderUpdates(root, output);
+    await expect(readFile(staleRoute, "utf8")).rejects.toThrow();
   });
 
   it("allows only one optional same-origin Share enhancement module", () => {
