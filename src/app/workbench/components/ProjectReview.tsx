@@ -57,6 +57,7 @@ function ProjectTextEditor({ entry, onEdit, onDirtyChange }: {
   const onDirtyChangeRef = useRef(onDirtyChange);
   const latestTicketRef = useRef<number | undefined>(undefined);
   const inFlightRef = useRef<Readonly<{ ticket?: number; value: string }> | null>(null);
+  const retryRequiredRef = useRef(false);
   useEffect(() => { onEditRef.current = onEdit; }, [onEdit]);
   useEffect(() => { onDirtyChangeRef.current = onDirtyChange; }, [onDirtyChange]);
   const submitDraft = useCallback((value: string, mutationTicket = latestTicketRef.current) => {
@@ -71,6 +72,7 @@ function ProjectTextEditor({ entry, onEdit, onDirtyChange }: {
       result = onEditRef.current(pathRef.current, value, mutationTicket);
     } catch {
       inFlightRef.current = null;
+      retryRequiredRef.current = true;
       return;
     }
     void Promise.resolve(result).then(() => {
@@ -85,10 +87,17 @@ function ProjectTextEditor({ entry, onEdit, onDirtyChange }: {
       if (failedSubmission && failedSubmission.ticket === mutationTicket && failedSubmission.value === value) {
         inFlightRef.current = null;
       }
+      retryRequiredRef.current = true;
     });
   }, []);
   const submit = useCallback((value: string) => {
-    submitDraft(value, latestTicketRef.current);
+    let ticket = latestTicketRef.current;
+    if (retryRequiredRef.current) {
+      ticket = onDirtyChangeRef.current(true);
+      latestTicketRef.current = ticket;
+      retryRequiredRef.current = false;
+    }
+    submitDraft(value, ticket);
   }, [submitDraft]);
   useEffect(() => () => {
     if (timerRef.current !== null) clearTimeout(timerRef.current);
@@ -103,6 +112,7 @@ function ProjectTextEditor({ entry, onEdit, onDirtyChange }: {
       const value = event.currentTarget.value;
       draftRef.current = value;
       setDraft(value);
+      retryRequiredRef.current = false;
       const ticket = onDirtyChange(true);
       latestTicketRef.current = ticket;
       if (timerRef.current !== null) clearTimeout(timerRef.current);

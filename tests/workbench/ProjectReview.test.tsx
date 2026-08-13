@@ -223,6 +223,74 @@ describe("project review", () => {
     vi.useRealTimers();
   });
 
+  it("renews mutation custody before retrying the same draft after a failed edit", async () => {
+    // This catches an exact-value blur retry reusing a failed ticket, resolving as a no-op,
+    // and clearing the dirty guard while canonical project text remains unchanged.
+    let nextTicket = 0;
+    const onMutationIntent = vi.fn(() => {
+      nextTicket += 1;
+      return nextTicket;
+    });
+    const onEdit = vi.fn()
+      .mockRejectedValueOnce(new Error("hash failed"))
+      .mockResolvedValueOnce(undefined);
+    render(<ProjectReview
+      project={project()}
+      onSelect={() => undefined}
+      onMutationIntent={onMutationIntent}
+      onEdit={onEdit}
+      onInclusion={() => undefined}
+      onClassification={() => undefined}
+      onConfirm={() => undefined}
+    />);
+    const editor = screen.getByLabelText("Reviewed text for src/copy.md");
+    const confirm = screen.getByRole("button", { name: "Confirm project review" });
+
+    fireEvent.change(editor, { target: { value: "Retry this exact draft" } });
+    fireEvent.blur(editor);
+    await waitFor(() => expect(onEdit).toHaveBeenCalledTimes(1));
+    expect(onEdit).toHaveBeenLastCalledWith("src/copy.md", "Retry this exact draft", 1);
+    expect(confirm).toBeDisabled();
+
+    fireEvent.blur(editor);
+    await waitFor(() => expect(onEdit).toHaveBeenCalledTimes(2));
+    expect(onEdit).toHaveBeenLastCalledWith("src/copy.md", "Retry this exact draft", 2);
+    expect(onMutationIntent).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(confirm).toBeEnabled());
+  });
+
+  it("accepts the exact retried draft into canonical project state after a hash failure", async () => {
+    // This verifies the renewed ticket reaches the real project reducer instead of only
+    // changing the editor's local dirty state.
+    const realDigest = globalThis.crypto.subtle.digest.bind(globalThis.crypto.subtle);
+    const digest = vi.spyOn(globalThis.crypto.subtle, "digest")
+      .mockRejectedValueOnce(new Error("first hash failed"))
+      .mockImplementation((algorithm, data) => realDigest(algorithm, data));
+    render(<App services={services()} />);
+    const file = new File(["Original project copy"], "copy.md", { type: "text/markdown" });
+    Object.defineProperty(file, "webkitRelativePath", { value: "demo/src/copy.md" });
+    fireEvent.change(screen.getByLabelText("Add folder project"), { target: { files: [file] } });
+    const editor = await screen.findByLabelText("Reviewed text for src/copy.md");
+    const confirm = screen.getByRole("button", { name: "Confirm project review" });
+
+    fireEvent.change(editor, { target: { value: "Canonical retry text" } });
+    fireEvent.blur(editor);
+    await screen.findByText("The project review change could not be applied safely.");
+    expect(confirm).toBeDisabled();
+
+    fireEvent.blur(editor);
+    await screen.findByText("Project review changed. Confirm the project again.");
+    await waitFor(() => expect(confirm).toBeEnabled());
+
+    const picker = screen.getByRole("button", { name: "Choose project file" });
+    fireEvent.click(picker);
+    fireEvent.click(within(screen.getByRole("list", { name: "Project files" })).getByRole("button", { name: /assets\/logo\.png/i }));
+    fireEvent.click(picker);
+    fireEvent.click(within(screen.getByRole("list", { name: "Project files" })).getByRole("button", { name: /src\/copy\.md/i }));
+    expect(screen.getByLabelText("Reviewed text for src/copy.md")).toHaveValue("Canonical retry text");
+    digest.mockRestore();
+  });
+
   it("serializes submitted project edits so a pending hash cannot drop newer exact text", async () => {
     // This catches a second debounced edit capturing the same project revision while the first hash is pending.
     const digestResolvers: Array<(value: ArrayBuffer) => void> = [];
