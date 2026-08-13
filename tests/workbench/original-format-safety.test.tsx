@@ -50,6 +50,16 @@ describe("safe ORIGINAL format renderers", () => {
     expect(container.querySelectorAll("li").length).toBeLessThanOrEqual(2_001);
   });
 
+  it("charges every depth-limit leaf against the same JSON node budget", () => {
+    // This catches a wide object at the depth boundary emitting unbounded depth-limit rows.
+    let value: unknown = Object.fromEntries(Array.from({ length: 5_000 }, (_, index) => [`leaf-${index}`, index]));
+    for (let depth = 0; depth < 63; depth += 1) value = { nested: value };
+    const { container } = render(<JsonPreview text={JSON.stringify(value)} lines={false} />);
+    expect(container.querySelectorAll("li").length).toBeLessThanOrEqual(2_001);
+    expect(screen.getAllByText("Preview limit reached")).toHaveLength(1);
+    expect(screen.getAllByText("Preview depth limit reached").length).toBeLessThanOrEqual(2_000);
+  });
+
   it("uses reviewed local content for DOCX approximation without activating external relationships", async () => {
     // This catches a DOCX ORIGINAL surface injecting converter HTML or following package relationships.
     const original = new File([

@@ -105,7 +105,10 @@ function TablePreview({ text, delimiter }: { text: string; delimiter: "," | "\t"
 
 function jsonTreeNode(label: string, value: unknown, budget: number, depth = 0): { node: ReactNode; remaining: number } {
   if (budget <= 0) return { node: <li><span>{label}</span>: <span>Preview limit reached</span></li>, remaining: 0 };
-  if (depth >= MAX_JSON_DEPTH) return { node: <li><span className="json-key">{label}</span>: <span>Preview depth limit reached</span></li>, remaining: budget };
+  if (depth >= MAX_JSON_DEPTH) return {
+    node: <li><span className="json-key">{label}</span>: <span>Preview depth limit reached</span></li>,
+    remaining: Math.max(0, budget - 1),
+  };
   const nextBudget = budget - 1;
   if (value === null || typeof value !== "object") return { node: <li><span className="json-key">{label}</span>: <span>{String(value)}</span></li>, remaining: nextBudget };
   let remaining = nextBudget;
