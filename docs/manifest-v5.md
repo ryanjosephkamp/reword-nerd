@@ -1,10 +1,10 @@
 # Prompt package manifest v5
 
-Manifest schema `5` is the current `reword-nerd` `0.5.0` contract. The package
+Manifest schema `5` is the current `reword-nerd` `0.5.1` contract. The package
 format remains the literal `dual-mode-prompt-package`, with both One-shot and
 Manual workflows and the canonical Manual stage order.
 
-The application footer and Info dialog source `0.5.0` from package metadata via
+The application footer and Info dialog source `0.5.1` from package metadata via
 `APP_VERSION`; the manifest's `package.version` is required to match that release.
 
 ## Root contract
@@ -14,7 +14,7 @@ The application footer and Info dialog source `0.5.0` from package metadata via
   "schemaVersion": 5,
   "package": {
     "name": "reword-nerd",
-    "version": "0.5.0",
+    "version": "0.5.1",
     "format": "dual-mode-prompt-package"
   },
   "archive": {

@@ -174,7 +174,7 @@ describe("prompt-package export", () => {
     if (!result.ok) throw new Error("fixture should export");
     expect(result.manifest).toMatchObject({
       schemaVersion: 5,
-      package: { version: "0.5.0", format: "dual-mode-prompt-package" },
+      package: { version: "0.5.1", format: "dual-mode-prompt-package" },
       documents: [{
         processing: {
           pageCount: 7,
@@ -276,7 +276,7 @@ describe("prompt-package export", () => {
     if (!result.ok) throw new Error("fixture should export");
     expect(result.filename).toBe("reword-nerd-prompt-package.zip");
     expect(result.manifest.schemaVersion).toBe(5);
-    expect(result.manifest.package.version).toBe("0.5.0");
+    expect(result.manifest.package.version).toBe("0.5.1");
     expect(result.manifest.documents).toHaveLength(1);
     expect(result.manifest.documents[0]).toMatchObject({
       key: "resume-notes--ea27ac66cf6a",
@@ -323,7 +323,7 @@ describe("prompt-package export", () => {
     expect(artifact.runbook).toMatchObject({
       documentKey: result.manifest.documents[0].key,
       originalDisplayName: source.documentName,
-      package: { version: "0.5.0" },
+      package: { version: "0.5.1" },
       model: {
         id: "openai-general",
         promptStrategy: { id: "openai-chatgpt-v1", version: "2026-08-11-v1" },

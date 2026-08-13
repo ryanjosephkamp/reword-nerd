@@ -147,6 +147,23 @@ describe("PackagePreview workbook integration", () => {
     Object.defineProperty(document, "execCommand", { configurable: true, value: previousExecCommand });
   });
 
+  it("copies the edited One-shot prompt from the contextual prompt heading", async () => {
+    const copyPromptText = vi.fn<PromptCopy>(async () => "copied");
+    render(<PreviewHarness copyPromptText={copyPromptText} />);
+    fireEvent.click(screen.getByRole("tab", { name: "ONE-SHOT" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Editable One-shot prompt" }), {
+      target: { value: "CONTEXTUAL ONE-SHOT\nWITH EXACT BYTES" },
+    });
+
+    const contextualCopy = screen.getByRole("button", { name: "Copy One-shot" });
+    contextualCopy.focus();
+    fireEvent.click(contextualCopy);
+
+    expect(copyPromptText).toHaveBeenCalledWith("CONTEXTUAL ONE-SHOT\nWITH EXACT BYTES");
+    expect(await screen.findByText("One-shot prompt copied.")).toBeInTheDocument();
+    expect(contextualCopy).toHaveFocus();
+  });
+
   it("reports an honest manual-copy fallback and still returns focus to the initiating button", async () => {
     const previousExecCommand = document.execCommand;
     Object.defineProperty(document, "execCommand", { configurable: true, value: vi.fn(() => false) });

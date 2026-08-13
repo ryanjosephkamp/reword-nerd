@@ -34,7 +34,7 @@ figures may be masks, fragments, or composite operators; page capture is the
 higher-fidelity opt-in fallback. Page selection accepts `all` or positive ranges
 such as `1-3, 7`.
 
-Version 0.5.0 bundles English OCR and runs Tesseract.js locally. Recognition is
+Version 0.5.1 bundles English OCR and runs Tesseract.js locally. Recognition is
 capped at 150 selected pages or extracted images and always produces editable
 candidates. OCR is never merged automatically; every candidate must be accepted
 or omitted before confirmation and export.

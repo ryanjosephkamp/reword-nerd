@@ -151,11 +151,16 @@ describe("Night Terminal workbench", () => {
     const infoButton = screen.getByRole("button", { name: "Info" });
     fireEvent.click(infoButton);
     const dialog = screen.getByRole("dialog", { name: "About reword-nerd" });
-    expect(within(dialog).getByText("reword-nerd v0.5.0")).toBeInTheDocument();
+    expect(within(dialog).getByText("reword-nerd v0.5.1")).toBeInTheDocument();
     expect(within(dialog).getByRole("img", { name: /reword-nerd logo/i })).toBeInTheDocument();
+    const repository = within(dialog).getByRole("link", { name: "Repository" });
+    const creator = within(dialog).getByRole("region", { name: "Built by Ryan Kamp" });
+    expect(creator).not.toContainElement(repository);
+    expect(within(creator).getByRole("link", { name: "Ryan Kamp" })).toHaveAttribute("href", "https://ryanjosephkamp.github.io");
+    expect(within(creator).getByRole("link", { name: "GitHub profile" })).toHaveAttribute("href", "https://github.com/ryanjosephkamp/");
     const links = {
       Repository: "https://github.com/ryanjosephkamp/reword-nerd",
-      GitHub: "https://github.com/ryanjosephkamp/",
+      "GitHub profile": "https://github.com/ryanjosephkamp/",
       Website: "https://ryanjosephkamp.github.io",
       Sponsor: "https://github.com/sponsors/ryanjosephkamp",
     };
@@ -939,7 +944,7 @@ describe("Night Terminal workbench", () => {
   it("shows every safe extraction warning before review without rewriting it", async () => {
     const warnings = [
       "An embedded image was omitted from DOCX extraction.",
-      "Pages 2 do not contain selectable text.",
+      "Page 2 does not contain selectable text.",
       "This file duplicates an existing document and needs review.",
     ];
     render(<App services={services({

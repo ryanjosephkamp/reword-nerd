@@ -11,7 +11,7 @@ import {
   type ProcessingProgress,
   type WorkspaceDocument,
 } from "../../domain";
-import type { ActiveOverlay, BuiltPromptPackage, MobileTab, PackagePreviewTab, PreviewMode, WorkbenchDocument, WorkbenchState } from "./contracts";
+import type { ActiveOverlay, AssetViewMode, BuiltPromptPackage, MobileTab, PackagePreviewTab, PreviewMode, WorkbenchDocument, WorkbenchState } from "./contracts";
 import { CURRENT_TUTORIAL_VERSION, type SavedPreferencesPatch } from "./preferences";
 
 type IntakeDocument = { document: WorkspaceDocument; uploadOrdinal: number };
@@ -55,6 +55,8 @@ export type WorkbenchAction =
   | { type: "context/acknowledged"; documentId: string; acknowledged: boolean }
   | { type: "mobile/tab-changed"; tab: MobileTab }
   | { type: "preview/mode-changed"; mode: PreviewMode }
+  | { type: "assets/view-changed"; mode: AssetViewMode }
+  | { type: "assets/selected"; documentId: string; assetId: string }
   | { type: "preview/workflow-changed"; workflow: PackagePreviewTab }
   | { type: "preview/document-selected"; documentKey: string }
   | { type: "desktop/settings-expanded"; expanded: boolean }
@@ -111,6 +113,8 @@ export function createInitialWorkbenchState(preferences: SavedPreferencesPatch |
     overrideEnabled: {},
     mobileTab: "files",
     previewMode: "source",
+    assetViewMode: "detail",
+    selectedAssetIdByDocument: {},
     previewWorkflow: "runbook",
     previewDocumentKey: null,
     desktopSettingsExpanded: true,
@@ -215,6 +219,10 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
       if (!current
         || current.batchId !== action.batchId
         || (action.operationId !== undefined && current.processingOperationId !== action.operationId)) return state;
+      const selectedAssetIdByDocument = { ...state.selectedAssetIdByDocument };
+      if (!action.result.visualAssets?.some((asset) => asset.id === selectedAssetIdByDocument[action.documentId])) {
+        delete selectedAssetIdByDocument[action.documentId];
+      }
       return changed(state, {
         documents: updateDocument(state.documents, action.documentId, (document) => ({
           ...document,
@@ -226,6 +234,7 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
           contextWarningAcknowledged: false,
           processingProgress: undefined,
         })),
+        selectedAssetIdByDocument,
         liveMessage: `${current.name} is ready for review.`,
       });
     }
@@ -278,8 +287,10 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
       const next = documents[index] ?? documents[index - 1] ?? null;
       const editor = { ...state.editor };
       const overrideEnabled = { ...state.overrideEnabled };
+      const selectedAssetIdByDocument = { ...state.selectedAssetIdByDocument };
       delete editor[action.documentId];
       delete overrideEnabled[action.documentId];
+      delete selectedAssetIdByDocument[action.documentId];
       return changed(state, {
         documents,
         selectedDocumentId: state.selectedDocumentId === action.documentId
@@ -287,6 +298,7 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
           : state.selectedDocumentId,
         editor,
         overrideEnabled,
+        selectedAssetIdByDocument,
         focusTarget: next ? `document:${next.id}` : "upload",
         liveMessage: "Remove file",
       });
@@ -413,23 +425,29 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
           processingProgress: undefined,
           extractionOptions: cloneExtractionOptions(action.options),
         })),
+        selectedAssetIdByDocument: Object.fromEntries(
+          Object.entries(state.selectedAssetIdByDocument).filter(([documentId]) => documentId !== action.documentId),
+        ),
         liveMessage: "Document processing settings changed. Reprocess the document before review.",
       });
     case "visual-asset/inclusion-changed": {
       const current = state.documents.find((document) => document.id === action.documentId);
       if (!current?.visualAssets?.some((asset) => asset.id === action.assetId)) return state;
-      return changed(state, {
-        documents: updateDocument(state.documents, action.documentId, (document) => ({
-          ...document,
-          visualAssets: (document.visualAssets ?? []).map((asset) => asset.id === action.assetId
-            ? { ...asset, included: action.included }
-            : asset),
-          status: "needs-review",
-          requiresReview: true,
-          contextWarningAcknowledged: false,
-        })),
-        liveMessage: action.included ? "Visual asset included. Confirm review again." : "Visual asset omitted. Confirm review again.",
-      });
+      return {
+        ...changed(state, {
+          documents: updateDocument(state.documents, action.documentId, (document) => ({
+            ...document,
+            visualAssets: (document.visualAssets ?? []).map((asset) => asset.id === action.assetId
+              ? { ...asset, included: action.included }
+              : asset),
+            status: "needs-review",
+            requiresReview: true,
+            contextWarningAcknowledged: false,
+          })),
+          liveMessage: action.included ? "Visual asset included. Confirm review again." : "Visual asset omitted. Confirm review again.",
+        }),
+        previewMode: "assets",
+      };
     }
     case "latex/main-file-selected": {
       const current = state.documents.find((document) => document.id === action.documentId);
@@ -520,6 +538,20 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
     case "preview/mode-changed":
       if (action.mode === "package" && !state.export.builtPackage) return state;
       return { ...state, previewMode: action.mode };
+    case "assets/view-changed":
+      return { ...state, assetViewMode: action.mode };
+    case "assets/selected": {
+      const document = state.documents.find((item) => item.id === action.documentId);
+      if (!document?.visualAssets?.some((asset) => asset.id === action.assetId)) return state;
+      return {
+        ...state,
+        selectedAssetIdByDocument: {
+          ...state.selectedAssetIdByDocument,
+          [action.documentId]: action.assetId,
+        },
+        liveMessage: `Selected visual asset ${action.assetId}.`,
+      };
+    }
     case "preview/workflow-changed":
       if (!state.export.builtPackage || state.previewMode !== "package") return state;
       return { ...state, previewWorkflow: action.workflow };
@@ -545,6 +577,8 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
         overrideEnabled: {},
         mobileTab: "files",
         previewMode: "source",
+        assetViewMode: "detail",
+        selectedAssetIdByDocument: {},
         previewWorkflow: "runbook",
         previewDocumentKey: null,
         activeOverlay: null,

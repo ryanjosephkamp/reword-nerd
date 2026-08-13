@@ -14,6 +14,7 @@ import type { ProcessingProgress } from "../../domain/media";
 
 export type MobileTab = "files" | "preview" | "settings";
 export type PreviewMode = "source" | "assets" | "package";
+export type AssetViewMode = "detail" | "gallery";
 export type PackageWorkflow = "one-shot" | "manual";
 export type PackagePreviewTab = "runbook" | PackageWorkflow;
 export type ActiveOverlay = "help" | "info" | "quick-start" | "settings" | "reset-preferences" | "new-session";
@@ -47,6 +48,8 @@ export interface WorkbenchState {
   overrideEnabled: Record<string, boolean>;
   mobileTab: MobileTab;
   previewMode: PreviewMode;
+  assetViewMode: AssetViewMode;
+  selectedAssetIdByDocument: Record<string, string>;
   previewWorkflow: PackagePreviewTab;
   previewDocumentKey: string | null;
   desktopSettingsExpanded: boolean;

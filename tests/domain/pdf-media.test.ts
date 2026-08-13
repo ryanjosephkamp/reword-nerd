@@ -83,6 +83,6 @@ describe("PDF visual processing", () => {
     expect(fixture.renderCalls).toEqual([]);
     expect(result.assets).toHaveLength(2);
     expect(result.assets.every((asset) => asset.kind === "pdf-raster")).toBe(true);
-    expect(result.warnings).toEqual(["Pages 2 do not contain selectable text."]);
+    expect(result.warnings).toEqual(["Page 2 does not contain selectable text."]);
   });
 });

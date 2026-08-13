@@ -1,7 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const host = "127.0.0.1";
-const port = 4173;
+const port = Number(process.env.PLAYWRIGHT_PORT ?? "4173");
+if (!Number.isInteger(port) || port < 1024 || port > 65535) {
+  throw new Error("PLAYWRIGHT_PORT must be an integer from 1024 through 65535.");
+}
 const origin = `http://${host}:${port}`;
 const usePreview = process.env.PLAYWRIGHT_USE_PREVIEW === "1";
 const basePath = process.env.PLAYWRIGHT_BASE_PATH ?? "/";

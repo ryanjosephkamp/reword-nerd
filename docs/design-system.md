@@ -184,8 +184,20 @@ are not replaced by this inventory.
 - `ALL CHANGES SAVED`, `v1.0.0`
 
 The version string in the visual reference is compositional sample copy. The
-current implementation renders its package version (`v0.5.0`) in that footer
+current implementation renders its package version (`v0.5.1`) in that footer
 position while preserving the same hierarchy and session-only meaning.
+
+## v0.5.1 polish
+
+- Info separates the product repository from a boxed creator region, with
+  high-contrast local-theme link controls and explicit GitHub-profile wording.
+- Assets offers DETAIL and GALLERY views. Gallery cards show selected and
+  included states without hiding the full-size review path.
+- On mobile, Preview mode navigation and export actions remain fixed workspace
+  controls; document metrics and Package-local controls belong to the single
+  scrolling content surface.
+- One-shot provides the same contextual, exact-byte Copy action as each Manual
+  stage.
 
 ## v0.5 interaction additions
 

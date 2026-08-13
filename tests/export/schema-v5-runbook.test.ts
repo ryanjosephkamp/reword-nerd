@@ -51,7 +51,7 @@ describe("schema-v5 archive and semantic runbook", () => {
     const paths = Object.keys(archive.files).filter((path) => path.startsWith(`documents/${key}/`));
 
     expect(result.manifest.schemaVersion).toBe(5);
-    expect(result.manifest.package.version).toBe("0.5.0");
+    expect(result.manifest.package.version).toBe("0.5.1");
     expect(paths).toEqual(expect.arrayContaining([
       `documents/${key}/one-shot/00-one-shot.md`,
       `documents/${key}/one-shot/one-shot-prompt.md`,
