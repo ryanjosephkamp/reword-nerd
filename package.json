@@ -1,12 +1,12 @@
 {
   "name": "reword-nerd",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "preview": "vite preview",
-    "build": "tsc -b && vite build",
+    "build": "npm run updates:check && tsc -b && vite build && npm run updates:render",
     "lint": "eslint .",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
@@ -14,6 +14,10 @@
     "e2e": "playwright test",
     "e2e:preview": "npm run build && PLAYWRIGHT_USE_PREVIEW=1 playwright test",
     "install:playwright": "playwright install chromium",
+    "updates:new": "node scripts/updates/new.mjs",
+    "release:prepare": "node scripts/updates/release-prepare.mjs",
+    "updates:check": "node scripts/updates/check.mjs",
+    "updates:render": "node scripts/updates/render.mjs",
     "validate": "npm run lint && npm run typecheck && npm test -- --run && npm run build"
   },
   "dependencies": {

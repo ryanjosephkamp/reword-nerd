@@ -136,7 +136,7 @@ test("Info is branded, versioned, exact-link-only, and dismisses from the backdr
   const infoButton = page.getByRole("button", { name: "Info" });
   await infoButton.click();
   const info = page.getByRole("dialog", { name: "About reword-nerd" });
-  await expect(info).toContainText("reword-nerd v0.6.0");
+  await expect(info).toContainText("reword-nerd v0.7.0");
   await expect(info).toContainText("Files, extraction, package generation, and previews remain on this device.");
   const logo = info.getByRole("img", { name: "reword-nerd logo" });
   await expect(logo).toHaveAttribute("src", /\/brand\/reword-nerd-logo\.webp$/u);

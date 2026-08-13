@@ -1,6 +1,6 @@
 # Manifest schema v6
 
-Manifest schema `6` is the `reword-nerd` `0.6.0` package contract. It preserves
+Manifest schema `6` remains the `reword-nerd` `0.7.0` package contract. It preserves
 the v5 dual-mode workbook paths and adds an explicit `source.kind` discriminator
 for standalone files and reviewed text projects.
 

@@ -551,7 +551,7 @@ test("in-site package progress hydrates, survives navigation, downloads, and res
   expect(archive.file("OPEN-ME.html")).not.toBeNull();
   expect(JSON.parse(await archive.file("manifest.json")!.async("string"))).toMatchObject({
     schemaVersion: 6,
-    package: { format: "dual-mode-prompt-package", version: "0.6.0" },
+    package: { format: "dual-mode-prompt-package", version: "0.7.0" },
   });
 });
 

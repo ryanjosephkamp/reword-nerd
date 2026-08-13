@@ -52,7 +52,7 @@ describe("schema-v6 archive and semantic runbook", () => {
     const paths = Object.keys(archive.files).filter((path) => path.startsWith(`documents/${key}/`));
 
     expect(result.manifest.schemaVersion).toBe(6);
-    expect(result.manifest.package.version).toBe("0.6.0");
+    expect(result.manifest.package.version).toBe("0.7.0");
     expect(paths).toEqual(expect.arrayContaining([
       `documents/${key}/one-shot/00-one-shot.md`,
       `documents/${key}/one-shot/one-shot-prompt.md`,

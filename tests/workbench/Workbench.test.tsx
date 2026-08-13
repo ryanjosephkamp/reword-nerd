@@ -276,7 +276,7 @@ describe("Night Terminal workbench", () => {
     const infoButton = screen.getByRole("button", { name: "Info" });
     fireEvent.click(infoButton);
     const dialog = screen.getByRole("dialog", { name: "About reword-nerd" });
-    expect(within(dialog).getByText("reword-nerd v0.6.0")).toBeInTheDocument();
+    expect(within(dialog).getByText("reword-nerd v0.7.0")).toBeInTheDocument();
     expect(within(dialog).getByRole("img", { name: /reword-nerd logo/i })).toBeInTheDocument();
     const repository = within(dialog).getByRole("link", { name: "Repository" });
     const creator = within(dialog).getByRole("region", { name: "Built by Ryan Kamp" });

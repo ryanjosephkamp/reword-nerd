@@ -65,7 +65,7 @@ test("desktop Preview Footer Dock stays contained and drives schema-v6 build and
   const archive = await JSZip.loadAsync(await downloadBytes(await pending), { checkCRC32: true });
   expect(JSON.parse(await archive.file("manifest.json")!.async("string"))).toMatchObject({
     schemaVersion: 6,
-    package: { version: "0.6.0" },
+    package: { version: "0.7.0" },
   });
 
   const initialWidth = dockBox!.width;

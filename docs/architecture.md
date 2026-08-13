@@ -149,7 +149,7 @@ tutorial-version preferences. Workbench sources, project decisions, previews,
 and workbook progress are never included.
 
 `src/version.ts` exposes `APP_VERSION` from package metadata. The footer and
-Info dialog render `0.6.0` from that source, while schema-v6 contracts and tests
+Info dialog render `0.7.0` from that source, while schema-v6 contracts and tests
 require the manifest package version to match the release.
 
 ## Overlay, guidance, and layout boundary
