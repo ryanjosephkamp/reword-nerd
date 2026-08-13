@@ -13,6 +13,7 @@ interface ProjectReviewProps {
 }
 
 function entryStatus(entry: ProjectEntry): string {
+  if (entry.exclusionReason === "prompt-limit") return "PROMPT LIMIT";
   if (entry.promptIncluded) return "PROMPT";
   if (entry.packageIncluded) return "PACKAGE";
   return "EXCLUDED";
@@ -137,13 +138,15 @@ function ProjectReviewContent({ project, onSelect, onMutationIntent, onEdit, onI
   }, [onMutationIntent, project]);
   const mutationTicket = () => onMutationIntent?.(project);
   const entries = useMemo(() => project.entries.filter((entry) => entry.path.toLocaleLowerCase().includes(query.toLocaleLowerCase())
-    && (filter === "all" || (filter === "included" ? entry.promptIncluded || entry.packageIncluded : !entry.promptIncluded && !entry.packageIncluded))), [filter, project.entries, query]);
+    && (filter === "all" || (filter === "included" ? entry.promptIncluded : !entry.promptIncluded))), [filter, project.entries, query]);
   const selected = project.entries.find((entry) => entry.path === project.selectedEntryPath) ?? project.entries[0];
   const latexRoots = project.entries.filter((entry) => entry.contentKind === "text"
     && entry.promptIncluded && entry.packageIncluded && /\.(?:tex|ltx)$/iu.test(entry.path));
   const canConfirm = !editorDirty && !project.classificationChoiceRequired && project.entries.every((entry) => !entry.promptIncluded || (entry.contentKind === "text" && Boolean(entry.reviewedText?.trim())));
+  const promptLimitCount = project.entries.filter((entry) => entry.exclusionReason === "prompt-limit").length;
   return <div className="project-review">
     <button type="button" className="project-mobile-file-picker" aria-label="Choose project file" aria-expanded={browserOpen} onClick={() => setBrowserOpen((open) => !open)}>{selected?.path ?? "Choose project file"}</button>
+    {promptLimitCount > 0 ? <p className="project-scope-reduction" role="status">{promptLimitCount} {promptLimitCount === 1 ? "file was" : "files were"} excluded from prompt scope by the 250-file / 5 MiB safety cap. Review the reduced scope before confirming.</p> : null}
     <aside className={`project-file-browser${browserOpen ? " is-open" : ""}`}>
       <label>SEARCH PROJECT<input type="search" value={query} onChange={(event) => setQuery(event.currentTarget.value)} /></label>
       <label>FILTER<select value={filter} onChange={(event) => setFilter(event.currentTarget.value as typeof filter)}><option value="all">All files</option><option value="included">Included</option><option value="excluded">Excluded</option></select></label>

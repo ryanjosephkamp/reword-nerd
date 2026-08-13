@@ -108,6 +108,25 @@ describe("project review", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Confirm project review" })).toBeEnabled());
   });
 
+  it("names an automatic prompt-cap exclusion as an initial scope reduction", () => {
+    // This catches the bounded intake looking like an unexplained generic exclusion before review confirmation.
+    const capped = project();
+    capped.entries = capped.entries.map((entry) => entry.path === "src/copy.md"
+      ? { ...entry, promptIncluded: false, packageIncluded: true, exclusionReason: "prompt-limit" as const }
+      : entry);
+    render(<ProjectReview
+      project={capped}
+      onSelect={() => undefined}
+      onEdit={() => undefined}
+      onInclusion={() => undefined}
+      onClassification={() => undefined}
+      onConfirm={() => undefined}
+    />);
+
+    expect(screen.getByRole("status")).toHaveTextContent(/excluded from prompt scope.*250-file.*5 MiB.*review.*before confirming/i);
+    expect(screen.getByText("PROMPT LIMIT", { selector: "small" })).toBeInTheDocument();
+  });
+
   it.each([
     ["inclusion", (view: typeof screen) => fireEvent.click(view.getByRole("checkbox", { name: "Include in package" }))],
     ["classification", (view: typeof screen) => fireEvent.change(view.getByRole("combobox", { name: "Project classification" }), { target: { value: "general-text" } })],
@@ -270,6 +289,33 @@ describe("project review", () => {
       await Promise.resolve();
     });
     expect(screen.queryByText("The project review change could not be applied safely.")).not.toBeInTheDocument();
+    digest.mockRestore();
+  });
+
+  it("rejects a pre-debounce cleanup edit after New session and same-ID reimport", async () => {
+    // This catches editor cleanup acquiring the post-reset generation and overwriting a newly imported identical project.
+    const digest = vi.spyOn(globalThis.crypto.subtle, "digest");
+    render(<App services={services()} />);
+    const addProject = () => {
+      const folderFile = new File(["text"], "copy.md");
+      Object.defineProperty(folderFile, "webkitRelativePath", { value: "demo/copy.md" });
+      fireEvent.change(screen.getByLabelText("Add folder project"), { target: { files: [folderFile] } });
+    };
+
+    addProject();
+    const firstEditor = await screen.findByLabelText("Reviewed text for src/copy.md");
+    fireEvent.change(firstEditor, { target: { value: "Stale draft before debounce" } });
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start new session" }));
+
+    addProject();
+    const freshEditor = await screen.findByLabelText("Reviewed text for src/copy.md");
+    expect(freshEditor).toHaveValue("Original project copy");
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 150)); });
+
+    expect(screen.getByLabelText("Reviewed text for src/copy.md")).toHaveValue("Original project copy");
+    expect(screen.queryByText("Project review changed. Confirm the project again.")).not.toBeInTheDocument();
+    expect(digest).not.toHaveBeenCalled();
     digest.mockRestore();
   });
 

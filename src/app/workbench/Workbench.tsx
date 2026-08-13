@@ -139,10 +139,27 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
   const intake = useFileIntake(state, dispatch, services, projectIntake.intakeZip, intakeCapacity);
   const editor = useReviewEditor(state, dispatch, services);
   const exporter = useExportPackage(state, dispatch, services);
-  const projectMutationTicketsRef = useRef(new Map<string, number>());
+  const projectReviewQueuesRef = useRef(new Map<string, Promise<WorkspaceProject>>());
+  const projectReviewSessionGenerationRef = useRef(0);
+  const projectReviewEpochsRef = useRef(new Map<string, number>());
+  const nextProjectMutationTicketRef = useRef(0);
+  const projectMutationCustodyRef = useRef(new Map<number, Readonly<{
+    itemId: string;
+    originalTreeHash: string;
+    projectOperationGeneration: number;
+    sessionGeneration: number;
+    projectEpoch: number;
+  }>>());
   const beginProjectMutation = useCallback((project: WorkspaceProject) => {
-    const ticket = (projectMutationTicketsRef.current.get(project.id) ?? 0) + 1;
-    projectMutationTicketsRef.current.set(project.id, ticket);
+    const ticket = nextProjectMutationTicketRef.current + 1;
+    nextProjectMutationTicketRef.current = ticket;
+    projectMutationCustodyRef.current.set(ticket, {
+      itemId: project.id,
+      originalTreeHash: project.originalTreeHash,
+      projectOperationGeneration: project.projectOperationGeneration,
+      sessionGeneration: projectReviewSessionGenerationRef.current,
+      projectEpoch: projectReviewEpochsRef.current.get(project.id) ?? 0,
+    });
     dispatch({
       type: "project/mutation-started",
       itemId: project.id,
@@ -155,9 +172,6 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
   const selectedItem = selectSelectedItem(state);
   const selected = selectedItem?.kind === "document" ? selectedItem : selectSelectedDocument(state);
   const selectedProject = selectedItem?.kind === "project" ? selectedItem : undefined;
-  const projectReviewQueuesRef = useRef(new Map<string, Promise<WorkspaceProject>>());
-  const projectReviewSessionGenerationRef = useRef(0);
-  const projectReviewEpochsRef = useRef(new Map<string, number>());
   const selectedAsset = selected ? selectSelectedVisualAsset(state, selected.id) : undefined;
   const counts = selectCounts(state);
   const dirty = selectDirty(state);
@@ -317,15 +331,17 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     operation: (current: WorkspaceProject) => Promise<WorkspaceProject> | WorkspaceProject,
     mutationTicket: number,
   ) => {
-    dispatch({
-      type: "project/mutation-started",
-      itemId: project.id,
-      originalTreeHash: project.originalTreeHash,
-      projectOperationGeneration: project.projectOperationGeneration,
-      ticket: mutationTicket,
-    });
-    const sessionGeneration = projectReviewSessionGenerationRef.current;
-    const projectEpoch = projectReviewEpochsRef.current.get(project.id) ?? 0;
+    const custody = projectMutationCustodyRef.current.get(mutationTicket);
+    if (!custody
+      || custody.itemId !== project.id
+      || custody.originalTreeHash !== project.originalTreeHash
+      || custody.projectOperationGeneration !== project.projectOperationGeneration
+      || custody.sessionGeneration !== projectReviewSessionGenerationRef.current
+      || custody.projectEpoch !== (projectReviewEpochsRef.current.get(project.id) ?? 0)) {
+      return Promise.resolve();
+    }
+    const sessionGeneration = custody.sessionGeneration;
+    const projectEpoch = custody.projectEpoch;
     const previous = projectReviewQueuesRef.current.get(project.id) ?? Promise.resolve(project);
     const queued = previous.catch(() => project).then(async (current) => {
       const expectedReviewRevision = current.projectReviewRevision;
@@ -340,6 +356,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     });
     projectReviewQueuesRef.current.set(project.id, queued);
     const finish = () => {
+      projectMutationCustodyRef.current.delete(mutationTicket);
       if (projectReviewQueuesRef.current.get(project.id) === queued) {
         projectReviewQueuesRef.current.delete(project.id);
       }
@@ -366,6 +383,9 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     if (item?.kind === "project") {
       projectReviewEpochsRef.current.set(item.id, (projectReviewEpochsRef.current.get(item.id) ?? 0) + 1);
       projectReviewQueuesRef.current.delete(item.id);
+      for (const [ticket, custody] of projectMutationCustodyRef.current) {
+        if (custody.itemId === item.id) projectMutationCustodyRef.current.delete(ticket);
+      }
     }
     dispatch({ type: "item/removed", itemId });
   };
@@ -513,7 +533,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
           onAcknowledge={(acknowledged) => dispatch({ type: "context/acknowledged", itemId: selectedItem.id, acknowledged })}
         /> : null}
         {mode === "desktop" && state.items.length > 0 ? desktopExportDock : null}
-        {mode === "mobile" && selected?.status === "ready" ? primaryExportPanel : null}
+        {mode === "mobile" && selectedItem?.status === "ready" ? primaryExportPanel : null}
         {mode === "mobile" ? <StatusSummary {...counts} compact /> : null}
       </section>
       <aside
@@ -564,7 +584,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
         setBusyOcrCandidate(null);
         projectReviewSessionGenerationRef.current += 1;
         projectReviewQueuesRef.current.clear();
-        projectMutationTicketsRef.current.clear();
+        projectMutationCustodyRef.current.clear();
         intakeCapacity.reset();
         intake.resetSession();
         projectIntake.resetSession();

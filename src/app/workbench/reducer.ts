@@ -162,6 +162,10 @@ function clearAcknowledgments(documents: readonly WorkbenchDocument[]): Workbenc
   return documents.map((document) => ({ ...document, contextWarningAcknowledged: false }));
 }
 
+function clearItemAcknowledgments(items: readonly WorkbenchItem[]): WorkbenchItem[] {
+  return items.map((item) => ({ ...item, contextWarningAcknowledged: false }));
+}
+
 function updateDocument(
   documents: readonly WorkbenchDocument[],
   documentId: string,
@@ -640,12 +644,14 @@ function reduceWorkbenchState(state: WorkbenchState, action: WorkbenchAction): W
         selectedProfileId: profile.id,
         workingProfile: { ...profile },
         customContextDraft: profile.contextWindowTokens?.toString() ?? "",
+        items: clearItemAcknowledgments(state.items),
         documents: clearAcknowledgments(state.documents),
       });
     }
     case "profile/context-limit-changed":
       return changed(state, {
         workingProfile: { ...state.workingProfile, contextWindowTokens: action.value },
+        items: clearItemAcknowledgments(state.items),
         documents: clearAcknowledgments(state.documents),
       });
     case "profile/custom-label-changed":
@@ -662,6 +668,7 @@ function reduceWorkbenchState(state: WorkbenchState, action: WorkbenchAction): W
       return changed(state, {
         customContextDraft: action.value,
         workingProfile: { ...state.workingProfile, contextWindowTokens: action.parsed },
+        items: clearItemAcknowledgments(state.items),
         documents: clearAcknowledgments(state.documents),
       });
     case "context/acknowledged":
@@ -761,6 +768,7 @@ function reduceWorkbenchState(state: WorkbenchState, action: WorkbenchAction): W
         customProfileLabel: "",
         customContextDraft: firstProfile.contextWindowTokens?.toString() ?? "",
         activeOverlay: null,
+        items: clearItemAcknowledgments(state.items),
         documents: clearAcknowledgments(state.documents),
       });
     case "focus/consumed":

@@ -314,6 +314,51 @@ describe("schema v6 project packages", () => {
     }
   });
 
+  it("rejects control-bearing credential bytes at the public export boundary", async () => {
+    // This catches a forged caller relabeling a NUL-bearing credential payload as a package-only asset/text entry.
+    const { hashOriginalProjectTree, hashReviewedTree } = await import("../../src/domain");
+    const safe = confirmProjectReview(await readFolderProject({
+      kind: "folder",
+      name: "source",
+      files: [
+        folderFile("notes.txt", "safe reviewed text\n"),
+        folderFile("payload.bin", new Uint8Array([1, 2, 3])),
+      ],
+    }));
+    for (const originalBytes of [
+      new Uint8Array([0, ...encoder.encode("API_TOKEN=actual-secret-value\n")]),
+      new Uint8Array([0xff, ...encoder.encode("PASSWORD=another-secret-value\n")]),
+    ]) {
+      const digest = await crypto.subtle.digest("SHA-256", originalBytes);
+      const originalHash = Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+      const asset = safe.entries.find((entry) => entry.path === "payload.bin")!;
+      expect(asset.contentKind).toBe("asset");
+      const entry = {
+        ...asset,
+        byteCount: originalBytes.byteLength,
+        originalBytes,
+        originalHash,
+        sha256: originalHash,
+      };
+      const entries = safe.entries.map((candidate) => candidate.path === entry.path ? entry : candidate);
+      const originalTreeHash = await hashOriginalProjectTree(entries);
+      const reviewedTreeHash = await hashReviewedTree(entries, undefined, safe.classification, safe.rootDocument);
+      const forged = {
+        ...safe,
+        entries,
+        totalByteCount: entries.reduce((total, candidate) => total + candidate.byteCount, 0),
+        originalTreeHash,
+        treeHash: originalTreeHash,
+        reviewedTreeHash,
+      } as WorkspaceProject;
+
+      await expect(buildPromptPackage([projectInput(forged)])).resolves.toMatchObject({
+        ok: false,
+        error: { code: "INVALID_INPUT" },
+      });
+    }
+  });
+
   it("rejects credentials introduced only in reviewed project text", async () => {
     // This catches a safe original becoming sensitive during review and then entering prompts, HTML, and project/files.
     const { hashReviewedTree } = await import("../../src/domain");
@@ -329,6 +374,119 @@ describe("schema v6 project packages", () => {
     const result = await buildPromptPackage([projectInput(forged)]);
 
     expect(result).toMatchObject({ ok: false, error: { code: "INVALID_INPUT" } });
+  });
+
+  it("independently rejects unsafe reviewed text and inconsistent project entry metadata", async () => {
+    // This catches structurally valid, internally rehashed caller objects bypassing the project-domain entry invariants.
+    const { hashReviewedTree, setProjectEntryInclusion } = await import("../../src/domain");
+    let base = await readFolderProject({
+      kind: "folder",
+      name: "source",
+      files: [folderFile("included.txt", "included text\n"), folderFile("package-only.txt", "package-only text\n")],
+    });
+    base = await setProjectEntryInclusion(base, "package-only.txt", { promptIncluded: false, packageIncluded: true });
+    base = confirmProjectReview(base);
+
+    const forgedInput = async (patch: Partial<WorkspaceProject["entries"][number]>) => {
+      const target = base.entries.find((entry) => entry.path === "package-only.txt")!;
+      let entry = { ...target, ...patch };
+      if (patch.reviewedText !== undefined && typeof entry.reviewedText === "string") {
+        const digest = await crypto.subtle.digest("SHA-256", encoder.encode(entry.reviewedText));
+        entry = {
+          ...entry,
+          reviewedTextHash: Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join(""),
+        };
+      }
+      const entries = base.entries.map((candidate) => candidate.path === entry.path ? entry : candidate);
+      const reviewedTreeHash = await hashReviewedTree(entries, undefined, base.classification, base.rootDocument);
+      const forged = { ...base, entries, reviewedTreeHash } as WorkspaceProject;
+      const input = projectInput(base);
+      const includedFiles = entries.flatMap((candidate) => candidate.promptIncluded
+        && candidate.contentKind === "text"
+        && candidate.reviewedText !== null
+        && candidate.reviewedTextHash !== null
+        && candidate.languageId !== null
+        && candidate.previewKind !== null
+        ? [{
+            path: candidate.path,
+            text: candidate.reviewedText,
+            originalHash: candidate.originalHash,
+            reviewedTextHash: candidate.reviewedTextHash,
+            languageId: candidate.languageId,
+            previewKind: candidate.previewKind,
+          }]
+        : []);
+      const sourceContext = {
+        kind: "project" as const,
+        format: "text" as const,
+        assets: [],
+        reviewedTreeHash,
+        includedFiles,
+        excludedPaths: entries.filter((candidate) => !candidate.promptIncluded).map((candidate) => candidate.path),
+        codeRewriteOptions: DEFAULT_CODE_REWRITE_OPTIONS,
+        latexMainFile: null,
+      };
+      input.project = forged;
+      input.reviewedExtractedText = renderPromptSource(sourceContext);
+      input.promptBundle = renderPromptBundle(input.reviewedExtractedText, input.resolvedSettings, input.chosenProfile, sourceContext);
+      input.contextAssessment = assessSourceContext({ kind: "project", includedFiles }, input.chosenProfile.contextWindowTokens);
+      return input;
+    };
+
+    const cases = [
+      { reviewedText: " \n\t " },
+      { reviewedText: "unsafe\u0000reviewed text" },
+      { languageId: "typescript" },
+      { previewKind: "code" as const },
+      { restorable: false },
+      { promptIncluded: true, packageIncluded: false, exclusionReason: null },
+      { exclusionReason: "non-text-asset" as const },
+      {
+        contentKind: "asset" as const,
+        languageId: null,
+        previewKind: null,
+        reviewedText: null,
+        reviewedTextHash: null,
+        promptIncluded: false,
+        packageIncluded: true,
+        exclusionReason: "non-text-asset" as const,
+      },
+    ];
+    for (const entryPatch of cases) {
+      await expect(buildPromptPackage([await forgedInput(entryPatch)]))
+        .resolves.toMatchObject({ ok: false, error: { code: "INVALID_INPUT" } });
+    }
+  });
+
+  it("encodes special project asset paths for file URLs and uses collision-safe code spans in the project index", async () => {
+    // This catches #/?/%/space/backtick paths truncating file:// links or breaking index Markdown fences.
+    const assetPath = "assets/figure #1?50%`draft.png";
+    const project = confirmProjectReview(await readFolderProject({
+      kind: "folder",
+      name: "source",
+      files: [
+        folderFile("notes.txt", "safe text\n"),
+        folderFile(assetPath, new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])),
+      ],
+    }));
+    const result = await buildPromptPackage([projectInput(project)]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("special-path project should export");
+    const record = result.manifest.documents[0];
+    if (record.source.kind !== "project") throw new Error("project source required");
+    const packagedAsset = record.source.entries.find((entry) => entry.path === assetPath)?.packaged?.path;
+    expect(packagedAsset).toContain(assetPath);
+    expect(result.workbooks[0].combined.html).toContain("assets/figure%20%231%3F50%25%60draft.png");
+    expect(result.workbooks[0].runbookMarkdown).toContain("assets/figure%20%231%3F50%25%60draft.png");
+    const archive = await JSZip.loadAsync(result.blob);
+    expect(archive.file(packagedAsset!)).not.toBeNull();
+    const indexMarkdown = await archive.file(record.source.index.markdown.path)!.async("string");
+    expect(indexMarkdown).toMatch(/^- ``assets\/figure #1\?50%`draft\.png`` — asset;/mu);
+    const match = result.workbooks[0].combined.html.match(/href="([^"]*figure[^"]*)"/u);
+    expect(match?.[1]).toBeDefined();
+    const resolved = new URL(match![1], "file:///tmp/package/documents/key/combined-prompts/combined-prompts.html");
+    expect(decodeURIComponent(resolved.pathname)).toContain(`/documents/${record.key}/project/files/${assetPath}`);
   });
 
   it("preserves the complete large-project context assessment in schema v6", async () => {

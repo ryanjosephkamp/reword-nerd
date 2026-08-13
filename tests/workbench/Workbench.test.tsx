@@ -197,6 +197,54 @@ describe("Night Terminal workbench", () => {
     expect(screen.getByRole("button", { name: "BUILD PACKAGE" })).toBeEnabled();
   });
 
+  it("retains mobile context warnings and export actions for a ready project", async () => {
+    // This catches document-only mobile conditions hiding the only context acknowledgment/export surface for projects.
+    window.matchMedia = vi.fn((query: string) => ({
+      matches: query.includes("767px"),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    const projectBytes = new TextEncoder().encode("Project text");
+    const readyProject = {
+      kind: "project" as const,
+      id: "project-mobile",
+      name: "mobile-project",
+      sourceKind: "folder" as const,
+      status: "ready" as const,
+      entries: [{
+        path: "copy.md", immutablePath: "copy.md", byteCount: projectBytes.byteLength,
+        originalHash: "original", sha256: "original", originalBytes: projectBytes,
+        contentKind: "text" as const, languageId: "markdown", previewKind: "markdown" as const,
+        reviewedText: "Project text", reviewedTextHash: "reviewed", reviewRevision: 0,
+        promptIncluded: true, packageIncluded: true, exclusionReason: null, restorable: true,
+      }],
+      originalTreeHash: "tree", reviewedTreeHash: "reviewed-tree", treeHash: "tree",
+      totalByteCount: projectBytes.byteLength, classification: "general-text" as const,
+      classificationChoiceRequired: false, classificationChoices: ["general-text" as const, "latex" as const],
+      rootDocument: null, selectedEntryPath: "copy.md", projectOperationGeneration: 0,
+      projectReviewRevision: 0, requiresReview: false, warnings: [],
+      sensitiveBlockedCounts: { credentialFiles: 0, privateKeys: 0, clearCredentials: 0 },
+      intake: { kind: "folder" as const, displayName: "mobile-project" }, settingsOverride: {},
+      contextWarningAcknowledged: false,
+    };
+    render(<App services={services({ readFolderProject: async () => readyProject })} />);
+    const folderFile = new File(["Project text"], "copy.md");
+    Object.defineProperty(folderFile, "webkitRelativePath", { value: "mobile-project/copy.md" });
+    fireEvent.change(screen.getByLabelText("Add folder project"), { target: { files: [folderFile] } });
+    await screen.findByLabelText("Reviewed text for copy.md");
+    fireEvent.change(screen.getByLabelText("Context limit"), { target: { value: "1" } });
+
+    expect(screen.getByText("Estimated workflow context exceeds the selected profile.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "BUILD PACKAGE" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("checkbox", { name: /I understand and want to include/i }));
+    expect(screen.getByRole("button", { name: "BUILD PACKAGE" })).toBeEnabled();
+  });
+
   it("keeps the tablet Settings drawer on the announcing exporter surface", async () => {
     // This catches desktop mirror semantics suppressing the only visible tablet export status.
     window.matchMedia = vi.fn((query: string) => ({

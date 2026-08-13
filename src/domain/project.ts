@@ -329,9 +329,23 @@ function isSensitiveName(path: string): boolean {
 
 function sensitiveContentCategory(bytes: Uint8Array): "privateKeys" | "clearCredentials" | null {
   const decoded = decodeSafeStandaloneText(bytes);
-  if (!decoded.ok) return null;
-  if (/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/iu.test(decoded.text)) return "privateKeys";
-  return /(?:^|[\n{,])\s*(?:export\s+)?["']?[A-Z0-9_-]*(?:api[_-]?key|secret(?:[_-]?access[_-]?key)?|token|password|private[_-]?key)[A-Z0-9_-]*["']?\s*[:=]\s*["']?(?!example|sample|placeholder|changeme)[^\s"']{8,}/iu.test(decoded.text)
+  // Known binary signatures are package-only assets. For undecodable/control-bearing
+  // likely text, strip only unsafe controls and still fail closed on explicit secret
+  // syntax so a NUL prefix cannot turn a credential file into a retained asset.
+  if (!decoded.ok && decoded.issue === "UNSUPPORTED_BINARY") return null;
+  const inspectedText = decoded.ok
+    ? decoded.text
+    : Array.from(new TextDecoder("utf-8").decode(bytes)).filter((character) => {
+        const codePoint = character.codePointAt(0) ?? 0;
+        return !((codePoint >= 0 && codePoint <= 8)
+          || codePoint === 11
+          || codePoint === 12
+          || (codePoint >= 14 && codePoint <= 31)
+          || (codePoint >= 127 && codePoint <= 159)
+          || codePoint === 0xfffd);
+      }).join("");
+  if (/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/iu.test(inspectedText)) return "privateKeys";
+  return /(?:^|[\n{,])\s*(?:export\s+)?["']?[A-Z0-9_-]*(?:api[_-]?key|secret(?:[_-]?access[_-]?key)?|token|password|private[_-]?key)[A-Z0-9_-]*["']?\s*[:=]\s*["']?(?!example|sample|placeholder|changeme)[^\s"']{8,}/iu.test(inspectedText)
     ? "clearCredentials"
     : null;
 }

@@ -11,7 +11,10 @@ import {
   MAX_PROMPT_DECODED_TEXT_BYTES,
   MAX_PROMPT_TEXT_FILES,
   assessSourceContext,
+  classifyStandaloneTextName,
   classifySensitiveProjectEntry,
+  decodeSafeStandaloneText,
+  genericTextClassification,
   hashOriginalProjectTree,
   hashReviewedTree,
   joinProjectArchivePath,
@@ -486,6 +489,44 @@ function cloneProjectEntry(value: unknown): ProjectEntry | undefined {
   } catch {
     return undefined;
   }
+  const decodedOriginal = decodeSafeStandaloneText(value.originalBytes);
+  const namedClassification = classifyStandaloneTextName(value.path);
+  const expectedTextClassification = namedClassification ?? (decodedOriginal.ok ? genericTextClassification() : undefined);
+  if (value.contentKind === "text") {
+    if (!expectedTextClassification
+      || !decodedOriginal.ok
+      || value.languageId !== expectedTextClassification.languageId
+      || value.previewKind !== expectedTextClassification.previewKind
+      || typeof value.reviewedText !== "string"
+      || !decodeSafeStandaloneText(textEncoder.encode(value.reviewedText)).ok
+      || !isSha256(value.reviewedTextHash)
+      || value.restorable !== true
+      || (value.promptIncluded && !value.packageIncluded)
+      || (value.promptIncluded && value.exclusionReason !== null)
+      || value.exclusionReason === "non-text-asset"
+      || value.exclusionReason === "invalid-text") return undefined;
+  } else if (value.contentKind === "asset") {
+    if (expectedTextClassification
+      || value.languageId !== null
+      || value.previewKind !== null
+      || value.reviewedText !== null
+      || value.reviewedTextHash !== null
+      || value.promptIncluded
+      || value.restorable !== true
+      || !(value.exclusionReason === "non-text-asset"
+        || value.exclusionReason === "gitignore"
+        || value.exclusionReason === "default-excluded")
+      || (value.packageIncluded && value.exclusionReason !== "non-text-asset")) return undefined;
+  } else if (!namedClassification
+    || decodedOriginal.ok
+    || value.languageId !== namedClassification.languageId
+    || value.previewKind !== namedClassification.previewKind
+    || value.reviewedText !== null
+    || value.reviewedTextHash !== null
+    || value.promptIncluded
+    || value.packageIncluded
+    || value.exclusionReason !== "invalid-text"
+    || value.restorable) return undefined;
   return Object.freeze({
     path: value.path,
     immutablePath: value.path,
@@ -1031,6 +1072,12 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
+function markdownCodeSpan(value: string): string {
+  const delimiter = "`".repeat(Math.max(1, ...Array.from(value.matchAll(/`+/g), (match) => match[0].length + 1)));
+  const padding = /^`|`$/u.test(value) ? " " : "";
+  return `${delimiter}${padding}${value}${padding}${delimiter}`;
+}
+
 function createOpenMe(manifest: PromptPackageManifest): string {
   const documents = manifest.documents.map((document) => `<article>
     <h2>${escapeHtml(document.originalDisplayName)}</h2>
@@ -1074,7 +1121,7 @@ function projectIndexes(record: ManifestDocumentRecord): { markdown: string; jso
     "",
     "## Retained entries",
     "",
-    ...source.entries.map((entry) => `- \`${escapeMarkdownText(entry.path)}\` — ${entry.contentKind}; prompt ${entry.promptIncluded ? "included" : "excluded"}; package ${entry.packageIncluded ? "included" : "excluded"}; original ${entry.originalSha256}; reviewed ${entry.reviewedSha256 ?? "not applicable"}.`),
+    ...source.entries.map((entry) => `- ${markdownCodeSpan(entry.path)} — ${entry.contentKind}; prompt ${entry.promptIncluded ? "included" : "excluded"}; package ${entry.packageIncluded ? "included" : "excluded"}; original ${entry.originalSha256}; reviewed ${entry.reviewedSha256 ?? "not applicable"}.`),
     "",
     "Apply only changed text-file blocks returned by the model, inspect every diff, and run the project's normal tests/build afterward.",
     "",

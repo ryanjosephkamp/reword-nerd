@@ -99,7 +99,8 @@ function markdownText(value: string): string {
 
 function markdownCode(value: string): string {
   const delimiter = "`".repeat(Math.max(1, ...Array.from(value.matchAll(/`+/g), (match) => match[0].length + 1)));
-  return `${delimiter}${value}${delimiter}`;
+  const padding = /^`|`$/u.test(value) ? " " : "";
+  return `${delimiter}${padding}${value}${padding}${delimiter}`;
 }
 
 function markdownCodeBlock(value: string, language = ""): string {
@@ -113,10 +114,14 @@ function safeHref(href: string): string {
   return href;
 }
 
+function encodedArchiveHref(href: string): string {
+  return safeHref(href).split("/").map((segment) => encodeURIComponent(segment)).join("/");
+}
+
 function markdownInline(value: RunbookInline): string {
   if (value.type === "text") return markdownText(value.value);
   if (value.type === "code") return markdownCode(value.value);
-  return `[${markdownText(value.label)}](${safeHref(value.href).replaceAll("(", "%28").replaceAll(")", "%29")})`;
+  return `[${markdownText(value.label)}](${encodedArchiveHref(value.href)})`;
 }
 
 function markdownCell(values: readonly RunbookInline[]): string {
@@ -145,7 +150,7 @@ function escapeHtml(value: string): string {
 function htmlInline(value: RunbookInline, archiveRootPrefix: string): string {
   if (value.type === "text") return escapeHtml(value.value);
   if (value.type === "code") return `<code>${escapeHtml(value.value)}</code>`;
-  return `<a href="${escapeHtml(`${archiveRootPrefix}${safeHref(value.href)}`)}">${escapeHtml(value.label)}</a>`;
+  return `<a href="${escapeHtml(`${archiveRootPrefix}${encodedArchiveHref(value.href)}`)}">${escapeHtml(value.label)}</a>`;
 }
 
 export function renderRunbookHtml(

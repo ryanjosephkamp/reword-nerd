@@ -343,6 +343,41 @@ describe("safe project domain", () => {
     }
   });
 
+  it("drops control-bearing credential payloads without treating ordinary binary images as credentials", async () => {
+    // This catches a NUL/control prefix making a clear credential fail open as a package-only asset.
+    const project = await import("../../src/domain/project");
+    const controlledCredential = new Uint8Array([
+      0,
+      ...encoder.encode("API_TOKEN=actual-secret-value\n"),
+    ]);
+    const undecodableCredential = new Uint8Array([
+      0xff,
+      ...encoder.encode("PASSWORD=another-secret-value\n"),
+    ]);
+    const ordinaryPng = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+
+    const read = await project.readFolderProject({
+      kind: "folder",
+      name: "project",
+      files: [
+        folderFile("notes.txt", controlledCredential),
+        folderFile("broken-utf8.txt", undecodableCredential),
+        folderFile("assets/figure.png", ordinaryPng),
+        folderFile("safe.txt", "safe retained text\n"),
+      ],
+    });
+
+    expect(read.entries.map((entry) => entry.path)).toEqual(["assets/figure.png", "safe.txt"]);
+    expect(read.entries[0]).toMatchObject({ contentKind: "asset", packageIncluded: true });
+    expect(read.sensitiveBlockedCounts).toEqual({
+      credentialFiles: 0,
+      privateKeys: 0,
+      clearCredentials: 2,
+    });
+    expect(JSON.stringify(read)).not.toContain("actual-secret-value");
+    expect(JSON.stringify(read)).not.toContain("another-secret-value");
+  });
+
   it("accepts only a retained included TeX text entry as a normalized LaTeX root", async () => {
     // This catches traversal, stale, excluded, or non-TeX roots entering the reviewed project snapshot.
     const project = await import("../../src/domain/project");

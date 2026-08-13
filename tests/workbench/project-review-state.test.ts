@@ -81,4 +81,21 @@ describe("project workbench state", () => {
     expect(state.selectedItemId).toBe("project-1");
     expect(state.selectedDocumentId).toBeNull();
   });
+
+  it.each([
+    ["model profile", { type: "profile/selected", profileId: "anthropic-general" }],
+    ["context limit", { type: "profile/context-limit-changed", value: 4_000 }],
+    ["custom context draft", { type: "profile/custom-context-draft-changed", value: "8000", parsed: 8_000 }],
+  ] as const)("clears project context acknowledgment after a %s change", (_label, action) => {
+    // This catches project acknowledgments remaining valid after the model context basis changes.
+    let state = workbenchReducer(createInitialWorkbenchState(), {
+      type: "project/admitted",
+      project: { ...project(), contextWarningAcknowledged: true },
+      uploadOrdinal: 0,
+    } as never);
+
+    state = workbenchReducer(state, action);
+
+    expect(state.items[0]).toMatchObject({ kind: "project", contextWarningAcknowledged: false });
+  });
 });
