@@ -3,12 +3,13 @@ export type VideoPolicy =
   | { policy: "exempt"; exemptionReason: string }
   | { policy: "required"; mp4Path: string; posterPath: string; transcriptPath: string };
 
+export type ReleaseLedgerStatus = "draft" | "current" | "published" | "archived";
+
 export interface ReleaseLedgerEntryBase {
-  kind: "release" | "article";
   slug: string;
   title: string;
   summary: string;
-  status: "draft" | "current" | "published" | "archived";
+  status: ReleaseLedgerStatus;
   date: string;
   author: string;
   tags: string[];
@@ -18,6 +19,20 @@ export interface ReleaseLedgerEntryBase {
   video: VideoPolicy;
 }
 
+export interface ReleaseLedgerReleaseEntry extends ReleaseLedgerEntryBase {
+  kind: "release";
+  version: string;
+  classification: "feature" | "maintenance";
+}
+
+export interface ReleaseLedgerArticleEntry extends ReleaseLedgerEntryBase {
+  kind: "article";
+  version?: never;
+  classification?: never;
+}
+
+export type ReleaseLedgerEntry = ReleaseLedgerReleaseEntry | ReleaseLedgerArticleEntry;
+
 export interface ReleaseLedgerV1 {
   schemaVersion: 1;
   site: {
@@ -26,7 +41,7 @@ export interface ReleaseLedgerV1 {
     canonicalOrigin: "https://ryanjosephkamp.github.io";
     basePath: "/reword-nerd/updates/";
   };
-  entries: ReleaseLedgerEntryBase[];
+  entries: ReleaseLedgerEntry[];
 }
 
 export function validateReleaseLedger<T>(input: T): T;

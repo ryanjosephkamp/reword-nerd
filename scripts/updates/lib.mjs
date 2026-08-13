@@ -9,6 +9,16 @@ const SAFE_TEXT = /^[^<>]+$/u;
 const SAFE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/u;
+const RAW_HTML_OR_MDX = /<!--|<![^>]*>|<\/?[A-Za-z][^>]*>|<\/?>|^\s*(?:import|export)(?:\s|\{)/mu;
+
+function isValidIsoDate(value) {
+  if (typeof value !== "string" || !ISO_DATE.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  return day <= daysInMonth;
+}
 
 function fail(message) {
   throw new Error(`Invalid release ledger: ${message}`);
@@ -78,7 +88,7 @@ export function validateReleaseLedger(input) {
     requireSafeText(entry.author, `${label}.author`);
     if (!["draft", "current", "published", "archived"].includes(entry.status)) fail(`${label}.status is invalid`);
     if (entry.status === "current") currentReleases += entry.kind === "release" ? 1 : 0;
-    if (typeof entry.date !== "string" || !ISO_DATE.test(entry.date) || Number.isNaN(Date.parse(`${entry.date}T00:00:00Z`))) fail(`${label}.date is invalid`);
+    if (!isValidIsoDate(entry.date)) fail(`${label}.date is invalid`);
     if (!Array.isArray(entry.tags) || entry.tags.length === 0) fail(`${label}.tags must be non-empty`);
     entry.tags.forEach((tag, tagIndex) => requireSafeText(tag, `${label}.tags[${tagIndex}]`));
     if (!Array.isArray(entry.relatedPrs) || entry.relatedPrs.some((pr) => !Number.isSafeInteger(pr) || pr < 1)) fail(`${label}.relatedPrs is invalid`);
@@ -129,7 +139,7 @@ const REQUIRED_SECTIONS = [
 ];
 
 function markdownProblem(markdown, entry) {
-  if (/<\/?[A-Za-z][^>]*>|^\s*(?:import|export)\s+/mu.test(markdown)) return "raw HTML or MDX is not allowed";
+  if (RAW_HTML_OR_MDX.test(markdown)) return "raw HTML or MDX is not allowed";
   if (/\b(?:TODO|TBD|FIXME|PLACEHOLDER)\b|\[insert\b|lorem ipsum/iu.test(markdown)) return "placeholder prose is not allowed";
   if (!markdown.startsWith(`# ${entry.title}\n`)) return `first heading must exactly match ${entry.title}`;
   let prior = -1;
@@ -384,7 +394,7 @@ export async function renderUpdates(rootDirectory, outputDirectory = resolve(roo
 function assertAuthoringArguments({ slug, title, date }) {
   if (slug !== undefined && (typeof slug !== "string" || !SAFE_SLUG.test(slug))) throw new Error(`Unsafe slug: ${slug}`);
   requireSafeText(title, "title");
-  if (typeof date !== "string" || !ISO_DATE.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) throw new Error(`Invalid date: ${date}`);
+  if (!isValidIsoDate(date)) throw new Error(`Invalid date: ${date}`);
 }
 
 function journalScaffold(title, subject) {

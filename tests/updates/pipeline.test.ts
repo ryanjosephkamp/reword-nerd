@@ -144,4 +144,16 @@ describe("Updates validation and rendering", () => {
     await writeFile(postPath, `${await readFile(postPath, "utf8")}\n- [Unapproved](https://github.com/ryanjosephkamp/private-admin)\n`);
     await expect(checkUpdates(root)).rejects.toThrow(/unsafe.*link/i);
   });
+
+  it.each([
+    ["an HTML comment", "<!-- publication note -->"],
+    ["a JSX fragment", "<>publication note</>"],
+    ["an MDX export without whitespace", "export{publicationNote}"],
+  ])("rejects %s in reviewed Markdown", async (_label, unsafeSource) => {
+    // Narrow tag-only or whitespace-only syntax checks must make at least one prohibited raw HTML/MDX form pass.
+    const root = await fixtureRoot();
+    const postPath = join(root, "content/updates/v0-7-0.md");
+    await writeFile(postPath, `${await readFile(postPath, "utf8")}\n${unsafeSource}\n`);
+    await expect(checkUpdates(root)).rejects.toThrow(/raw HTML|MDX/i);
+  });
 });

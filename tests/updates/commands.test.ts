@@ -69,4 +69,11 @@ describe("Updates authoring commands", () => {
     const root = await releaseRoot({ git: false });
     await expect(prepareRelease(root, { version: "0.7.0", title: "reword-nerd v0.7", date: "2026-08-13" })).rejects.toThrow(/Git history.*required/i);
   });
+
+  it("rejects impossible calendar dates before authoring files", async () => {
+    // Replacing command date validation with Date.parse normalization must make either command continue with February 31.
+    const root = await releaseRoot();
+    await expect(createUpdate(root, { slug: "calendar-check", title: "Calendar check", date: "2026-02-31" })).rejects.toThrow(/Invalid date/i);
+    await expect(prepareRelease(root, { version: "0.7.0", title: "reword-nerd v0.7", date: "2026-02-31" })).rejects.toThrow(/Invalid date/i);
+  });
 });

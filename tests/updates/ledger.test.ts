@@ -53,4 +53,22 @@ describe("ReleaseLedgerV1 validation", () => {
     const entry = { ...validLedger.entries[0], video: { policy: "required" } };
     expect(() => validateReleaseLedger({ ...validLedger, entries: [entry] })).toThrow(/video/i);
   });
+
+  it.each([
+    ["a non-leap February 29", "2026-02-29"],
+    ["a normalized February 31", "2026-02-31"],
+    ["an April 31", "2026-04-31"],
+    ["month zero", "2026-00-01"],
+    ["day zero", "2026-01-00"],
+  ])("rejects %s", (_label, date) => {
+    // Replacing strict calendar validation with Date.parse normalization must make this accept an impossible date.
+    const entry = { ...validLedger.entries[0], date };
+    expect(() => validateReleaseLedger({ ...validLedger, entries: [entry] })).toThrow(/date/i);
+  });
+
+  it("accepts a real leap day", () => {
+    // Rejecting all February 29 values must make this valid Gregorian calendar date fail.
+    const entry = { ...validLedger.entries[0], date: "2024-02-29" };
+    expect(validateReleaseLedger({ ...validLedger, entries: [entry] })).toMatchObject({ entries: [{ date: "2024-02-29" }] });
+  });
 });
