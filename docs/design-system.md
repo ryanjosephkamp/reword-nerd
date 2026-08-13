@@ -129,6 +129,23 @@ All interactive controls need visible keyboard focus, a programmatic label,
 and semantic status text. Motion should be limited to short state transitions
 and disabled under reduced-motion preferences.
 
+## v0.7 Updates and release-media surfaces
+
+Updates is a static, same-origin builder's journal rather than a new workbench
+mode. It uses the Night Terminal canvas, monospace type, crisp borders, muted
+metadata, and mint links/actions without importing an external font, player, or
+social SDK. Archive and post Share controls are optional enhancements: the
+canonical URL, reading flow, feedback links, and transcript remain present
+without JavaScript. Native Share success, clipboard fallback, and selectable
+manual-copy fallback announce or focus the outcome accessibly.
+
+For required release videos, native controls are muted, inline, non-autoplaying
+and `preload="none"`; reduced-motion presentation replaces moving video with the
+same poster plus transcript/fallback links. Public authored Updates posts and
+release media are site material, distinct from uploaded session content, prompt
+packages, and downloaded progress copies. They may demonstrate only synthetic
+data and never appear in a user ZIP.
+
 ## Icon inventory
 
 Use one consistent thin, square-cornered outline icon family. Icons are

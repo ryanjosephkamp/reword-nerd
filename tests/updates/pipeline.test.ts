@@ -50,8 +50,8 @@ export interface WorkbookProgress { schemaVersion: 1; }
       markdownPath: "content/updates/v0-7-0.md",
       version: "0.7.0",
       classification: "feature",
-      visualChanges: true,
-      video: { policy: "exempt", exemptionReason: "The journal is fully represented in text." },
+      visualChanges: false,
+      video: { policy: "exempt", exemptionReason: "The nonvisual journal change is fully represented in reviewed text." },
     }],
   };
   await writeFile(join(root, "content/updates/releases.json"), `${JSON.stringify(ledger, null, 2)}\n`);
@@ -163,6 +163,7 @@ describe("Updates validation and rendering", () => {
     expect(archive).toContain("<main");
     expect(archive).toContain('itemscope itemtype="https://schema.org/Blog"');
     expect(post).toContain('rel="canonical" href="https://ryanjosephkamp.github.io/reword-nerd/updates/v0-7-0/"');
+    expect(post).toContain('<link rel="icon" href="/reword-nerd/brand/favicon.ico" sizes="any">');
     expect(post).toContain('property="og:type" content="article"');
     expect(post).toContain('name="twitter:card" content="summary_large_image"');
     expect(post).toContain('"@type":"BlogPosting"');

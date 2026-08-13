@@ -146,7 +146,8 @@ export async function publishReleaseMediaCandidate(candidateDirectory, targetDir
       if (candidateMoved && await pathExists(target)) await rename(target, candidate);
       if (priorMoved) await rename(backup, target);
     } catch (rollbackError) {
-      throw new Error(`Release media publication failed and rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`, { cause: error });
+      const publicationError = error instanceof Error ? error.message : String(error);
+      throw new Error(`Release media publication failed and rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}. Original publication error: ${publicationError}`, { cause: rollbackError });
     }
     throw error;
   }

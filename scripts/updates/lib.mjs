@@ -433,6 +433,7 @@ function pageShell({ site, title, description, canonicalPath, type, body, jsonLd
   <title>${escapeHtml(title)}</title>
   <meta name="description" content="${escapeHtml(description)}">
   <link rel="canonical" href="${escapeHtml(canonical)}">
+  <link rel="icon" href="/reword-nerd/brand/favicon.ico" sizes="any">
   <link rel="stylesheet" href="/reword-nerd/updates/updates.css">
   <link rel="alternate" type="application/rss+xml" title="${escapeHtml(site.title)}" href="/reword-nerd/updates/feed.xml">
   <meta property="og:type" content="${type}">

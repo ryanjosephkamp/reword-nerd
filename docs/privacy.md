@@ -77,6 +77,22 @@ The static host receives ordinary requests for application files, not selected
 documents. Browser extensions, device management, local development servers,
 and network environments may have their own policies.
 
+## Public Updates and release media
+
+Public authored Updates posts and release media are site material, distinct from
+uploaded session content, prompt packages, and downloaded progress copies. The
+ledger, reviewed Markdown, and synthetic MP4/WebM/poster/transcript files are
+checked into the application source and served as ordinary same-origin site
+assets. They are not generated from selected files, do not include source
+documents or package material, and are never copied into a user's ZIP or
+progress file.
+
+The optional Updates Share enhancement receives only a pre-rendered canonical
+Updates URL. It has no document/session input, no storage, analytics, counter,
+shortener, social SDK, or network request. Native Share or clipboard access is
+performed only after a direct user action; manual copy displays that same
+canonical URL locally.
+
 ## Deliberate downloads
 
 **BUILD PACKAGE** creates a revision-bound ZIP Blob and workbooks in memory; it

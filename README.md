@@ -103,6 +103,11 @@ The public Updates journal is generated from `content/updates/releases.json` and
 reviewed safe Markdown. It stays static, same-origin, and readable without
 client JavaScript.
 
+Public authored Updates posts and release media are site material, distinct from
+uploaded session content, prompt packages, and downloaded progress copies. They
+are reviewed source files and same-origin release assets; they are never added
+to a user's package or inferred from a user's session.
+
 ```sh
 npm run updates:new -- --slug road-to-v0-6 --title "Road to v0.6" --date 2026-08-13
 npm run release:prepare -- --version 0.7.0 --title "reword-nerd v0.7" --date 2026-08-13
@@ -113,6 +118,10 @@ npm run updates:render
 Release preparation reads local Git history for its review inventory, updates
 central version contracts, and refuses to overwrite existing prose. It does not
 call a model, network service, GitHub API, commit, push, or merge.
+
+See the [release workflow](docs/release-workflow.md) for the required local
+authoring/review/video checks and the separately authorized owner publication
+steps.
 
 The first-visit Quick start includes a short, locally hosted overview video.
 Help provides Settings, Review, and Package chapter videos with transcripts;
@@ -277,6 +286,7 @@ but do not have equivalent automated release coverage.
 - [Directory structure](docs/directory-structure.md)
 - [Design system](docs/design-system.md)
 - [Model guidance](docs/model-guidance/README.md)
+- [Release workflow](docs/release-workflow.md)
 - [Contributing](CONTRIBUTING.md)
 
 This repository provides a browser application; it does not include a Python
