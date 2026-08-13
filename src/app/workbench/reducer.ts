@@ -5,6 +5,7 @@ import {
   DEFAULT_CODE_REWRITE_OPTIONS,
   DEFAULT_MODEL_PROFILE_ID,
   DEFAULT_SETTINGS,
+  resolveCodeRewriteOptions,
   type ExtractionResult,
   type RewriteSettings,
   type ExtractionOptions,
@@ -389,10 +390,15 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
       return changed(state, {
         globalSettings: { ...state.globalSettings, [action.field]: action.value },
       });
-    case "code-rewrite/global-options-changed":
-      return changed(state, {
-        globalCodeRewriteOptions: { ...action.options, protectedExecutableSyntax: true },
-      });
+    case "code-rewrite/global-options-changed": {
+      try {
+        return changed(state, {
+          globalCodeRewriteOptions: resolveCodeRewriteOptions(action.options),
+        });
+      } catch {
+        return state;
+      }
+    }
     case "settings/override-enabled": {
       const document = state.documents.find((item) => item.id === action.documentId);
       if (!document) return state;

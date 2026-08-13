@@ -106,12 +106,8 @@ export function sourceBoundaryToken(treeHash: string, files: readonly Pick<Promp
 export function renderPromptSource(context: PromptProjectSource): string {
   const files = [...context.includedFiles].sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
   const boundary = sourceBoundaryToken(context.reviewedTreeHash, files);
-  const body = files.map((file) => [
-    `<<<FILE ${file.path} | ORIGINAL ${file.originalHash} | REVIEWED ${file.reviewedTextHash}>>>`,
-    file.text,
-    `<<<END FILE ${file.path}>>>`,
-  ].join(file.text.endsWith("\n") ? "\n" : "\n")).join("\n");
-  return `${boundary}\nReviewed snapshot: ${context.reviewedTreeHash}\n${body}\nExcluded paths: ${context.excludedPaths.length > 0 ? [...context.excludedPaths].sort().join(", ") : "None."}\n${boundary}`;
+  const body = files.map((file) => `${boundary} BEGIN FILE ${file.path} | ORIGINAL ${file.originalHash} | REVIEWED ${file.reviewedTextHash}\n${file.text}${file.text.endsWith("\n") ? "" : "\n"}${boundary} END FILE ${file.path}`).join("\n");
+  return `${boundary} BEGIN PROJECT\nReviewed snapshot: ${context.reviewedTreeHash}\n${body}\nExcluded paths: ${context.excludedPaths.length > 0 ? [...context.excludedPaths].sort().join(", ") : "None."}\n${boundary} END PROJECT`;
 }
 
 const codeProjectFidelityGuidance = `## Code and Project Fidelity Contract

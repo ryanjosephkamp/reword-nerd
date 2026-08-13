@@ -83,6 +83,26 @@ describe("code rewrite settings", () => {
     expect(state.globalCodeRewriteOptions).toEqual((await import("../../src/domain/settings")).DEFAULT_CODE_REWRITE_OPTIONS);
   });
 
+  it("resolves incomplete reducer payloads against defaults and ignores malformed payloads", async () => {
+    // This catches reducer actions erasing omitted defaults or storing non-boolean values in live settings.
+    const settings = await import("../../src/domain/settings");
+    const initial = createInitialWorkbenchState(null);
+    const incomplete = workbenchReducer(initial, {
+      type: "code-rewrite/global-options-changed",
+      options: { commentsAndDocstrings: false },
+    } as never);
+
+    expect(incomplete.globalCodeRewriteOptions).toEqual({
+      ...settings.DEFAULT_CODE_REWRITE_OPTIONS,
+      commentsAndDocstrings: false,
+    });
+    const malformed = workbenchReducer(incomplete, {
+      type: "code-rewrite/global-options-changed",
+      options: { userFacingStrings: "yes" },
+    } as never);
+    expect(malformed).toBe(incomplete);
+  });
+
   it("provides distinct help contracts for every new control", () => {
     // This catches two controls sharing ambiguous help or omitting their prompt/package boundary.
     expect(SETTINGS_HELP_CONTENT).toMatchObject({

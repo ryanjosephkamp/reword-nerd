@@ -280,6 +280,65 @@ describe("safe project domain", () => {
     expect(excluded.reviewedTreeHash).not.toBe(edited.reviewedTreeHash);
   });
 
+  it("drops common serialized and shell credentials plus encrypted and DSA private keys before hashing", async () => {
+    // This catches common credential syntax or less common private-key headers entering any retained project material.
+    const project = await import("../../src/domain/project");
+    const hasherInputs: string[] = [];
+    const hasher = {
+      digest: async (bytes: ArrayBuffer) => {
+        hasherInputs.push(new TextDecoder().decode(bytes));
+        return crypto.subtle.digest("SHA-256", bytes);
+      },
+    };
+    const sensitive = [
+      ["config.json", "{ \"api_key\": \"actual-secret-value\" }\n"],
+      ["launch.sh", "export TOKEN=actual-secret-value\n"],
+      ["aws.txt", "AWS_SECRET_ACCESS_KEY=actual-secret-value\n"],
+      ["innocent-notes.txt", "-----BEGIN ENCRYPTED PRIVATE KEY-----\nactual-secret-value\n"],
+      ["ordinary-readme.md", "-----BEGIN DSA PRIVATE KEY-----\nactual-secret-value\n"],
+    ] as const;
+    const read = await project.readFolderProject({
+      kind: "folder",
+      name: "project",
+      files: [folderFile("safe.txt", "safe retained text\n"), ...sensitive.map(([path, text]) => folderFile(path, text))],
+    }, { hasher });
+    const retained = JSON.stringify(read);
+
+    expect(read.entries.map((entry) => entry.path)).toEqual(["safe.txt"]);
+    expect(read.sensitiveBlockedCounts).toEqual({
+      credentialFiles: 0,
+      privateKeys: 2,
+      clearCredentials: 3,
+    });
+    for (const [path, text] of sensitive) {
+      expect(hasherInputs.join("\n")).not.toContain(text.trim());
+      expect(retained).not.toContain(path);
+      expect(retained).not.toContain(text.trim());
+    }
+  });
+
+  it("accepts only a retained included TeX text entry as a normalized LaTeX root", async () => {
+    // This catches traversal, stale, excluded, or non-TeX roots entering the reviewed project snapshot.
+    const project = await import("../../src/domain/project");
+    const read = await project.readFolderProject({
+      kind: "folder",
+      name: "project",
+      files: [
+        folderFile("caf\u00e9.tex", "\\documentclass{article}\n"),
+        folderFile("draft.tex", "draft\n"),
+        folderFile("notes.txt", "notes\n"),
+        folderFile(".gitignore", "draft.tex\n"),
+      ],
+    });
+    const normalized = await project.chooseProjectClassification(read, "latex", "cafe\u0301.tex");
+    expect(normalized.rootDocument).toBe("caf\u00e9.tex");
+
+    for (const invalidRoot of ["../caf\u00e9.tex", "missing.tex", "draft.tex", "notes.txt"]) {
+      await expect(project.chooseProjectClassification(read, "latex", invalidRoot))
+        .rejects.toMatchObject({ code: "INVALID_PROJECT_REVIEW" });
+    }
+  });
+
   it("revalidates joined archive paths and accepts snapshots only for the exact operation and review revision", async () => {
     // This catches a safe leaf becoming unsafe under an export prefix or a stale reviewed snapshot winning a race.
     const project = await import("../../src/domain/project");

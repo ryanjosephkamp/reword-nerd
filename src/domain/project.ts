@@ -325,11 +325,13 @@ function isSensitiveName(path: string): boolean {
     || credentialExtensions.has(sourceExtension(basename));
 }
 
-function hasClearSecret(bytes: Uint8Array): boolean {
+function sensitiveContentCategory(bytes: Uint8Array): "privateKeys" | "clearCredentials" | null {
   const decoded = decodeSafeStandaloneText(bytes);
-  if (!decoded.ok) return false;
-  return /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/u.test(decoded.text)
-    || /(?:^|\n)\s*(?:api[_-]?key|access[_-]?key|secret|token|password|private[_-]?key)\s*[:=]\s*["']?(?!example|sample|placeholder|changeme)[^\s"']{8,}/iu.test(decoded.text);
+  if (!decoded.ok) return null;
+  if (/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/iu.test(decoded.text)) return "privateKeys";
+  return /(?:^|[\n{,])\s*(?:export\s+)?["']?[A-Z0-9_-]*(?:api[_-]?key|secret(?:[_-]?access[_-]?key)?|token|password|private[_-]?key)[A-Z0-9_-]*["']?\s*[:=]\s*["']?(?!example|sample|placeholder|changeme)[^\s"']{8,}/iu.test(decoded.text)
+    ? "clearCredentials"
+    : null;
 }
 
 type SensitiveCategory = keyof WorkspaceProject["sensitiveBlockedCounts"];
@@ -340,7 +342,7 @@ function sensitiveCategory(raw: RawProjectEntry): SensitiveCategory | null {
     return "privateKeys";
   }
   if (isSensitiveName(raw.path)) return "credentialFiles";
-  return hasClearSecret(raw.bytes) ? "clearCredentials" : null;
+  return sensitiveContentCategory(raw.bytes);
 }
 
 function rootGitignore(entries: readonly RawProjectEntry[], enabled: boolean): ((path: string) => boolean) | null {
@@ -680,13 +682,30 @@ export async function chooseProjectClassification(
   hasher?: HashAdapter | null,
 ): Promise<WorkspaceProject> {
   if (!project.classificationChoices.includes(classification)) throw new ProjectReadError("INVALID_PROJECT");
-  if (classification === "latex" && rootDocument === null) throw new ProjectReadError("INVALID_PROJECT_REVIEW");
+  let normalizedRoot: string | null = null;
+  if (classification === "latex") {
+    if (rootDocument === null) throw new ProjectReadError("INVALID_PROJECT_REVIEW");
+    try {
+      normalizedRoot = normalizeProjectPath(rootDocument);
+    } catch {
+      throw new ProjectReadError("INVALID_PROJECT_REVIEW");
+    }
+    const rootEntry = project.entries.find((entry) => entry.path === normalizedRoot);
+    if (!rootEntry
+      || rootEntry.contentKind !== "text"
+      || rootEntry.reviewedText === null
+      || !/\.(?:tex|ltx)$/iu.test(rootEntry.path)
+      || !rootEntry.promptIncluded
+      || !rootEntry.packageIncluded) {
+      throw new ProjectReadError("INVALID_PROJECT_REVIEW");
+    }
+  }
   return {
     ...project,
     classification,
-    rootDocument,
+    rootDocument: normalizedRoot,
     classificationChoiceRequired: false,
-    reviewedTreeHash: await hashReviewedTree(project.entries, hasher, classification, rootDocument),
+    reviewedTreeHash: await hashReviewedTree(project.entries, hasher, classification, normalizedRoot),
     projectReviewRevision: project.projectReviewRevision + 1,
     contextWarningAcknowledged: false,
     requiresReview: true,
