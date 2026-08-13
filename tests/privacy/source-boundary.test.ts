@@ -37,15 +37,17 @@ describe("production privacy boundary", () => {
     ];
     const findings = sourceFiles(root).flatMap((path) => {
       const source = readFileSync(path, "utf8");
-      const sourceWithoutApprovedNavigation = deliberateNavigationDestinations.reduce(
-        (current, destination) => current.replaceAll(destination, "APPROVED_NAVIGATION_DESTINATION"),
-        source,
+      const remoteUrls = [...source.matchAll(/https?:\/\/[^\s"'`<>)\\]+/gu)].map((match) => match[0]);
+      const unapprovedUrls = remoteUrls.filter(
+        (destination) => !deliberateNavigationDestinations.includes(destination as typeof deliberateNavigationDestinations[number]),
       );
+      const sourceWithoutNavigationUrls = source.replace(/https?:\/\/[^\s"'`<>)\\]+/gu, "NAVIGATION_DESTINATION");
       const forbiddenStorageMethod = /\.\s*(?:setItem|removeItem)\s*\(/u.test(source)
         && !path.endsWith(join("app", "workbench", "preferences.ts"));
       return [
         ...(forbiddenStorageMethod ? [`${relative(process.cwd(), path)} used a storage write outside the preference adapter`] : []),
-        ...forbidden.flatMap((pattern) => pattern.test(sourceWithoutApprovedNavigation)
+        ...unapprovedUrls.map((destination) => `${relative(process.cwd(), path)} used unapproved remote destination ${destination}`),
+        ...forbidden.flatMap((pattern) => pattern.test(sourceWithoutNavigationUrls)
         ? [`${relative(process.cwd(), path)} matched ${pattern.source}`]
         : []),
       ];
