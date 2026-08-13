@@ -13,7 +13,7 @@ export function ContextScene({ context, version }: ReleaseUpdateProps) {
       </div>
       <div style={{ display: "grid", gap: 12, padding: 24, border: `1px solid ${colors.border}`, background: colors.surface, opacity: interpolate(frame, [28, 54], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }), scale: interpolate(frame, [28, 54], [0.94, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.bezier(0.16, 1, 0.3, 1) }) }}>
         <div style={{ color: colors.mint, fontSize: 17, letterSpacing: 1.8 }}>RELEASE LEDGER</div>
-        {["Version / 0.7.0", "Status / current", "Media / same-origin", "Privacy / local-first"].map((line, index) => <div key={line} style={{ padding: "14px 0", borderTop: `1px solid ${colors.border}`, color: index === 2 ? colors.mint : colors.text, fontSize: 21, opacity: interpolate(frame, [44 + index * 10, 60 + index * 10], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) }}>{line}</div>)}
+        {[`Version / ${version}`, "Status / current", "Media / same-origin", "Privacy / local-first"].map((line, index) => <div key={line} style={{ padding: "14px 0", borderTop: `1px solid ${colors.border}`, color: index === 2 ? colors.mint : colors.text, fontSize: 21, opacity: interpolate(frame, [44 + index * 10, 60 + index * 10], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) }}>{line}</div>)}
       </div>
     </div>
   </ReleaseSceneShell>;
