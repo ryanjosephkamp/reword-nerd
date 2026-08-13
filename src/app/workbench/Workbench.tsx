@@ -48,6 +48,17 @@ import {
 
 type ResponsiveMode = "desktop" | "tablet" | "mobile";
 
+function exportDockGuidance(blocker: string | null, message: string): string {
+  if (message) return message;
+  if (!blocker) return "Ready to build the reviewed package.";
+  if (blocker === "Extraction is in progress.") return "Next: wait for extraction to finish.";
+  if (blocker === "Review extracted content before export") return "Next: review extracted content before export.";
+  if (blocker === "Estimated workflow context exceeds the selected profile.") {
+    return "Next: acknowledge the context warning or adjust the selected context limit.";
+  }
+  return `Next: ${blocker.charAt(0).toLocaleLowerCase()}${blocker.slice(1)}`;
+}
+
 function panelAccessibility(
   mode: ResponsiveMode,
   active: MobileTab,
@@ -169,6 +180,11 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     dispatch({ type: "focus/consumed" });
   }, [state.focusTarget]);
   useEffect(() => {
+    if (state.focusTarget !== "parameters") return;
+    parametersHeadingRef.current?.focus();
+    dispatch({ type: "focus/consumed" });
+  }, [state.focusTarget]);
+  useEffect(() => {
     const changed = previousMobileTabRef.current !== state.mobileTab;
     previousMobileTabRef.current = state.mobileTab;
     if (mode === "mobile" && changed && !state.focusTarget) {
@@ -185,19 +201,26 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     }
   }, [selected, state]);
 
-  const exportPanel = <ExportPanel
-    buildDisabled={Boolean(exporter.blocker)
+  const exportProps = {
+    buildDisabled: Boolean(exporter.blocker)
       || state.export.status === "building"
       || state.export.status === "downloading"
-      || Boolean(state.export.builtPackage)}
-    downloadDisabled={!state.export.builtPackage
+      || Boolean(state.export.builtPackage),
+    downloadDisabled: !state.export.builtPackage
       || state.export.builtRevision !== state.revision
       || state.export.status === "building"
-      || state.export.status === "downloading"}
-    status={state.export.status}
-    message={state.export.safeMessage}
-    onBuild={() => void exporter.build()}
-    onDownload={exporter.download}
+      || state.export.status === "downloading",
+    status: state.export.status,
+    message: state.export.safeMessage,
+    onBuild: () => void exporter.build(),
+    onDownload: exporter.download,
+  };
+  const primaryExportPanel = <ExportPanel {...exportProps} />;
+  const settingsMirrorExportPanel = <ExportPanel {...exportProps} announce={false} settingsMirror />;
+  const desktopExportDock = <ExportPanel
+    {...exportProps}
+    variant="dock"
+    guidance={exportDockGuidance(exporter.blocker, state.export.safeMessage)}
   />;
 
   const settingsProps = {
@@ -219,7 +242,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
       dispatch({ type: "preferences/reset-requested" });
     },
   };
-  const settings = <SettingsInspector {...settingsProps} exportPanel={mode === "desktop" ? exportPanel : undefined} />;
+  const settings = <SettingsInspector {...settingsProps} exportPanel={mode === "desktop" ? settingsMirrorExportPanel : undefined} />;
 
   const openSettings = () => {
     if (mode === "mobile") dispatch({ type: "mobile/tab-changed", tab: "settings" });
@@ -443,7 +466,8 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
           acknowledged={selected.contextWarningAcknowledged}
           onAcknowledge={(acknowledged) => dispatch({ type: "context/acknowledged", documentId: selected.id, acknowledged })}
         /> : null}
-        {mode === "mobile" && selected?.status === "ready" ? exportPanel : null}
+        {mode === "desktop" && state.items.length > 0 ? desktopExportDock : null}
+        {mode === "mobile" && selected?.status === "ready" ? primaryExportPanel : null}
         {mode === "mobile" ? <StatusSummary {...counts} compact /> : null}
       </section>
       <aside
@@ -461,7 +485,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
       <div className="saved-state" aria-label="Preferences save locally; documents and contents stay in this session.">Preferences save locally; documents and contents stay in this session <span /> v{APP_VERSION}</div>
     </footer>
     <SettingsDrawer open={state.activeOverlay === "settings"} onClose={() => dispatch({ type: "drawer/changed", open: false })} returnFocusRef={settingsButtonRef}>
-      <SettingsInspector {...settingsProps} exportPanel={exportPanel} />
+      <SettingsInspector {...settingsProps} exportPanel={primaryExportPanel} />
     </SettingsDrawer>
     <HelpDialog
       open={state.activeOverlay === "help"}
@@ -498,7 +522,10 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
         intake.resetSession();
         projectIntake.resetSession();
         editor.resetSession();
-        dispatch({ type: "session/reset-confirmed" });
+        dispatch({
+          type: "session/reset-confirmed",
+          focusAfterReset: mode === "desktop" ? "parameters" : "upload",
+        });
       }}
     />
     <ResetPreferencesDialog

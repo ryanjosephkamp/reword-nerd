@@ -153,13 +153,21 @@ button:disabled {
 .upload-drop-zone {
   position: absolute;
   top: 84px;
-  left: calc(24% - 52px);
+  right: calc(76% + 12px);
   z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.upload-drop-zone button {
+  pointer-events: auto;
 }
 
 .add-folder-button {
   min-height: 40px;
-  margin-left: 6px;
+  margin-left: 0;
   padding: 0 10px;
   color: var(--color-ready);
   font-size: 10px;
@@ -305,7 +313,7 @@ button:disabled {
 
 .preview-panel {
   display: grid;
-  grid-template-rows: 66px minmax(0, 1fr) auto;
+  grid-template-rows: 66px minmax(0, 1fr) auto auto;
 }
 
 .preview-content {
@@ -676,10 +684,19 @@ button:disabled {
 }
 
 .supported-file-hint {
-  margin: 6px 10px;
+  position: absolute;
+  top: 46px;
+  right: 0;
+  width: min(240px, calc(24vw - 24px));
+  margin: 0;
   color: var(--color-muted);
   font-size: 10px;
   line-height: 1.4;
+  text-align: right;
+}
+
+.files-panel.has-documents .supported-file-hint {
+  display: none;
 }
 
 .pdf-page > p {
@@ -1717,6 +1734,65 @@ button:disabled {
   color: var(--color-ready);
 }
 
+.export-panel-dock {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 8px;
+  margin: 0;
+  padding: 9px 10px 7px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+  text-align: left;
+}
+
+.export-panel-dock .build-button,
+.export-panel-dock .download-button {
+  min-width: 0;
+  min-height: 38px;
+  margin: 0;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.export-panel-dock .build-button {
+  gap: 10px;
+  border-width: 1px;
+}
+
+.export-panel-dock .build-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.export-panel-dock .export-dock-message {
+  display: flex;
+  min-width: 0;
+  grid-column: 1 / -1;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.export-panel-dock .export-dock-message span {
+  flex: 0 0 auto;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.export-panel-dock .export-dock-message.status-ready,
+.export-panel-dock .export-dock-message.status-success {
+  color: var(--color-ready);
+}
+
+.export-panel-dock .export-dock-message.status-failure {
+  color: var(--color-blocked);
+}
+
 .workbench-footer {
   display: flex;
   align-items: center;
@@ -1900,7 +1976,7 @@ button:disabled {
   }
 
   .upload-drop-zone {
-    left: calc(34% - 52px);
+    right: calc(66% + 12px);
   }
 
   .review-notice {
@@ -2036,8 +2112,17 @@ button:disabled {
   .upload-drop-zone {
     position: static;
     display: flex;
+    flex-wrap: wrap;
     justify-content: flex-end;
     padding: 0 32px 24px;
+  }
+
+  .supported-file-hint {
+    position: static;
+    width: 100%;
+    flex-basis: 100%;
+    margin-top: 4px;
+    text-align: right;
   }
 
   .upload-drop-zone.is-dragging::after {

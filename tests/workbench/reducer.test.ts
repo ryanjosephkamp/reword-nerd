@@ -67,6 +67,32 @@ describe("workbench reducer", () => {
     expect(selectDirty(state)).toBe(false);
   });
 
+  it("reveals desktop Settings when Quick Start is dismissed", () => {
+    // This catches a dismissed first-run tutorial leaving the preferred starting panel hidden.
+    let state = createInitialWorkbenchState();
+    state = workbenchReducer(state, { type: "desktop/settings-expanded", expanded: false });
+    expect(state.desktopSettingsExpanded).toBe(false);
+
+    state = workbenchReducer(state, { type: "tutorial/dismissed" });
+
+    expect(state.desktopSettingsExpanded).toBe(true);
+    expect(state.revision).toBe(0);
+  });
+
+  it("reopens desktop Settings and targets Parameters after a desktop New Session", () => {
+    // This catches New Session returning desktop users to Files with the required first step hidden.
+    let state = createInitialWorkbenchState({ tutorialVersion: CURRENT_TUTORIAL_VERSION });
+    state = workbenchReducer(state, { type: "desktop/settings-expanded", expanded: false });
+
+    state = workbenchReducer(state, {
+      type: "session/reset-confirmed",
+      focusAfterReset: "parameters",
+    });
+
+    expect(state.desktopSettingsExpanded).toBe(true);
+    expect(state.focusTarget).toBe("parameters");
+  });
+
   it("keeps gallery navigation view-only and preserves the selected asset while inclusion invalidates export", () => {
     // This catches gallery selection being lost across Preview modes or Include ejecting the user to Source.
     const alpha = document("alpha");

@@ -137,12 +137,86 @@ describe("Night Terminal workbench", () => {
     expect(screen.getByDisplayValue("Source text")).toBeInTheDocument();
     expect(restart).toHaveFocus();
 
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByRole("button", { name: "Settings" })).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(restart);
     fireEvent.click(screen.getByRole("button", { name: "Start new session" }));
     expect(screen.queryByDisplayValue("Source text")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Custom requirements")).toHaveValue("Keep terminology.");
-    expect(screen.getByRole("button", { name: "Add files" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Settings" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("heading", { name: "PARAMETERS" })).toHaveFocus();
     expect(screen.getByText("New session ready. Settings kept.")).toBeInTheDocument();
+  });
+
+  it("shows one desktop Preview Footer Dock that shares the Settings export state", async () => {
+    // This catches the center-panel actions disappearing, forking export state, or double-announcing status.
+    const buildPackage = vi.fn(services().buildPackage);
+    const download = vi.fn(() => ({ ok: true as const }));
+    render(<App services={services({ buildPackage, download })} />);
+    expect(screen.queryByRole("region", { name: "Package actions" })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Add supported files"), {
+      target: { files: [new File(["Source text"], "notes.md", { type: "text/markdown" })] },
+    });
+    await screen.findByDisplayValue("Source text");
+
+    const dock = screen.getByRole("region", { name: "Package actions" });
+    const settings = screen.getByRole("region", { name: "Parameters" });
+    expect(within(dock).getByRole("button", { name: "BUILD PACKAGE" })).toBeDisabled();
+    expect(within(dock).getByRole("status")).toHaveTextContent(/Next: review extracted content before export/i);
+    expect(within(settings).getByRole("button", { name: "Build from Parameters" })).toBeDisabled();
+    expect(within(settings).queryByRole("status")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm review" }));
+    fireEvent.click(within(dock).getByRole("button", { name: "BUILD PACKAGE" }));
+    await screen.findByRole("heading", { name: "PACKAGE PREVIEW" });
+    expect(buildPackage).toHaveBeenCalledTimes(1);
+    expect(within(settings).getByRole("button", { name: "Download from Parameters" })).toBeEnabled();
+
+    fireEvent.click(within(dock).getByRole("button", { name: "DOWNLOAD ZIP" }));
+    expect(download).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the Preview Footer Dock off mobile while retaining mobile export actions", async () => {
+    // This catches the desktop dock consuming scarce mobile review height or replacing mobile controls.
+    window.matchMedia = vi.fn((query: string) => ({
+      matches: query.includes("767px"),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    await uploadReviewedFile(services());
+
+    expect(screen.queryByRole("region", { name: "Package actions" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "BUILD PACKAGE" })).toBeEnabled();
+  });
+
+  it("keeps the tablet Settings drawer on the announcing exporter surface", async () => {
+    // This catches desktop mirror semantics suppressing the only visible tablet export status.
+    window.matchMedia = vi.fn((query: string) => ({
+      matches: query.includes("1279px") && !query.includes("767px"),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    const buildPackage = vi.fn(services().buildPackage);
+    await uploadReviewedFile(services({ buildPackage }));
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    const drawer = screen.getByRole("dialog", { name: "Parameters" });
+
+    fireEvent.click(within(drawer).getByRole("button", { name: "BUILD PACKAGE" }));
+
+    expect(await within(drawer).findByRole("status")).toHaveTextContent("Package ready.");
+    expect(buildPackage).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("region", { name: "Package actions" })).not.toBeInTheDocument();
   });
 
   it("exposes branded Info on desktop with exact deliberate creator links", () => {
@@ -920,7 +994,7 @@ describe("Night Terminal workbench", () => {
       target: { files: [new File(["Source text"], "slow.md")] },
     });
 
-    expect(await screen.findByRole("status")).toHaveTextContent("Extracting text from slow.md…");
+    expect(await screen.findByText("Extracting text from slow.md…", { selector: '[role="status"]' })).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Extracted text for slow.md" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Confirm review" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "BUILD PACKAGE" })).toBeDisabled();

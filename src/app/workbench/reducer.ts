@@ -74,7 +74,7 @@ export type WorkbenchAction =
   | { type: "overlay/closed" }
   | { type: "session/reset-requested" }
   | { type: "session/reset-cancelled" }
-  | { type: "session/reset-confirmed" }
+  | { type: "session/reset-confirmed"; focusAfterReset?: "upload" | "parameters" }
   | { type: "drawer/changed"; open: boolean }
   | { type: "tutorial/opened" }
   | { type: "tutorial/dismissed" }
@@ -668,6 +668,7 @@ function reduceWorkbenchState(state: WorkbenchState, action: WorkbenchAction): W
         selectedAssetIdByDocument: {},
         previewWorkflow: "runbook",
         previewDocumentKey: null,
+        desktopSettingsExpanded: true,
         activeOverlay: null,
         intake: { dragging: false, activeBatchId: null, issues: [] },
         editor: {},
@@ -675,7 +676,7 @@ function reduceWorkbenchState(state: WorkbenchState, action: WorkbenchAction): W
         liveMessage: "New session ready. Settings kept.",
         revision,
         lastExportedRevision: revision,
-        focusTarget: "upload",
+        focusTarget: action.focusAfterReset ?? "upload",
       };
     }
     case "drawer/changed":
@@ -685,6 +686,7 @@ function reduceWorkbenchState(state: WorkbenchState, action: WorkbenchAction): W
     case "tutorial/dismissed":
       return {
         ...state,
+        desktopSettingsExpanded: true,
         activeOverlay: null,
         tutorialSeenVersion: CURRENT_TUTORIAL_VERSION,
       };
