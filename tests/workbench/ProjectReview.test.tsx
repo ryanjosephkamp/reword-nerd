@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { App } from "../../src/app/App";
 import type { WorkbenchServices } from "../../src/app/workbench/contracts";
@@ -214,5 +214,97 @@ describe("project review", () => {
     expect(screen.getByLabelText("Reviewed text for src/copy.md")).toHaveValue("Latest exact text");
     digest.mockRestore();
     vi.useRealTimers();
+  });
+
+  it("starts a fresh review queue when the same deterministic project is reimported after New session", async () => {
+    // This catches retained project bytes/promises chaining a new same-ID project behind a stale edit.
+    const digestSettlers: Array<{ resolve(value: ArrayBuffer): void; reject(reason: Error): void }> = [];
+    const digest = vi.spyOn(globalThis.crypto.subtle, "digest").mockImplementation(
+      () => new Promise<ArrayBuffer>((resolve, reject) => digestSettlers.push({ resolve, reject })),
+    );
+    render(<App services={services()} />);
+    const addProject = () => {
+      const folderFile = new File(["text"], "copy.md");
+      Object.defineProperty(folderFile, "webkitRelativePath", { value: "demo/copy.md" });
+      fireEvent.change(screen.getByLabelText("Add folder project"), { target: { files: [folderFile] } });
+    };
+
+    addProject();
+    let editor = await screen.findByLabelText("Reviewed text for src/copy.md");
+    fireEvent.change(editor, { target: { value: "Stale pre-reset edit" } });
+    await waitFor(() => expect(digest).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start new session" }));
+    addProject();
+    editor = await screen.findByLabelText("Reviewed text for src/copy.md");
+    fireEvent.change(editor, { target: { value: "Fresh post-reset edit" } });
+    await waitFor(() => expect(digest).toHaveBeenCalledTimes(2));
+    expect(editor).toHaveValue("Fresh post-reset edit");
+    await act(async () => {
+      digestSettlers[0]?.reject(new Error("stale failure"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("The project review change could not be applied safely.")).not.toBeInTheDocument();
+    digest.mockRestore();
+  });
+
+  it("serializes concurrent folder admission and atomically reserves the first project bytes", async () => {
+    // This catches two deferred projects both observing the same pre-admission session capacity.
+    const sixtyMiB = 60 * 1024 * 1024;
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const readFolderProject = vi.fn(async (input: Parameters<NonNullable<WorkbenchServices["readFolderProject"]>>[0], options?: Parameters<NonNullable<WorkbenchServices["readFolderProject"]>>[1]) => {
+      if (input.name === "first") await firstGate;
+      if ((options?.existingSessionBytes ?? 0) + sixtyMiB > 100 * 1024 * 1024) throw new Error("capacity");
+      return { ...project(), id: `project-${input.name}`, name: input.name, totalByteCount: sixtyMiB };
+    });
+    render(<App services={{ ...services(), readFolderProject }} />);
+    const input = screen.getByLabelText("Add folder project");
+    const first = new File(["one"], "copy.md");
+    Object.defineProperty(first, "webkitRelativePath", { value: "first/copy.md" });
+    const second = new File(["two"], "copy.md");
+    Object.defineProperty(second, "webkitRelativePath", { value: "second/copy.md" });
+
+    fireEvent.change(input, { target: { files: [first] } });
+    fireEvent.change(input, { target: { files: [second] } });
+    await waitFor(() => expect(readFolderProject).toHaveBeenCalledTimes(1));
+    await act(async () => { releaseFirst(); await firstGate; });
+    await waitFor(() => expect(readFolderProject).toHaveBeenCalledTimes(2));
+
+    expect(readFolderProject.mock.calls[1]?.[1]).toEqual(expect.objectContaining({ existingSessionBytes: sixtyMiB }));
+    expect(within(screen.getByRole("listbox", { name: "Uploaded files" })).getAllByRole("option")).toHaveLength(1);
+    expect(await screen.findByText(/second: this folder could not be admitted safely/i)).toBeInTheDocument();
+  });
+
+  it("shares one atomic capacity reservation across folder and standalone file intake", async () => {
+    // This catches separate hook-local capacities admitting two concurrent 60 MiB inputs into a 100 MiB session.
+    const sixtyMiB = 60 * 1024 * 1024;
+    let releaseFolder!: () => void;
+    const folderGate = new Promise<void>((resolve) => { releaseFolder = resolve; });
+    const readFolderProject = vi.fn(async () => {
+      await folderGate;
+      return { ...project(), id: "large-folder", name: "large-folder", totalByteCount: sixtyMiB };
+    });
+    const preflight = vi.fn(async (files: readonly File[], capacity: { acceptedCount: number; acceptedBytes: number }) => files.map((file) => capacity.acceptedBytes + file.size > 100 * 1024 * 1024
+      ? { accepted: false as const, file, issue: { code: "TOTAL_TOO_LARGE" as const, message: "Session byte limit exceeded." } }
+      : { accepted: true as const, file, format: "markdown" as const, originalBytes: new ArrayBuffer(0) }));
+    render(<App services={{ ...services(), readFolderProject, preflight }} />);
+    const folder = new File(["folder"], "copy.md");
+    Object.defineProperty(folder, "webkitRelativePath", { value: "large-folder/copy.md" });
+    const standalone = new File(["standalone"], "later.md");
+    Object.defineProperty(standalone, "size", { value: sixtyMiB });
+
+    fireEvent.change(screen.getByLabelText("Add folder project"), { target: { files: [folder] } });
+    await waitFor(() => expect(readFolderProject).toHaveBeenCalledTimes(1));
+    fireEvent.change(screen.getByLabelText("Add supported files"), { target: { files: [standalone] } });
+    await Promise.resolve();
+    expect(preflight).not.toHaveBeenCalled();
+
+    await act(async () => { releaseFolder(); await folderGate; });
+    await waitFor(() => expect(preflight).toHaveBeenCalledTimes(1));
+    expect(preflight.mock.calls[0]?.[1]).toEqual({ acceptedCount: 0, acceptedBytes: sixtyMiB });
+    expect(within(screen.getByRole("listbox", { name: "Uploaded files" })).getAllByRole("option")).toHaveLength(1);
   });
 });

@@ -269,10 +269,8 @@ describe("Night Terminal workbench", () => {
     expect(screen.getByRole("region", { name: "Files" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Extracted text preview" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Parameters" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Add supported files")).toHaveAttribute(
-      "accept",
-      ".txt,.md,.markdown,.docx,.pdf,.tex,.ltx,.zip",
-    );
+    expect(screen.getByLabelText("Add supported files")).not.toHaveAttribute("accept");
+    expect(screen.getByText(/source code.*utf-8 text.*zip projects/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add files" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Start with files" })).not.toHaveAttribute("hidden");
   });

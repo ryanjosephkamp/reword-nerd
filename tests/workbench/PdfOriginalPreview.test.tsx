@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { PdfOriginalPreview, createBrowserPdfPreviewLoader, createDeferredPdfPreviewLoader, type PdfPreviewLoader } from "../../src/app/workbench/components/PdfOriginalPreview";
 
@@ -58,5 +58,40 @@ describe("PDF ORIGINAL preview", () => {
     unmount();
     expect(cleanup).toHaveBeenCalledTimes(2);
     expect(destroy).toHaveBeenCalledOnce();
+  });
+
+  it("measures the page container for fit width and exposes zoom as scrollable canvas geometry", async () => {
+    // This catches a hard-coded fit scale and max-width CSS making zoom controls visually inert.
+    const observers: Array<{ callback: ResizeObserverCallback; disconnect: ReturnType<typeof vi.fn> }> = [];
+    class TestResizeObserver {
+      readonly disconnect = vi.fn();
+      constructor(readonly callback: ResizeObserverCallback) { observers.push(this); }
+      observe() { /* driven explicitly below */ }
+      unobserve() { /* noop */ }
+    }
+    const originalResizeObserver = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = TestResizeObserver as unknown as typeof ResizeObserver;
+    const scales: number[] = [];
+    const loader: PdfPreviewLoader = { load: () => ({
+      promise: Promise.resolve({
+        numPages: 1,
+        getPage: async () => ({ width: 1_000, height: 1_400, text: "Measured page", render: async (_canvas, scale) => { scales.push(scale); }, cleanup: vi.fn() }),
+        destroy: vi.fn(),
+      }),
+      destroy: vi.fn(),
+    }) };
+    const { container, unmount } = render(<PdfOriginalPreview bytes={new Uint8Array([1])} loader={loader} identity="measured" />);
+    await screen.findByText("Measured page");
+    expect(observers).toHaveLength(1);
+    act(() => observers[0]!.callback([{ contentRect: { width: 500 } } as ResizeObserverEntry], observers[0] as unknown as ResizeObserver));
+    await waitFor(() => expect(scales.at(-1)).toBeCloseTo(0.5));
+    expect(container.querySelector("canvas")).toHaveStyle({ width: "500px" });
+
+    fireEvent.click(screen.getByRole("button", { name: "ZOOM IN" }));
+    await waitFor(() => expect(scales.at(-1)).toBeCloseTo(0.6));
+    expect(container.querySelector("canvas")).toHaveStyle({ width: "600px" });
+    expect(screen.getByText("ZOOM 60%")).toBeInTheDocument();
+    unmount();
+    globalThis.ResizeObserver = originalResizeObserver;
   });
 });

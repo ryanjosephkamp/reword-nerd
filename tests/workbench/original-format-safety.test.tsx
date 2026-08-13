@@ -41,6 +41,15 @@ describe("safe ORIGINAL format renderers", () => {
     expect(screen.getByText("Preview depth limit reached")).toBeInTheDocument();
   });
 
+  it("bounds a wide JSON object to 2,000 rendered nodes and one truncation sentinel", () => {
+    // This catches a zero budget being reused for every remaining key in a wide object.
+    const wide = Object.fromEntries(Array.from({ length: 5_000 }, (_, index) => [`key-${index}`, index]));
+    const { container } = render(<JsonPreview text={JSON.stringify(wide)} lines={false} />);
+    expect(container.querySelectorAll(".json-key").length).toBeLessThanOrEqual(2_000);
+    expect(screen.getAllByText("Preview limit reached")).toHaveLength(1);
+    expect(container.querySelectorAll("li").length).toBeLessThanOrEqual(2_001);
+  });
+
   it("uses reviewed local content for DOCX approximation without activating external relationships", async () => {
     // This catches a DOCX ORIGINAL surface injecting converter HTML or following package relationships.
     const original = new File([

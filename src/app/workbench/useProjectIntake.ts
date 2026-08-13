@@ -2,23 +2,27 @@ import { useCallback, useEffect, useLayoutEffect, useRef, type ChangeEvent } fro
 import { readFolderProject, readZipProject, type WorkspaceProject } from "../../domain";
 import type { WorkbenchServices, WorkbenchState } from "./contracts";
 import type { WorkbenchAction } from "./reducer";
+import type { IntakeCapacity, IntakeCapacityCoordinator } from "./intakeCapacityCoordinator";
 
 export function useProjectIntake(
   state: WorkbenchState,
   dispatch: React.Dispatch<WorkbenchAction>,
   services: WorkbenchServices,
+  intakeCapacity: IntakeCapacityCoordinator,
 ) {
   const inputRef = useRef<HTMLInputElement>(null);
   const generationRef = useRef(0);
   const stateRef = useRef(state);
-  useLayoutEffect(() => { stateRef.current = state; }, [state]);
+  useLayoutEffect(() => {
+    stateRef.current = state;
+  }, [state]);
   useEffect(() => () => { generationRef.current += 1; }, []);
 
-  const options = useCallback((reservedBytes = 0) => ({
+  const options = useCallback((existingSessionBytes: number) => ({
     honorRootGitignore: stateRef.current.globalCodeRewriteOptions.honorRootGitignore,
     excludeDependenciesBuildGenerated: stateRef.current.globalCodeRewriteOptions.excludeDependenciesBuildGenerated,
     preserveSafeNonTextAssets: stateRef.current.globalCodeRewriteOptions.preserveSafeNonTextAssets,
-    existingSessionBytes: stateRef.current.items.reduce((total, item) => total + (item.kind === "project" ? item.totalByteCount : item.originalByteSize), 0) + reservedBytes,
+    existingSessionBytes,
   }), []);
 
   const admit = useCallback((project: WorkspaceProject, generation: number, uploadOrdinal?: number) => {
@@ -34,29 +38,40 @@ export function useProjectIntake(
     const generation = generationRef.current;
     const path = (files[0] as File & { webkitRelativePath?: string }).webkitRelativePath ?? files[0].name;
     const name = path.split("/")[0] || "project";
-    const reader = services.readFolderProject ?? readFolderProject;
-    void reader({ kind: "folder", name, files }, options()).then((project) => admit(project, generation)).catch(() => {
-      if (generation === generationRef.current) dispatch({ type: "intake/issues", issues: [{ filename: name, message: "This folder could not be admitted safely." }], message: "The folder project was not added." });
+    const run = intakeCapacity.run(async (capacity) => {
+      if (generation !== generationRef.current) return { value: undefined, acceptedCount: 0, acceptedBytes: 0 };
+      const reader = services.readFolderProject ?? readFolderProject;
+      try {
+        const project = await reader({ kind: "folder", name, files }, options(capacity.acceptedBytes));
+        if (generation !== generationRef.current) return { value: undefined, acceptedCount: 0, acceptedBytes: 0 };
+        admit(project, generation);
+        return { value: undefined, acceptedCount: 0, acceptedBytes: project.totalByteCount };
+      } catch {
+        if (generation === generationRef.current) dispatch({ type: "intake/issues", issues: [{ filename: name, message: "This folder could not be admitted safely." }], message: "The folder project was not added." });
+        return { value: undefined, acceptedCount: 0, acceptedBytes: 0 };
+      }
     });
-  }, [admit, dispatch, options, services]);
+    void run.catch(() => undefined);
+  }, [admit, dispatch, intakeCapacity, options, services]);
 
-  const intakeZip = useCallback(async (files: readonly File[]) => {
+  const intakeZip = useCallback(async (files: readonly File[], initialCapacity: IntakeCapacity) => {
     const generation = generationRef.current;
+    let admittedBytes = 0;
+    if (generation !== generationRef.current) return 0;
     const reader = services.readZipProject ?? readZipProject;
-    let reservedBytes = 0;
     let uploadOrdinal = stateRef.current.items.reduce((next, item) => Math.max(next, item.uploadOrdinal + 1), 0);
     for (const file of files) {
       try {
-        const project = await reader({ kind: "zip", name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) }, options(reservedBytes));
-        admit(project, generation, uploadOrdinal);
+        const project = await reader({ kind: "zip", name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) }, options(initialCapacity.acceptedBytes + admittedBytes));
         if (generation !== generationRef.current) return 0;
-        reservedBytes += project.totalByteCount;
+        admittedBytes += project.totalByteCount;
+        admit(project, generation, uploadOrdinal);
         uploadOrdinal += 1;
       } catch {
         if (generation === generationRef.current) dispatch({ type: "intake/issues", issues: [{ filename: file.name, message: "This ZIP project could not be admitted safely." }], message: "The ZIP project was not added." });
       }
     }
-    return reservedBytes;
+    return admittedBytes;
   }, [admit, dispatch, options, services]);
 
   return {
@@ -64,6 +79,9 @@ export function useProjectIntake(
     open: () => inputRef.current?.click(),
     onChange,
     intakeZip,
-    resetSession: () => { generationRef.current += 1; },
+    resetSession: () => {
+      generationRef.current += 1;
+      if (inputRef.current) inputRef.current.value = "";
+    },
   };
 }

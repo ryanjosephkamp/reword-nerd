@@ -125,7 +125,7 @@ function PdfPageCanvas({ page, pageNumber, scale, active }: { page: PdfPreviewPa
     return () => controller.abort();
   }, [page, scale]);
   return <section className={`pdf-page${active ? " is-active" : " is-adjacent"}`} aria-label={`PDF page ${pageNumber}`}>
-    <canvas ref={canvasRef} aria-hidden="true" />
+    <canvas ref={canvasRef} aria-hidden="true" style={{ width: `${Math.max(1, page.width * scale)}px`, height: `${Math.max(1, page.height * scale)}px` }} />
     <p>{page.text || `Page ${pageNumber} has no selectable text.`}</p>
   </section>;
 }
@@ -135,9 +135,11 @@ function PdfOriginalPreviewSession({ bytes, loader }: { bytes: Uint8Array; loade
   const [pages, setPages] = useState(new Map<number, PdfPreviewPage>());
   const [activePage, setActivePage] = useState(1);
   const [zoom, setZoom] = useState<"fit" | number>("fit");
+  const [containerWidth, setContainerWidth] = useState(0);
   const [loadFailed, setLoadFailed] = useState(false);
   const generation = useRef(0);
   const pagesRef = useRef(new Map<number, PdfPreviewPage>());
+  const pageWindowRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const current = ++generation.current;
     const loading = loader.load(bytes);
@@ -175,19 +177,32 @@ function PdfOriginalPreviewSession({ bytes, loader }: { bytes: Uint8Array; loade
     })).then(() => { if (!cancelled) setPages(new Map(pagesRef.current)); });
     return () => { cancelled = true; };
   }, [document, visibleNumbers]);
+  useEffect(() => {
+    const container = pageWindowRef.current;
+    if (!container) return;
+    const measure = (width: number) => setContainerWidth(Math.max(0, width));
+    measure(container.clientWidth);
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => measure(entries[0]?.contentRect.width ?? container.clientWidth));
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [document]);
   if (loadFailed) return <p className="preview-error">This PDF could not be previewed safely.</p>;
   if (!document) return <p>Loading PDF locally…</p>;
-  const scale = zoom === "fit" ? 0.9 : zoom;
+  const active = pages.get(activePage);
+  const fitScale = active && containerWidth > 0 ? Math.max(0.1, Math.min(2, containerWidth / active.width)) : 0.9;
+  const scale = zoom === "fit" ? fitScale : zoom;
   return <div className="pdf-original-preview">
     <div className="pdf-preview-controls">
       <button type="button" disabled={activePage <= 1} onClick={() => setActivePage((page) => Math.max(1, page - 1))}>PREVIOUS PAGE</button>
       <span>PAGE {activePage} / {document.numPages}</span>
       <button type="button" disabled={activePage >= document.numPages} onClick={() => setActivePage((page) => Math.min(document.numPages, page + 1))}>NEXT PAGE</button>
       <button type="button" aria-pressed={zoom === "fit"} onClick={() => setZoom("fit")}>FIT WIDTH</button>
-      <button type="button" onClick={() => setZoom((value) => typeof value === "number" ? Math.min(2, value + 0.1) : 1.1)}>ZOOM IN</button>
-      <button type="button" onClick={() => setZoom((value) => typeof value === "number" ? Math.max(0.5, value - 0.1) : 0.8)}>ZOOM OUT</button>
+      <button type="button" onClick={() => setZoom(Math.min(2, scale + 0.1))}>ZOOM IN</button>
+      <button type="button" onClick={() => setZoom(Math.max(0.1, scale - 0.1))}>ZOOM OUT</button>
+      <span>ZOOM {Math.round(scale * 100)}%</span>
     </div>
-    <div className="pdf-page-window">{visibleNumbers.map((number) => pages.get(number) ? <PdfPageCanvas key={number} page={pages.get(number)!} pageNumber={number} scale={scale} active={number === activePage} /> : null)}</div>
+    <div className="pdf-page-window" ref={pageWindowRef}>{visibleNumbers.map((number) => pages.get(number) ? <PdfPageCanvas key={number} page={pages.get(number)!} pageNumber={number} scale={scale} active={number === activePage} /> : null)}</div>
   </div>;
 }
 

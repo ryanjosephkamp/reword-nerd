@@ -662,7 +662,7 @@ button:disabled {
 }
 
 .pdf-page {
-  max-width: 100%;
+  width: max-content;
 }
 
 .pdf-page.is-adjacent {
@@ -671,9 +671,15 @@ button:disabled {
 
 .pdf-page canvas {
   display: block;
-  max-width: 100%;
-  height: auto;
+  max-width: none;
   background: white;
+}
+
+.supported-file-hint {
+  margin: 6px 10px;
+  color: var(--color-muted);
+  font-size: 10px;
+  line-height: 1.4;
 }
 
 .pdf-page > p {

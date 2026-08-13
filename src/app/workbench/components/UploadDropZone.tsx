@@ -29,7 +29,6 @@ export function UploadDropZone({
       className="visually-hidden"
       type="file"
       aria-label="Add supported files"
-      accept=".txt,.md,.markdown,.docx,.pdf,.tex,.ltx,.zip"
       multiple
       onChange={onChange}
     />
@@ -44,6 +43,7 @@ export function UploadDropZone({
     />
     <button ref={addButtonRef} type="button" className="add-file-button" aria-label="Add files" onClick={onOpen}>+</button>
     <button type="button" className="add-folder-button" onClick={onOpenFolder}>ADD FOLDER</button>
+    <p className="supported-file-hint">Documents, source code, strict UTF-8 text, and ZIP projects are checked locally.</p>
     <button type="button" className="empty-upload" hidden={hasDocuments} onClick={onOpen}>Start with files</button>
   </div>;
 }

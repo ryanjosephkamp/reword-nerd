@@ -108,15 +108,27 @@ function jsonTreeNode(label: string, value: unknown, budget: number, depth = 0):
   if (depth >= MAX_JSON_DEPTH) return { node: <li><span className="json-key">{label}</span>: <span>Preview depth limit reached</span></li>, remaining: budget };
   const nextBudget = budget - 1;
   if (value === null || typeof value !== "object") return { node: <li><span className="json-key">{label}</span>: <span>{String(value)}</span></li>, remaining: nextBudget };
-  const entries = Object.keys(value).map((key) => [key, (value as Record<string, unknown>)[key]] as const);
   let remaining = nextBudget;
   const children: ReactNode[] = [];
-  for (const [key, child] of entries) {
-    const result = jsonTreeNode(key, child, remaining, depth + 1);
+  let visibleCount = 0;
+  let truncated = false;
+  const record = value as Record<string, unknown>;
+  for (const key in record) {
+    if (!Object.hasOwn(record, key)) continue;
+    if (remaining <= 0) {
+      children.push(<li key={`${depth}-preview-limit`} className="json-preview-limit">Preview limit reached</li>);
+      truncated = true;
+      break;
+    }
+    visibleCount += 1;
+    const result = jsonTreeNode(key, record[key], remaining, depth + 1);
     children.push(<Fragment key={`${depth}-${key}`}>{result.node}</Fragment>);
     remaining = result.remaining;
   }
-  return { node: <li><details open={depth < 2}><summary>{label} {Array.isArray(value) ? `[${entries.length}]` : `{${entries.length}}`}</summary>
+  const summary = Array.isArray(value)
+    ? `[${value.length}]`
+    : `{${visibleCount}${truncated ? "+" : ""}}`;
+  return { node: <li><details open={depth < 2}><summary>{label} {summary}</summary>
     <ul>{children}</ul>
   </details></li>, remaining };
 }

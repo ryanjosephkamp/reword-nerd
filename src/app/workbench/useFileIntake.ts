@@ -4,6 +4,7 @@ import { cloneExtractionOptions } from "../../domain";
 import type { WorkbenchServices, WorkbenchState } from "./contracts";
 import type { WorkbenchAction } from "./reducer";
 import { safeExtractionMessage } from "./services";
+import type { IntakeCapacity, IntakeCapacityCoordinator } from "./intakeCapacityCoordinator";
 
 interface FileIntake {
   inputRef: React.RefObject<HTMLInputElement | null>;
@@ -23,27 +24,19 @@ export function useFileIntake(
   state: WorkbenchState,
   dispatch: React.Dispatch<WorkbenchAction>,
   services: WorkbenchServices,
-  intakeZipProjects?: (files: readonly File[]) => Promise<number>,
+  intakeZipProjects: ((files: readonly File[], capacity: IntakeCapacity) => Promise<number>) | undefined,
+  intakeCapacity: IntakeCapacityCoordinator,
 ): FileIntake {
   const inputRef = useRef<HTMLInputElement>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const stateRef = useRef(state);
-  const capacityRef = useRef({ acceptedCount: 0, acceptedBytes: 0 });
   const nextUploadOrdinalRef = useRef(0);
   const knownHashesRef = useRef(new Map<string, string>());
-  const intakeQueueRef = useRef<Promise<void>>(Promise.resolve());
   const nextProcessingOperationRef = useRef(1);
   const controllersRef = useRef(new Map<string, AbortController>());
   const sessionGenerationRef = useRef(0);
   useLayoutEffect(() => {
     stateRef.current = state;
-    capacityRef.current = {
-      acceptedCount: state.documents.length,
-      acceptedBytes: state.items.reduce(
-        (total, item) => total + (item.kind === "project" ? item.totalByteCount : item.originalByteSize),
-        0,
-      ),
-    };
     nextUploadOrdinalRef.current = Math.max(
       nextUploadOrdinalRef.current,
       state.documents.reduce((next, document) => Math.max(next, document.uploadOrdinal + 1), 0),
@@ -65,21 +58,17 @@ export function useFileIntake(
     }
   }, [state]);
 
-  const performIntake = useCallback(async (files: readonly File[], generation: number) => {
-    if (files.length === 0) return;
-    if (generation !== sessionGenerationRef.current) return;
+  const performIntake = useCallback(async (files: readonly File[], generation: number, baseCapacity: IntakeCapacity) => {
+    if (files.length === 0 || generation !== sessionGenerationRef.current) return { acceptedCount: 0, acceptedBytes: 0 };
     const zipProjects = files.filter((file) => file.name.toLowerCase().endsWith(".zip"));
     const documents = files.filter((file) => !file.name.toLowerCase().endsWith(".zip"));
+    let admittedProjectBytes = 0;
     if (zipProjects.length > 0 && intakeZipProjects) {
-      const admittedProjectBytes = await intakeZipProjects(zipProjects);
-      capacityRef.current = {
-        ...capacityRef.current,
-        acceptedBytes: capacityRef.current.acceptedBytes + admittedProjectBytes,
-      };
+      admittedProjectBytes = await intakeZipProjects(zipProjects, baseCapacity);
     }
-    if (documents.length === 0) return;
-    const results = await services.preflight(documents, capacityRef.current);
-    if (generation !== sessionGenerationRef.current) return;
+    if (documents.length === 0) return { acceptedCount: 0, acceptedBytes: admittedProjectBytes };
+    const results = await services.preflight(documents, { ...baseCapacity, acceptedBytes: baseCapacity.acceptedBytes + admittedProjectBytes });
+    if (generation !== sessionGenerationRef.current) return { acceptedCount: 0, acceptedBytes: 0 };
     const issues = results.flatMap((result) => result.accepted ? [] : [{
       filename: result.file.name,
       message: result.issue.message,
@@ -90,12 +79,7 @@ export function useFileIntake(
       message: issues.length === results.length ? "No supported files were added." : `${issues.length} files were not added.`,
     });
     const accepted = results.filter((result) => result.accepted);
-    if (accepted.length === 0) return;
-    capacityRef.current = {
-      acceptedCount: capacityRef.current.acceptedCount + accepted.length,
-      acceptedBytes: capacityRef.current.acceptedBytes
-        + accepted.reduce((total, result) => total + result.file.size, 0),
-    };
+    if (accepted.length === 0) return { acceptedCount: 0, acceptedBytes: admittedProjectBytes };
 
     const batchId = services.createDocumentId();
     const baseOrdinal = nextUploadOrdinalRef.current;
@@ -187,19 +171,24 @@ export function useFileIntake(
       }
     };
     await Promise.all(Array.from({ length: Math.min(2, admitted.length) }, () => worker()));
+    return {
+      acceptedCount: accepted.length,
+      acceptedBytes: admittedProjectBytes + accepted.reduce((total, result) => total + result.file.size, 0),
+    };
   }, [dispatch, intakeZipProjects, services]);
 
   const intake = useCallback((files: readonly File[]) => {
     const generation = sessionGenerationRef.current;
-    const run = intakeQueueRef.current.then(() => performIntake(files, generation));
-    intakeQueueRef.current = run.catch(() => undefined);
-    return run;
-  }, [performIntake]);
+    return intakeCapacity.run(async (capacity) => {
+      const admitted = await performIntake(files, generation, capacity);
+      return { value: undefined, ...admitted };
+    });
+  }, [intakeCapacity, performIntake]);
 
   const onInputChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.currentTarget.files ?? []);
     event.currentTarget.value = "";
-    void intake(files);
+    void intake(files).catch(() => undefined);
   }, [intake]);
 
   const openFilePicker = useCallback(() => inputRef.current?.click(), []);
@@ -215,7 +204,7 @@ export function useFileIntake(
   const onDrop = useCallback((event: DragEvent<HTMLElement>) => {
     event.preventDefault();
     dispatch({ type: "intake/drag-changed", dragging: false });
-    void intake(Array.from(event.dataTransfer.files));
+    void intake(Array.from(event.dataTransfer.files)).catch(() => undefined);
   }, [dispatch, intake]);
 
   const retry = useCallback((documentId: string, optionsOverride?: import("../../domain").ExtractionOptions) => {
@@ -272,10 +261,8 @@ export function useFileIntake(
     sessionGenerationRef.current += 1;
     for (const controller of controllersRef.current.values()) controller.abort();
     controllersRef.current.clear();
-    capacityRef.current = { acceptedCount: 0, acceptedBytes: 0 };
     nextUploadOrdinalRef.current = 0;
     knownHashesRef.current.clear();
-    intakeQueueRef.current = Promise.resolve();
     if (inputRef.current) inputRef.current.value = "";
   }, []);
 

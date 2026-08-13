@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { assessContext, chooseProjectClassification, composeExtractionWithOcr, confirmProjectReview, editProjectEntryText, setProjectEntryInclusion, type OcrReviewStatus, type RewriteSettings, type WorkspaceProject } from "../../domain";
 import type { MobileTab, WorkbenchServices } from "./contracts";
 import { createInitialWorkbenchState, workbenchReducer } from "./reducer";
@@ -16,6 +16,7 @@ import { useExportPackage } from "./useExportPackage";
 import { useFileIntake } from "./useFileIntake";
 import { useProjectIntake } from "./useProjectIntake";
 import { useReviewEditor } from "./useReviewEditor";
+import { createIntakeCapacityCoordinator } from "./intakeCapacityCoordinator";
 import { ContextMeter } from "./components/ContextMeter";
 import { ExportPanel } from "./components/ExportPanel";
 import { ExtractedTextEditor } from "./components/ExtractedTextEditor";
@@ -93,6 +94,16 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     undefined,
     () => createInitialWorkbenchState(loadSavedPreferences()),
   );
+  const [intakeCapacity] = useState(createIntakeCapacityCoordinator);
+  useLayoutEffect(() => {
+    intakeCapacity.sync({
+      acceptedCount: state.documents.length,
+      acceptedBytes: state.items.reduce(
+        (total, item) => total + (item.kind === "project" ? item.totalByteCount : item.originalByteSize),
+        0,
+      ),
+    });
+  }, [intakeCapacity, state.documents.length, state.items]);
   const [busyOcrCandidate, setBusyOcrCandidate] = useState<string | null>(null);
   const mode = useResponsiveMode();
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
@@ -105,14 +116,16 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
   const preferenceEffectReadyRef = useRef(false);
   const suppressPreferenceWriteRef = useRef(false);
   const resetPreferencesReturnFocusRef = useRef<HTMLButtonElement>(null);
-  const projectIntake = useProjectIntake(state, dispatch, services);
-  const intake = useFileIntake(state, dispatch, services, projectIntake.intakeZip);
+  const projectIntake = useProjectIntake(state, dispatch, services, intakeCapacity);
+  const intake = useFileIntake(state, dispatch, services, projectIntake.intakeZip, intakeCapacity);
   const editor = useReviewEditor(state, dispatch, services);
   const exporter = useExportPackage(state, dispatch, services);
   const selectedItem = selectSelectedItem(state);
   const selected = selectedItem?.kind === "document" ? selectedItem : selectSelectedDocument(state);
   const selectedProject = selectedItem?.kind === "project" ? selectedItem : undefined;
   const projectReviewQueuesRef = useRef(new Map<string, Promise<WorkspaceProject>>());
+  const projectReviewSessionGenerationRef = useRef(0);
+  const projectReviewEpochsRef = useRef(new Map<string, number>());
   const selectedAsset = selected ? selectSelectedVisualAsset(state, selected.id) : undefined;
   const counts = selectCounts(state);
   const dirty = selectDirty(state);
@@ -253,20 +266,40 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
     project: WorkspaceProject,
     operation: (current: WorkspaceProject) => Promise<WorkspaceProject> | WorkspaceProject,
   ) => {
+    const sessionGeneration = projectReviewSessionGenerationRef.current;
+    const projectEpoch = projectReviewEpochsRef.current.get(project.id) ?? 0;
     const previous = projectReviewQueuesRef.current.get(project.id) ?? Promise.resolve(project);
     const queued = previous.then(async (current) => {
       const expectedReviewRevision = current.projectReviewRevision;
       const expectedOriginalTreeHash = current.originalTreeHash;
       const expectedOperationGeneration = current.projectOperationGeneration;
       const updated = await operation(current);
-      dispatch({ type: "project/review-updated", itemId: current.id, expectedOriginalTreeHash, expectedReviewRevision, expectedOperationGeneration, project: updated });
+      if (sessionGeneration === projectReviewSessionGenerationRef.current
+        && projectEpoch === (projectReviewEpochsRef.current.get(project.id) ?? 0)) {
+        dispatch({ type: "project/review-updated", itemId: current.id, expectedOriginalTreeHash, expectedReviewRevision, expectedOperationGeneration, project: updated });
+      }
       return updated;
     });
     projectReviewQueuesRef.current.set(project.id, queued);
     void queued.catch(() => {
-      projectReviewQueuesRef.current.delete(project.id);
-      dispatch({ type: "live/announced", message: "The project review change could not be applied safely." });
+      if (sessionGeneration === projectReviewSessionGenerationRef.current
+        && projectEpoch === (projectReviewEpochsRef.current.get(project.id) ?? 0)) {
+        dispatch({ type: "live/announced", message: "The project review change could not be applied safely." });
+      }
+    }).finally(() => {
+      if (projectReviewQueuesRef.current.get(project.id) === queued) {
+        projectReviewQueuesRef.current.delete(project.id);
+      }
     });
+  };
+
+  const removeItem = (itemId: string) => {
+    const item = state.items.find((candidate) => candidate.id === itemId);
+    if (item?.kind === "project") {
+      projectReviewEpochsRef.current.set(item.id, (projectReviewEpochsRef.current.get(item.id) ?? 0) + 1);
+      projectReviewQueuesRef.current.delete(item.id);
+    }
+    dispatch({ type: "item/removed", itemId });
   };
 
   return <main className="workbench" aria-label="reword_nerd workbench">
@@ -311,7 +344,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
           selectedId={state.selectedItemId}
           focusTarget={state.focusTarget}
           onSelect={(itemId) => dispatch({ type: "item/selection-changed", itemId })}
-          onRemove={(itemId) => dispatch({ type: "item/removed", itemId })}
+          onRemove={removeItem}
           onFocusConsumed={() => dispatch({ type: "focus/consumed" })}
         />
         {state.intake.issues.length > 0 ? <ul className="intake-issues">{state.intake.issues.map((issue, index) => <li key={`${issue.filename}-${index}`}>{issue.filename}: {issue.message}</li>)}</ul> : null}
@@ -459,6 +492,9 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
       returnFocusRef={newSessionReturnFocusRef}
       onConfirm={() => {
         setBusyOcrCandidate(null);
+        projectReviewSessionGenerationRef.current += 1;
+        projectReviewQueuesRef.current.clear();
+        intakeCapacity.reset();
         intake.resetSession();
         projectIntake.resetSession();
         editor.resetSession();
