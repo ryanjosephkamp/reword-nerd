@@ -5,6 +5,10 @@ import type {
   PreflightCapacity,
   PreflightResult,
   WorkspaceDocument,
+  WorkspaceProject,
+  FolderProjectInput,
+  ProjectReadOptions,
+  ZipProjectInput,
 } from "../../domain";
 import type { DownloadResult, ExportDocumentInput, PromptPackageResult } from "../../export";
 import type { ModelProfile } from "../../domain/profiles";
@@ -25,6 +29,12 @@ export interface WorkbenchDocument extends WorkspaceDocument {
   uploadOrdinal: number;
 }
 
+export interface WorkbenchProject extends WorkspaceProject {
+  uploadOrdinal: number;
+}
+
+export type WorkbenchItem = WorkbenchDocument | WorkbenchProject;
+
 export interface EditorRevisionState {
   revision: number;
   hashPending: boolean;
@@ -37,6 +47,10 @@ export interface IntakeIssue {
 }
 
 export interface WorkbenchState {
+  /** Canonical v0.6 workspace collection. */
+  items: WorkbenchItem[];
+  selectedItemId: string | null;
+  /** Compatibility aliases for v0.5 document-only consumers. */
   documents: WorkbenchDocument[];
   selectedDocumentId: string | null;
   globalSettings: RewriteSettings;
@@ -90,4 +104,6 @@ export interface WorkbenchServices {
   download(blob: Blob): DownloadResult;
   downloadProgressCopy(html: string, filename: string): DownloadResult;
   createDocumentId(): string;
+  readFolderProject?(input: FolderProjectInput, options?: ProjectReadOptions): Promise<WorkspaceProject>;
+  readZipProject?(input: ZipProjectInput, options?: ProjectReadOptions): Promise<WorkspaceProject>;
 }

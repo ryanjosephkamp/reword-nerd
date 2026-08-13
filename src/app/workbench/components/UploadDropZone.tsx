@@ -7,6 +7,9 @@ interface UploadDropZoneProps {
   hasDocuments: boolean;
   onOpen(): void;
   onChange(event: ChangeEvent<HTMLInputElement>): void;
+  folderInputRef: RefObject<HTMLInputElement | null>;
+  onOpenFolder(): void;
+  onFolderChange(event: ChangeEvent<HTMLInputElement>): void;
 }
 
 export function UploadDropZone({
@@ -16,6 +19,9 @@ export function UploadDropZone({
   hasDocuments,
   onOpen,
   onChange,
+  folderInputRef,
+  onOpenFolder,
+  onFolderChange,
 }: UploadDropZoneProps) {
   return <div className={`upload-drop-zone${dragging ? " is-dragging" : ""}`}>
     <input
@@ -27,7 +33,17 @@ export function UploadDropZone({
       multiple
       onChange={onChange}
     />
+    <input
+      ref={folderInputRef}
+      className="visually-hidden"
+      type="file"
+      aria-label="Add folder project"
+      multiple
+      {...{ webkitdirectory: "" }}
+      onChange={onFolderChange}
+    />
     <button ref={addButtonRef} type="button" className="add-file-button" aria-label="Add files" onClick={onOpen}>+</button>
+    <button type="button" className="add-folder-button" onClick={onOpenFolder}>ADD FOLDER</button>
     <button type="button" className="empty-upload" hidden={hasDocuments} onClick={onOpen}>Start with files</button>
   </div>;
 }

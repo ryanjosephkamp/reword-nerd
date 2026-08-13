@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { assessContext, composeExtractionWithOcr, type OcrReviewStatus, type RewriteSettings } from "../../domain";
+import { assessContext, chooseProjectClassification, composeExtractionWithOcr, confirmProjectReview, editProjectEntryText, setProjectEntryInclusion, type OcrReviewStatus, type RewriteSettings, type WorkspaceProject } from "../../domain";
 import type { MobileTab, WorkbenchServices } from "./contracts";
 import { createInitialWorkbenchState, workbenchReducer } from "./reducer";
 import {
   selectContextAssessment,
   selectCounts,
   selectDirty,
+  selectSelectedItem,
   selectSelectedDocument,
   selectSelectedVisualAsset,
 } from "./selectors";
@@ -13,6 +14,7 @@ import { defaultWorkbenchServices } from "./services";
 import { useBeforeUnloadWarning } from "./useBeforeUnloadWarning";
 import { useExportPackage } from "./useExportPackage";
 import { useFileIntake } from "./useFileIntake";
+import { useProjectIntake } from "./useProjectIntake";
 import { useReviewEditor } from "./useReviewEditor";
 import { ContextMeter } from "./components/ContextMeter";
 import { ExportPanel } from "./components/ExportPanel";
@@ -33,6 +35,8 @@ import { StatusSummary } from "./components/StatusSummary";
 import { UploadDropZone } from "./components/UploadDropZone";
 import { AssetGallery } from "./components/AssetGallery";
 import { OcrReview } from "./components/OcrReview";
+import { SourceReview } from "./components/OriginalPreview";
+import { ProjectReview } from "./components/ProjectReview";
 import { DocumentIcon, MoreIcon } from "./components/Icons";
 import {
   clearSavedPreferences,
@@ -101,10 +105,14 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
   const preferenceEffectReadyRef = useRef(false);
   const suppressPreferenceWriteRef = useRef(false);
   const resetPreferencesReturnFocusRef = useRef<HTMLButtonElement>(null);
-  const intake = useFileIntake(state, dispatch, services);
+  const projectIntake = useProjectIntake(state, dispatch, services);
+  const intake = useFileIntake(state, dispatch, services, projectIntake.intakeZip);
   const editor = useReviewEditor(state, dispatch, services);
   const exporter = useExportPackage(state, dispatch, services);
-  const selected = selectSelectedDocument(state);
+  const selectedItem = selectSelectedItem(state);
+  const selected = selectedItem?.kind === "document" ? selectedItem : selectSelectedDocument(state);
+  const selectedProject = selectedItem?.kind === "project" ? selectedItem : undefined;
+  const projectReviewQueuesRef = useRef(new Map<string, Promise<WorkspaceProject>>());
   const selectedAsset = selected ? selectSelectedVisualAsset(state, selected.id) : undefined;
   const counts = selectCounts(state);
   const dirty = selectDirty(state);
@@ -241,6 +249,25 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
       setBusyOcrCandidate(null);
     }
   };
+  const applyProjectReview = (
+    project: WorkspaceProject,
+    operation: (current: WorkspaceProject) => Promise<WorkspaceProject> | WorkspaceProject,
+  ) => {
+    const previous = projectReviewQueuesRef.current.get(project.id) ?? Promise.resolve(project);
+    const queued = previous.then(async (current) => {
+      const expectedReviewRevision = current.projectReviewRevision;
+      const expectedOriginalTreeHash = current.originalTreeHash;
+      const expectedOperationGeneration = current.projectOperationGeneration;
+      const updated = await operation(current);
+      dispatch({ type: "project/review-updated", itemId: current.id, expectedOriginalTreeHash, expectedReviewRevision, expectedOperationGeneration, project: updated });
+      return updated;
+    });
+    projectReviewQueuesRef.current.set(project.id, queued);
+    void queued.catch(() => {
+      projectReviewQueuesRef.current.delete(project.id);
+      dispatch({ type: "live/announced", message: "The project review change could not be applied safely." });
+    });
+  };
 
   return <main className="workbench" aria-label="reword_nerd workbench">
     <Header
@@ -261,27 +288,30 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
       <aside
         id="panel-files"
         {...panelAccessibility(mode, state.mobileTab, "files", "Files")}
-        className={`files-panel mobile-panel${state.documents.length > 0 ? " has-documents" : ""}${state.mobileTab === "files" ? " is-mobile-active" : ""}`}
+        className={`files-panel mobile-panel${state.items.length > 0 ? " has-documents" : ""}${state.mobileTab === "files" ? " is-mobile-active" : ""}`}
         onDragEnter={intake.onDragEnter}
         onDragLeave={intake.onDragLeave}
         onDragOver={intake.onDragOver}
         onDrop={intake.onDrop}
       >
-        <div className="panel-heading"><h2>FILES [{state.documents.length}]</h2></div>
+        <div className="panel-heading"><h2>FILES [{state.items.length}]</h2></div>
         <UploadDropZone
           inputRef={intake.inputRef}
           addButtonRef={intake.addButtonRef}
           dragging={state.intake.dragging}
-          hasDocuments={state.documents.length > 0}
+          hasDocuments={state.items.length > 0}
           onOpen={intake.openFilePicker}
           onChange={intake.onInputChange}
+          folderInputRef={projectIntake.inputRef}
+          onOpenFolder={projectIntake.open}
+          onFolderChange={projectIntake.onChange}
         />
         <FileQueue
-          documents={state.documents}
-          selectedId={state.selectedDocumentId}
+          documents={state.items}
+          selectedId={state.selectedItemId}
           focusTarget={state.focusTarget}
-          onSelect={(documentId) => dispatch({ type: "selection/changed", documentId })}
-          onRemove={(documentId) => dispatch({ type: "document/removed", documentId })}
+          onSelect={(itemId) => dispatch({ type: "item/selection-changed", itemId })}
+          onRemove={(itemId) => dispatch({ type: "item/removed", itemId })}
           onFocusConsumed={() => dispatch({ type: "focus/consumed" })}
         />
         {state.intake.issues.length > 0 ? <ul className="intake-issues">{state.intake.issues.map((issue, index) => <li key={`${issue.filename}-${index}`}>{issue.filename}: {issue.message}</li>)}</ul> : null}
@@ -291,12 +321,12 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
         {...panelAccessibility(mode, state.mobileTab, "preview", "Extracted text preview")}
         className={`preview-panel mobile-panel${state.mobileTab === "preview" ? " is-mobile-active" : ""}`}
       >
-        {selected ? <div className="mobile-document-summary">
+        {selectedItem ? <div className="mobile-document-summary">
           <div className="mobile-document-identity">
             <DocumentIcon />
-            <div><strong>{selected.name}</strong><span>/files/{selected.name}</span></div>
-            <span className={`selected-status status-${selected.status}`}>{selected.status === "ready" ? "READY" : selected.status === "blocked" || selected.status === "error" ? "BLOCKED" : "NEEDS REVIEW"}</span>
-            <button type="button" aria-label={`Show ${selected.name} in files`} onClick={() => dispatch({ type: "mobile/tab-changed", tab: "files" })}><MoreIcon /></button>
+            <div><strong>{selectedItem.name}</strong><span>/files/{selectedItem.name}</span></div>
+            <span className={`selected-status status-${selectedItem.status}`}>{selectedItem.status === "ready" ? "READY" : selectedItem.status === "blocked" || selectedItem.status === "error" ? "BLOCKED" : "NEEDS REVIEW"}</span>
+            <button type="button" aria-label={`Show ${selectedItem.name} in files`} onClick={() => dispatch({ type: "mobile/tab-changed", tab: "files" })}><MoreIcon /></button>
           </div>
         </div> : null}
         <div className="panel-heading preview-heading">
@@ -337,27 +367,43 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
             onTabChange={(workflow) => dispatch({ type: "preview/workflow-changed", workflow })}
             downloadProgressCopy={services.downloadProgressCopy}
           /> : null}
-          {state.previewMode === "assets" ? <AssetGallery
+          {state.previewMode === "assets" && selected ? <AssetGallery
             assets={selected?.visualAssets ?? []}
             view={state.assetViewMode}
             selectedAssetId={selectedAsset?.id ?? null}
             onViewChange={(view) => dispatch({ type: "assets/view-changed", mode: view })}
             onSelect={(assetId) => { if (selected) dispatch({ type: "assets/selected", documentId: selected.id, assetId }); }}
             onInclusionChange={(assetId, included) => { if (selected) dispatch({ type: "visual-asset/inclusion-changed", documentId: selected.id, assetId, included }); }}
-          /> : state.previewMode === "source" ? <>
+          /> : state.previewMode === "source" && selected ? <SourceReview document={selected} extracted={<>
           <ExtractedTextEditor
             document={selected}
-            hashPending={selected ? state.editor[selected.id]?.hashPending ?? false : false}
-            onEdit={(text) => { if (selected) editor.edit(selected.id, text); }}
-            onConfirm={() => { if (selected) editor.confirm(selected.id); }}
+            hashPending={state.editor[selected.id]?.hashPending ?? false}
+            onEdit={(text) => editor.edit(selected.id, text)}
+            onConfirm={() => editor.confirm(selected.id)}
             onRemove={removeSelectedFromPreview}
-            onRetry={() => { if (selected) intake.retry(selected.id); }}
+            onRetry={() => intake.retry(selected.id)}
             onRevealFiles={() => dispatch({ type: "mobile/tab-changed", tab: "files" })}
-            onLatexMainFile={(mainFile) => { if (selected) dispatch({ type: "latex/main-file-selected", documentId: selected.id, mainFile }); }}
+            onLatexMainFile={(mainFile) => dispatch({ type: "latex/main-file-selected", documentId: selected.id, mainFile })}
             onAddFiles={intake.openFilePicker}
           />
-          {selected ? <OcrReview candidates={selected.ocrCandidates ?? []} busyId={busyOcrCandidate} onReview={(candidateId, status, text) => void reviewOcrCandidate(candidateId, status, text)} /> : null}
-          </> : null}
+          <OcrReview candidates={selected.ocrCandidates ?? []} busyId={busyOcrCandidate} onReview={(candidateId, status, text) => void reviewOcrCandidate(candidateId, status, text)} />
+          </>} /> : state.previewMode === "source" && selectedProject ? <ProjectReview
+            project={selectedProject}
+            onSelect={(path) => dispatch({ type: "project/selected-entry", itemId: selectedProject.id, path })}
+            onEdit={(path, text) => void applyProjectReview(selectedProject, (project) => editProjectEntryText(project, path, text))}
+            onInclusion={(path, promptIncluded, packageIncluded) => void applyProjectReview(selectedProject, (project) => setProjectEntryInclusion(project, path, { promptIncluded, packageIncluded }))}
+            onClassification={(classification, rootDocument) => void applyProjectReview(selectedProject, (project) => chooseProjectClassification(project, classification, rootDocument))}
+            onConfirm={() => void applyProjectReview(selectedProject, (project) => confirmProjectReview(project))}
+          /> : state.previewMode === "source" ? <ExtractedTextEditor
+            hashPending={false}
+            onEdit={() => undefined}
+            onConfirm={() => undefined}
+            onRemove={() => undefined}
+            onRetry={() => undefined}
+            onRevealFiles={() => dispatch({ type: "mobile/tab-changed", tab: "files" })}
+            onLatexMainFile={() => undefined}
+            onAddFiles={intake.openFilePicker}
+          /> : null}
         </div>
         {state.previewMode === "source" && context && selected ? <ContextMeter
           assessment={context}
@@ -414,6 +460,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
       onConfirm={() => {
         setBusyOcrCandidate(null);
         intake.resetSession();
+        projectIntake.resetSession();
         editor.resetSession();
         dispatch({ type: "session/reset-confirmed" });
       }}

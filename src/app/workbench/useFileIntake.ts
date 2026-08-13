@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type ChangeEvent, type DragEvent } from "react";
+import { useCallback, useLayoutEffect, useRef, type ChangeEvent, type DragEvent } from "react";
 import type { WorkspaceDocument } from "../../domain";
 import { cloneExtractionOptions } from "../../domain";
 import type { WorkbenchServices, WorkbenchState } from "./contracts";
@@ -23,6 +23,7 @@ export function useFileIntake(
   state: WorkbenchState,
   dispatch: React.Dispatch<WorkbenchAction>,
   services: WorkbenchServices,
+  intakeZipProjects?: (files: readonly File[]) => Promise<number>,
 ): FileIntake {
   const inputRef = useRef<HTMLInputElement>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
@@ -34,11 +35,14 @@ export function useFileIntake(
   const nextProcessingOperationRef = useRef(1);
   const controllersRef = useRef(new Map<string, AbortController>());
   const sessionGenerationRef = useRef(0);
-  useEffect(() => {
+  useLayoutEffect(() => {
     stateRef.current = state;
     capacityRef.current = {
       acceptedCount: state.documents.length,
-      acceptedBytes: state.documents.reduce((total, document) => total + document.originalByteSize, 0),
+      acceptedBytes: state.items.reduce(
+        (total, item) => total + (item.kind === "project" ? item.totalByteCount : item.originalByteSize),
+        0,
+      ),
     };
     nextUploadOrdinalRef.current = Math.max(
       nextUploadOrdinalRef.current,
@@ -64,7 +68,17 @@ export function useFileIntake(
   const performIntake = useCallback(async (files: readonly File[], generation: number) => {
     if (files.length === 0) return;
     if (generation !== sessionGenerationRef.current) return;
-    const results = await services.preflight(files, capacityRef.current);
+    const zipProjects = files.filter((file) => file.name.toLowerCase().endsWith(".zip"));
+    const documents = files.filter((file) => !file.name.toLowerCase().endsWith(".zip"));
+    if (zipProjects.length > 0 && intakeZipProjects) {
+      const admittedProjectBytes = await intakeZipProjects(zipProjects);
+      capacityRef.current = {
+        ...capacityRef.current,
+        acceptedBytes: capacityRef.current.acceptedBytes + admittedProjectBytes,
+      };
+    }
+    if (documents.length === 0) return;
+    const results = await services.preflight(documents, capacityRef.current);
     if (generation !== sessionGenerationRef.current) return;
     const issues = results.flatMap((result) => result.accepted ? [] : [{
       filename: result.file.name,
@@ -173,7 +187,7 @@ export function useFileIntake(
       }
     };
     await Promise.all(Array.from({ length: Math.min(2, admitted.length) }, () => worker()));
-  }, [dispatch, services]);
+  }, [dispatch, intakeZipProjects, services]);
 
   const intake = useCallback((files: readonly File[]) => {
     const generation = sessionGenerationRef.current;

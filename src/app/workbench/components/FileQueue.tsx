@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import type { WorkbenchDocument } from "../contracts";
+import type { WorkbenchItem } from "../contracts";
 import { DocumentIcon, MoreIcon } from "./Icons";
 
-function statusLabel(document: WorkbenchDocument): string {
+function statusLabel(document: WorkbenchItem): string {
   if (document.status === "ready") return "READY";
   if (document.status === "blocked" || document.status === "error") return "BLOCKED";
   if (document.status === "queued" || document.status === "extracting") return "EXTRACTING";
@@ -10,7 +10,7 @@ function statusLabel(document: WorkbenchDocument): string {
 }
 
 interface FileQueueProps {
-  documents: readonly WorkbenchDocument[];
+  documents: readonly WorkbenchItem[];
   selectedId: string | null;
   focusTarget: string | null;
   onSelect(documentId: string): void;
@@ -86,14 +86,14 @@ export function FileQueue(props: FileQueueProps) {
         <button
           type="button"
           className="row-menu"
-          aria-label={`File actions for ${document.name}`}
+          aria-label={`${document.kind === "project" ? "Project" : "File"} actions for ${document.name}`}
           aria-haspopup="true"
           aria-expanded={openMenuId === document.id}
           ref={(node) => { if (node) menuButtons.current.set(document.id, node); else menuButtons.current.delete(document.id); }}
           onClick={() => setOpenMenuId((current) => current === document.id ? null : document.id)}
         ><MoreIcon /></button>
         {openMenuId === document.id ? <div className="file-actions-menu" aria-label={`Actions for ${document.name}`} ref={menuRef}>
-          <button type="button" onClick={() => { setOpenMenuId(null); props.onRemove(document.id); }}>Remove file</button>
+          <button type="button" onClick={() => { setOpenMenuId(null); props.onRemove(document.id); }}>Remove {document.kind === "project" ? "project" : "file"}</button>
         </div> : null}
       </div>;
     })}

@@ -94,7 +94,8 @@ describe("saved preferences and onboarding UI", () => {
     fireEvent.click(within(screen.getByRole("dialog", { name: "Quick start" })).getByRole("button", { name: "ADD FILES" }));
 
     expect(click).toHaveBeenCalledTimes(1);
-    expect(document.querySelectorAll('input[type="file"]')).toHaveLength(1);
+    expect(document.querySelectorAll('input[type="file"][aria-label="Add supported files"]')).toHaveLength(1);
+    expect(screen.getByLabelText("Add folder project")).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "Quick start" })).not.toBeInTheDocument();
   });
 

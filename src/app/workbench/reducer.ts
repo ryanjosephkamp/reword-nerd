@@ -13,13 +13,19 @@ import {
   type OcrReviewStatus,
   type ProcessingProgress,
   type WorkspaceDocument,
+  type WorkspaceProject,
 } from "../../domain";
-import type { ActiveOverlay, AssetViewMode, BuiltPromptPackage, MobileTab, PackagePreviewTab, PreviewMode, WorkbenchDocument, WorkbenchState } from "./contracts";
+import type { ActiveOverlay, AssetViewMode, BuiltPromptPackage, MobileTab, PackagePreviewTab, PreviewMode, WorkbenchDocument, WorkbenchItem, WorkbenchProject, WorkbenchState } from "./contracts";
 import { CURRENT_TUTORIAL_VERSION, type SavedPreferencesPatch } from "./preferences";
 
 type IntakeDocument = { document: WorkspaceDocument; uploadOrdinal: number };
 
 export type WorkbenchAction =
+  | { type: "project/admitted"; project: WorkspaceProject; uploadOrdinal: number }
+  | { type: "project/review-updated"; itemId: string; expectedOriginalTreeHash: string; expectedReviewRevision: number; expectedOperationGeneration: number; project: WorkspaceProject }
+  | { type: "project/selected-entry"; itemId: string; path: string }
+  | { type: "item/selection-changed"; itemId: string }
+  | { type: "item/removed"; itemId: string }
   | { type: "intake/drag-changed"; dragging: boolean }
   | { type: "intake/issues"; issues: WorkbenchState["intake"]["issues"]; message: string }
   | { type: "intake/accepted"; batchId: string; documents: IntakeDocument[] }
@@ -102,6 +108,8 @@ export function createInitialWorkbenchState(preferences: SavedPreferencesPatch |
     contextWindowTokens: savedContext ?? null,
   };
   return {
+    items: [],
+    selectedItemId: null,
     documents: [],
     selectedDocumentId: null,
     globalSettings: { ...DEFAULT_SETTINGS, ...preferences?.globalSettings },
@@ -169,8 +177,71 @@ function isCurrentExportOperation(
     && state.export.operationRevision === revision;
 }
 
-export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction): WorkbenchState {
+function reduceWorkbenchState(state: WorkbenchState, action: WorkbenchAction): WorkbenchState {
   switch (action.type) {
+    case "project/admitted": {
+      const admitted: WorkbenchProject = {
+        ...action.project,
+        entries: [...action.project.entries],
+        warnings: [...action.project.warnings],
+        uploadOrdinal: action.uploadOrdinal,
+      };
+      return changed(state, {
+        items: [...state.items, admitted],
+        selectedItemId: admitted.id,
+        selectedDocumentId: null,
+        mobileTab: "preview",
+        liveMessage: `${admitted.name} is ready for project review.`,
+      });
+    }
+    case "project/review-updated": {
+      const current = state.items.find((item): item is WorkbenchProject => item.kind === "project" && item.id === action.itemId);
+      if (!current
+        || current.originalTreeHash !== action.expectedOriginalTreeHash
+        || current.projectReviewRevision !== action.expectedReviewRevision
+        || current.projectOperationGeneration !== action.expectedOperationGeneration
+        || action.project.id !== current.id
+        || action.project.originalTreeHash !== current.originalTreeHash) return state;
+      const project: WorkbenchProject = {
+        ...action.project,
+        entries: [...action.project.entries],
+        warnings: [...action.project.warnings],
+        selectedEntryPath: current.selectedEntryPath,
+        uploadOrdinal: current.uploadOrdinal,
+      };
+      return changed(state, {
+        items: state.items.map((item) => item.id === current.id ? project : item),
+        liveMessage: project.requiresReview ? "Project review changed. Confirm the project again." : "Project review complete.",
+      });
+    }
+    case "project/selected-entry": {
+      const current = state.items.find((item): item is WorkbenchProject => item.kind === "project" && item.id === action.itemId);
+      if (!current?.entries.some((entry) => entry.path === action.path)) return state;
+      return {
+        ...state,
+        items: state.items.map((item) => item.id === current.id ? { ...current, selectedEntryPath: action.path } : item),
+      };
+    }
+    case "item/selection-changed": {
+      const item = state.items.find((candidate) => candidate.id === action.itemId);
+      if (!item) return state;
+      return { ...state, selectedItemId: item.id, selectedDocumentId: item.kind === "document" ? item.id : null, mobileTab: "preview" };
+    }
+    case "item/removed": {
+      const index = state.items.findIndex((item) => item.id === action.itemId);
+      if (index < 0) return state;
+      const item = state.items[index];
+      if (item.kind === "document") return reduceWorkbenchState(state, { type: "document/removed", documentId: item.id });
+      const items = state.items.filter((candidate) => candidate.id !== item.id);
+      const next = items[index] ?? items[index - 1] ?? null;
+      return changed(state, {
+        items,
+        selectedItemId: state.selectedItemId === item.id ? next?.id ?? null : state.selectedItemId,
+        selectedDocumentId: next?.kind === "document" ? next.id : null,
+        focusTarget: next ? `document:${next.id}` : "upload",
+        liveMessage: `${item.name} removed from the session.`,
+      });
+    }
     case "intake/drag-changed":
       return { ...state, intake: { ...state.intake, dragging: action.dragging } };
     case "intake/issues":
@@ -587,7 +658,9 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
       return {
         ...state,
         documents: [],
+        items: [],
         selectedDocumentId: null,
+        selectedItemId: null,
         overrideEnabled: {},
         mobileTab: "files",
         previewMode: "source",
@@ -706,4 +779,38 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
     case "live/announced":
       return { ...state, liveMessage: action.message };
   }
+}
+
+function mergeDocumentAliases(
+  priorItems: readonly WorkbenchItem[],
+  documents: readonly WorkbenchDocument[],
+): WorkbenchItem[] {
+  const documentsById = new Map(documents.map((document) => [document.id, document]));
+  const merged: WorkbenchItem[] = [];
+  for (const item of priorItems) {
+    if (item.kind === "project") {
+      merged.push(item);
+      continue;
+    }
+    const document = documentsById.get(item.id);
+    if (!document) continue;
+    documentsById.delete(item.id);
+    merged.push(document);
+  }
+  return [...merged, ...documentsById.values()];
+}
+
+export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction): WorkbenchState {
+  const next = reduceWorkbenchState(state, action);
+  if (!next) return state;
+  const documentsChanged = next.documents !== state.documents;
+  const selectionChanged = next.selectedDocumentId !== state.selectedDocumentId;
+  if (!documentsChanged && !selectionChanged) return next;
+  return {
+    ...next,
+    items: documentsChanged ? mergeDocumentAliases(next.items, next.documents) : next.items,
+    selectedItemId: selectionChanged && next.selectedItemId === state.selectedItemId
+      ? next.selectedDocumentId
+      : next.selectedItemId,
+  };
 }

@@ -8,6 +8,10 @@ import {
 } from "../../domain";
 import type { WorkbenchDocument, WorkbenchState } from "./contracts";
 
+export function selectSelectedItem(state: WorkbenchState) {
+  return state.items.find((item) => item.id === state.selectedItemId);
+}
+
 export function selectSelectedDocument(state: WorkbenchState): WorkbenchDocument | undefined {
   return state.documents.find((document) => document.id === state.selectedDocumentId);
 }
@@ -57,14 +61,14 @@ export function selectContextAssessment(
 }
 
 export function selectCounts(state: WorkbenchState) {
-  return state.documents.reduce(
+  return state.items.reduce(
     (counts, document) => {
       if (document.status === "ready") counts.ready += 1;
       else if (document.status === "blocked" || document.status === "error") counts.blocked += 1;
       else counts.review += 1;
       return counts;
     },
-    { total: state.documents.length, ready: 0, review: 0, blocked: 0 },
+    { total: state.items.length, ready: 0, review: 0, blocked: 0 },
   );
 }
 
