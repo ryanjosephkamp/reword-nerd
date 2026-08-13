@@ -133,6 +133,20 @@ describe("Updates validation and rendering", () => {
       'export interface PromptPackageManifest { schemaVersion: 5; package: { name: "reword-nerd"; version: "0.6.0"; format: "dual-mode-prompt-package" }; }\nexport interface WorkbookProgress { schemaVersion: 2; }\n// version: "0.7.0"; schemaVersion: 6; schemaVersion: 1;\n',
     );
     await expect(checkUpdates(schemaRoot)).rejects.toThrow(/package version|schema/i);
+
+    const nestedSchemaRoot = await fixtureRoot();
+    await writeFile(
+      join(nestedSchemaRoot, "src/export/contracts.ts"),
+      'export interface PromptPackageManifest { schemaVersion: 5; metadata: { schemaVersion: 6 }; package: { name: "reword-nerd"; version: "0.7.0"; format: "dual-mode-prompt-package" }; }\nexport interface WorkbookProgress { schemaVersion: 1; }\n',
+    );
+    await expect(checkUpdates(nestedSchemaRoot)).rejects.toThrow(/manifest schema/i);
+
+    const stringDecoyRoot = await fixtureRoot();
+    await writeFile(
+      join(stringDecoyRoot, "src/version.ts"),
+      'import packageMetadata from "../package.json";\nfunction assertCurrentVersion(version: string): asserts version is "0.7.0" { const decoy = \'if (version !== "0.7.0")\'; if (version !== "0.6.0") throw new Error(decoy); }\nconst packageVersion = packageMetadata.version;\nassertCurrentVersion(packageVersion);\nexport const APP_VERSION = packageVersion;\n',
+    );
+    await expect(checkUpdates(stringDecoyRoot)).rejects.toThrow(/APP_VERSION|package version/i);
   });
 
   it("renders deterministic semantic pages, feed, and sitemap without client JavaScript", async () => {

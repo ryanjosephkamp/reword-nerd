@@ -2,6 +2,7 @@ import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { execFile as execFileCallback } from "node:child_process";
 import { dirname, resolve, sep } from "node:path";
 import { promisify } from "node:util";
+import ts from "typescript";
 
 const execFile = promisify(execFileCallback);
 
@@ -175,59 +176,85 @@ async function readJson(path, label) {
   }
 }
 
-function stripTypeScriptComments(source) {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//gu, "")
-    .replace(/(^|[^:])\/\/.*$/gmu, "$1");
+function propertyName(node) {
+  return node && (ts.isIdentifier(node) || ts.isStringLiteral(node)) ? node.text : null;
 }
 
-function extractNamedBlock(source, startPattern, label) {
-  const match = startPattern.exec(source);
-  if (!match) throw new Error(`${label} declaration is missing`);
-  const openingBrace = source.indexOf("{", match.index);
-  let depth = 0;
-  for (let index = openingBrace; index < source.length; index += 1) {
-    if (source[index] === "{") depth += 1;
-    if (source[index] === "}") {
-      depth -= 1;
-      if (depth === 0) return { signature: match, body: source.slice(openingBrace + 1, index) };
-    }
-  }
-  throw new Error(`${label} declaration is malformed`);
+function literalTypeValue(typeNode) {
+  if (!typeNode || !ts.isLiteralTypeNode(typeNode)) return null;
+  if (ts.isStringLiteral(typeNode.literal)) return typeNode.literal.text;
+  if (ts.isNumericLiteral(typeNode.literal)) return Number(typeNode.literal.text);
+  return null;
+}
+
+function directProperty(container, name) {
+  return container.members.find((member) => ts.isPropertySignature(member) && propertyName(member.name) === name) ?? null;
 }
 
 function readSourceContracts(versionSource, exportContracts) {
-  const cleanVersionSource = stripTypeScriptComments(versionSource);
-  const versionGuard = extractNamedBlock(
-    cleanVersionSource,
-    /function\s+assertCurrentVersion\s*\(\s*version\s*:\s*string\s*\)\s*:\s*asserts\s+version\s+is\s+"([^"]+)"\s*\{/u,
-    "APP_VERSION guard",
-  );
-  const comparedVersion = /\bif\s*\(\s*version\s*!==\s*"([^"]+)"\s*\)/u.exec(versionGuard.body)?.[1];
-  if (!comparedVersion) throw new Error("APP_VERSION guard comparison is missing");
-  if (!/\bconst\s+packageVersion\s*=\s*packageMetadata\.version\s*;[\s\S]*\bassertCurrentVersion\s*\(\s*packageVersion\s*\)\s*;[\s\S]*\bexport\s+const\s+APP_VERSION\s*=\s*packageVersion\s*;/u.test(cleanVersionSource)) {
+  const versionFile = ts.createSourceFile("version.ts", versionSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const versionGuard = versionFile.statements.find((statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === "assertCurrentVersion");
+  if (!versionGuard || !versionGuard.body || !versionGuard.type || !ts.isTypePredicateNode(versionGuard.type)) {
+    throw new Error("APP_VERSION guard declaration is missing");
+  }
+  const assertedVersion = literalTypeValue(versionGuard.type.type);
+  const comparisons = [];
+  const visitComparison = (node) => {
+    if (
+      ts.isBinaryExpression(node)
+      && node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken
+      && ts.isIdentifier(node.left)
+      && node.left.text === "version"
+      && ts.isStringLiteral(node.right)
+    ) comparisons.push(node.right.text);
+    ts.forEachChild(node, visitComparison);
+  };
+  visitComparison(versionGuard.body);
+  if (comparisons.length !== 1) throw new Error("APP_VERSION guard comparison is missing or ambiguous");
+
+  const packageVersionDeclaration = versionFile.statements.some((statement) => ts.isVariableStatement(statement) && statement.declarationList.declarations.some((declaration) => (
+    ts.isIdentifier(declaration.name)
+    && declaration.name.text === "packageVersion"
+    && declaration.initializer
+    && ts.isPropertyAccessExpression(declaration.initializer)
+    && ts.isIdentifier(declaration.initializer.expression)
+    && declaration.initializer.expression.text === "packageMetadata"
+    && declaration.initializer.name.text === "version"
+  )));
+  const guardedPackageVersion = versionFile.statements.some((statement) => ts.isExpressionStatement(statement)
+    && ts.isCallExpression(statement.expression)
+    && ts.isIdentifier(statement.expression.expression)
+    && statement.expression.expression.text === "assertCurrentVersion"
+    && statement.expression.arguments.length === 1
+    && ts.isIdentifier(statement.expression.arguments[0])
+    && statement.expression.arguments[0].text === "packageVersion");
+  const exportedAppVersion = versionFile.statements.some((statement) => ts.isVariableStatement(statement)
+    && statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)
+    && statement.declarationList.declarations.some((declaration) => ts.isIdentifier(declaration.name)
+      && declaration.name.text === "APP_VERSION"
+      && declaration.initializer
+      && ts.isIdentifier(declaration.initializer)
+      && declaration.initializer.text === "packageVersion"));
+  if (!packageVersionDeclaration || !guardedPackageVersion || !exportedAppVersion) {
     throw new Error("APP_VERSION is not derived through the package version guard");
   }
 
-  const cleanExportContracts = stripTypeScriptComments(exportContracts);
-  const manifest = extractNamedBlock(cleanExportContracts, /export\s+interface\s+PromptPackageManifest\s*\{/u, "PromptPackageManifest");
-  const progress = extractNamedBlock(cleanExportContracts, /export\s+interface\s+WorkbookProgress\s*\{/u, "WorkbookProgress");
-  const packageContract = extractNamedBlock(manifest.body, /\bpackage\s*:\s*\{/u, "PromptPackageManifest package");
-  const manifestSchema = /\bschemaVersion\s*:\s*(\d+)\s*;/u.exec(manifest.body)?.[1];
-  const packageName = /\bname\s*:\s*"([^"]+)"\s*;?/u.exec(packageContract.body)?.[1];
-  const packageVersion = /\bversion\s*:\s*"([^"]+)"\s*;?/u.exec(packageContract.body)?.[1];
-  const packageFormat = /\bformat\s*:\s*"([^"]+)"\s*;?/u.exec(packageContract.body)?.[1];
-  const progressSchema = /\bschemaVersion\s*:\s*(\d+)\s*;/u.exec(progress.body)?.[1];
-  if (!manifestSchema || packageName !== "reword-nerd" || !packageVersion || packageFormat !== "dual-mode-prompt-package" || !progressSchema) {
-    throw new Error(`Export version or schema declaration is malformed: ${JSON.stringify({ manifestSchema, packageName, packageVersion, packageFormat, progressSchema })}`);
+  const contractsFile = ts.createSourceFile("contracts.ts", exportContracts, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const findInterface = (name) => contractsFile.statements.find((statement) => ts.isInterfaceDeclaration(statement) && statement.name.text === name);
+  const manifest = findInterface("PromptPackageManifest");
+  const progress = findInterface("WorkbookProgress");
+  if (!manifest || !progress) throw new Error("Export version or schema declaration is missing");
+  const manifestSchema = literalTypeValue(directProperty(manifest, "schemaVersion")?.type);
+  const progressSchema = literalTypeValue(directProperty(progress, "schemaVersion")?.type);
+  const packageProperty = directProperty(manifest, "package");
+  if (!packageProperty?.type || !ts.isTypeLiteralNode(packageProperty.type)) throw new Error("Export package declaration is malformed");
+  const packageName = literalTypeValue(directProperty(packageProperty.type, "name")?.type);
+  const packageVersion = literalTypeValue(directProperty(packageProperty.type, "version")?.type);
+  const packageFormat = literalTypeValue(directProperty(packageProperty.type, "format")?.type);
+  if (packageName !== "reword-nerd" || typeof packageVersion !== "string" || packageFormat !== "dual-mode-prompt-package") {
+    throw new Error("Export package version declaration is malformed");
   }
-  return {
-    assertedVersion: versionGuard.signature[1],
-    comparedVersion,
-    packageVersion,
-    manifestSchema: Number(manifestSchema),
-    progressSchema: Number(progressSchema),
-  };
+  return { assertedVersion, comparedVersion: comparisons[0], packageVersion, manifestSchema, progressSchema };
 }
 
 function localPathForWebPath(rootDirectory, webPath) {
