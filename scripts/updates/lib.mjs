@@ -670,8 +670,8 @@ export async function prepareRelease(rootDirectory, options) {
     markdownPath: `content/updates/${slug}.md`,
     version: options.version,
     classification: classifyRelease(options.version),
-    visualChanges: true,
-    video: { policy: "exempt", exemptionReason: "Release media is reviewed in a separate bounded production task." },
+    visualChanges: false,
+    video: { policy: "exempt", exemptionReason: "This initial scaffold declares no visual behavior change; update the declaration and add release media before publishing if the interface changes." },
   };
   const nextEntries = ledger.entries.map((candidate) => candidate.kind === "release" && candidate.status === "current" ? { ...candidate, status: "published" } : candidate);
   await writeFile(postPath, journalScaffold(options.title, "release"), { encoding: "utf8", flag: "wx" });

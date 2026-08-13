@@ -21,7 +21,7 @@ async function releaseRoot({ git = true } = {}) {
   const ledger = {
     schemaVersion: 1,
     site: { title: "reword-nerd Updates", description: "A builder's journal for reword-nerd.", canonicalOrigin: "https://ryanjosephkamp.github.io", basePath: "/reword-nerd/updates/" },
-    entries: [{ kind: "release", slug: "v0-6-0", title: "reword-nerd v0.6", summary: "Project workspaces.", status: "current", date: "2026-08-13", author: "Ryan Joseph Kamp", tags: ["release"], relatedPrs: [7], markdownPath: "content/updates/v0-6-0.md", version: "0.6.0", classification: "feature", visualChanges: false, video: { policy: "none" } }],
+    entries: [{ kind: "release", slug: "v0-6-0", title: "reword-nerd v0.6", summary: "Project workspaces.", status: "current", date: "2026-08-13", author: "Ryan Joseph Kamp", tags: ["release"], relatedPrs: [7], markdownPath: "content/updates/v0-6-0.md", version: "0.6.0", classification: "feature", visualChanges: false, video: { policy: "exempt", exemptionReason: "This synthetic fixture predates release media." } }],
   };
   await writeFile(join(root, "content/updates/releases.json"), `${JSON.stringify(ledger, null, 2)}\n`);
   await writeFile(join(root, "content/updates/v0-6-0.md"), "existing reviewed prose\n");
@@ -57,6 +57,13 @@ describe("Updates authoring commands", () => {
     const inventory = JSON.parse(await readFile(join(root, "content/updates/release-review-v0.7.0.json"), "utf8"));
     expect(inventory).toMatchObject({ schemaVersion: 1, version: "0.7.0", classification: "feature" });
     expect(inventory.commits[0].subject).toBe("Release v0.6.0 (#7)");
+    const ledger = JSON.parse(await readFile(join(root, "content/updates/releases.json"), "utf8"));
+    expect(ledger.entries.at(-1)).toMatchObject({
+      kind: "release",
+      version: "0.7.0",
+      visualChanges: false,
+      video: { policy: "exempt", exemptionReason: expect.stringMatching(/initial scaffold.*no visual/i) },
+    });
 
     const postPath = join(root, "content/updates/v0-7-0.md");
     await writeFile(postPath, `${await readFile(postPath, "utf8")}\nHuman-reviewed sentence.\n`);
