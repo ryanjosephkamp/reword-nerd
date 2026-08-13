@@ -70,4 +70,15 @@ describe("v0.7 release documentation contract", () => {
     expect(architecture).toContain("Share's manual-copy fallback");
     expect(architecture).toContain("mutually exclusive modal-overlay");
   });
+
+  it("installs the FFmpeg inspection tools before both verification and deployment builds", () => {
+    // Release-media validation is a required unit/build gate, so both clean Linux jobs must provide ffprobe explicitly.
+    const workflow = read(".github/workflows/deploy-pages.yml");
+    const [verifyJob, deployJob] = workflow.split("\n  deploy:");
+    for (const job of [verifyJob, deployJob]) {
+      expect(job).toContain("Install FFmpeg tools");
+      expect(job).toContain("sudo apt-get install --no-install-recommends --yes ffmpeg");
+      expect(job).toContain("ffprobe -version");
+    }
+  });
 });
