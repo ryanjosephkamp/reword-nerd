@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { execFile as execFileCallback } from "node:child_process";
 import { dirname, resolve, sep } from "node:path";
 import { promisify } from "node:util";
@@ -564,12 +564,80 @@ async function pathExists(path) {
   }
 }
 
-async function writeLedger(rootDirectory, ledger) {
-  validateReleaseLedger(ledger);
-  await writeFile(resolve(rootDirectory, "content/updates/releases.json"), `${JSON.stringify(ledger, null, 2)}\n`, "utf8");
+function jsonBytes(value) {
+  return `${JSON.stringify(value, null, 2)}\n`;
 }
 
-export async function createUpdate(rootDirectory, options) {
+function transactionFailure(hooks, stage, index) {
+  if (!hooks) return;
+  const hook = stage === "stage" ? hooks.beforeStage : hooks.beforePublish;
+  if (hook) hook({ index, stage });
+}
+
+async function publishAuthoringTransaction(rootDirectory, candidates, validate, hooks) {
+  const root = resolve(rootDirectory);
+  const transaction = await mkdtemp(resolve(root, ".updates-transaction-"));
+  const records = candidates.map(({ path, bytes }, index) => ({
+    target: resolve(path),
+    bytes,
+    candidate: resolve(transaction, "candidate", String(index)),
+    backup: resolve(transaction, "backup", String(index)),
+    existed: false,
+    published: false,
+  }));
+  let published = false;
+  try {
+    for (const record of records) {
+      if (!record.target.startsWith(`${root}${sep}`)) throw new Error(`Unsafe authoring target: ${record.target}`);
+      await access(dirname(record.target));
+    }
+
+    for (const [index, record] of records.entries()) {
+      await mkdir(dirname(record.candidate), { recursive: true });
+      await writeFile(record.candidate, record.bytes, { encoding: "utf8", flag: "wx" });
+      transactionFailure(hooks, "stage", index);
+    }
+
+    for (const record of records) {
+      try {
+        const original = await readFile(record.target);
+        record.existed = true;
+        await mkdir(dirname(record.backup), { recursive: true });
+        await writeFile(record.backup, original, { flag: "wx" });
+      } catch (error) {
+        if (error && typeof error === "object" && error.code === "ENOENT") continue;
+        throw error;
+      }
+    }
+
+    await validate(new Map(records.map((record) => [record.target, record.candidate])));
+
+    for (const [index, record] of records.entries()) {
+      transactionFailure(hooks, "publish", index);
+      await rename(record.candidate, record.target);
+      record.published = true;
+      published = true;
+    }
+  } catch (error) {
+    if (published) {
+      try {
+        for (const record of [...records].reverse()) {
+          if (!record.published) continue;
+          if (record.existed) await rename(record.backup, record.target);
+          else await rm(record.target, { force: true });
+        }
+      } catch (rollbackError) {
+        const publicationError = error instanceof Error ? error.message : String(error);
+        throw new Error(`Updates publication failed and rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}. Original publication error: ${publicationError}`, { cause: rollbackError });
+      }
+    }
+    throw error;
+  } finally {
+    await rm(transaction, { recursive: true, force: true });
+  }
+}
+
+export async function createUpdate(rootDirectory, options, transactionHooks) {
   assertAuthoringArguments(options);
   const ledger = await readReleaseLedger(rootDirectory);
   const existing = ledger.entries.find((entry) => entry.slug === options.slug);
@@ -594,8 +662,17 @@ export async function createUpdate(rootDirectory, options) {
     visualChanges: false,
     video: { policy: "none" },
   };
-  await writeFile(markdownPath, journalScaffold(options.title, "article"), { encoding: "utf8", flag: "wx" });
-  await writeLedger(rootDirectory, { ...ledger, entries: [...ledger.entries, entry] });
+  const nextLedger = { ...ledger, entries: [...ledger.entries, entry] };
+  const post = journalScaffold(options.title, "article");
+  await publishAuthoringTransaction(rootDirectory, [
+    { path: markdownPath, bytes: post },
+    { path: resolve(rootDirectory, "content/updates/releases.json"), bytes: jsonBytes(nextLedger) },
+  ], async (staged) => {
+    const stagedLedger = validateReleaseLedger(JSON.parse(await readFile(staged.get(resolve(rootDirectory, "content/updates/releases.json")), "utf8")));
+    const stagedPost = await readFile(staged.get(markdownPath), "utf8");
+    const problem = markdownProblem(stagedPost, stagedLedger.entries.at(-1));
+    if (problem) throw new Error(`Invalid staged Markdown: ${problem}`);
+  }, transactionHooks);
   return "created";
 }
 
@@ -623,7 +700,7 @@ async function localGitInventory(rootDirectory) {
   });
 }
 
-export async function prepareRelease(rootDirectory, options) {
+export async function prepareRelease(rootDirectory, options, transactionHooks) {
   assertAuthoringArguments(options);
   if (typeof options.version !== "string" || !SEMVER.test(options.version)) throw new Error(`Invalid SemVer version: ${options.version}`);
   const commits = await localGitInventory(rootDirectory);
@@ -674,12 +751,30 @@ export async function prepareRelease(rootDirectory, options) {
     video: { policy: "exempt", exemptionReason: "This initial scaffold declares no visual behavior change; update the declaration and add release media before publishing if the interface changes." },
   };
   const nextEntries = ledger.entries.map((candidate) => candidate.kind === "release" && candidate.status === "current" ? { ...candidate, status: "published" } : candidate);
-  await writeFile(postPath, journalScaffold(options.title, "release"), { encoding: "utf8", flag: "wx" });
-  await writeFile(inventoryPath, `${JSON.stringify({ schemaVersion: 1, version: options.version, previousVersion, classification: entry.classification, generatedFrom: "local-git-history", commits }, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
-  await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`, "utf8");
-  await writeFile(lockPath, `${JSON.stringify(packageLock, null, 2)}\n`, "utf8");
-  await writeFile(versionPath, versionSource.replaceAll(`"${previousVersion}"`, `"${options.version}"`), "utf8");
-  await writeFile(contractsPath, contractsSource.replaceAll(`version: "${previousVersion}"`, `version: "${options.version}"`), "utf8");
-  await writeLedger(rootDirectory, { ...ledger, entries: [...nextEntries, entry] });
+  const nextLedger = { ...ledger, entries: [...nextEntries, entry] };
+  const inventory = { schemaVersion: 1, version: options.version, previousVersion, classification: entry.classification, generatedFrom: "local-git-history", commits };
+  const nextVersionSource = versionSource.replaceAll(`"${previousVersion}"`, `"${options.version}"`);
+  const nextContractsSource = contractsSource.replaceAll(`version: "${previousVersion}"`, `version: "${options.version}"`);
+  await publishAuthoringTransaction(rootDirectory, [
+    { path: postPath, bytes: journalScaffold(options.title, "release") },
+    { path: inventoryPath, bytes: jsonBytes(inventory) },
+    { path: packagePath, bytes: jsonBytes(packageJson) },
+    { path: lockPath, bytes: jsonBytes(packageLock) },
+    { path: versionPath, bytes: nextVersionSource },
+    { path: contractsPath, bytes: nextContractsSource },
+    { path: resolve(rootDirectory, "content/updates/releases.json"), bytes: jsonBytes(nextLedger) },
+  ], async (staged) => {
+    const stagedLedger = validateReleaseLedger(JSON.parse(await readFile(staged.get(resolve(rootDirectory, "content/updates/releases.json")), "utf8")));
+    const stagedPost = await readFile(staged.get(postPath), "utf8");
+    const problem = markdownProblem(stagedPost, stagedLedger.entries.at(-1));
+    if (problem) throw new Error(`Invalid staged Markdown: ${problem}`);
+    const stagedPackage = await readJson(staged.get(packagePath), "staged package.json");
+    const stagedLock = await readJson(staged.get(lockPath), "staged package-lock.json");
+    if (stagedPackage.version !== options.version || stagedLock.version !== options.version || stagedLock.packages?.[""]?.version !== options.version) throw new Error("Staged package versions disagree");
+    const stagedContracts = readSourceContracts(await readFile(staged.get(versionPath), "utf8"), await readFile(staged.get(contractsPath), "utf8"));
+    if (stagedContracts.assertedVersion !== options.version || stagedContracts.comparedVersion !== options.version || stagedContracts.packageVersion !== options.version) throw new Error("Staged version contracts disagree");
+    const stagedInventory = await readJson(staged.get(inventoryPath), "staged release inventory");
+    if (stagedInventory.version !== options.version || stagedInventory.previousVersion !== previousVersion || stagedInventory.commits.length !== commits.length) throw new Error("Staged release inventory disagrees with local Git history");
+  }, transactionHooks);
   return "created";
 }

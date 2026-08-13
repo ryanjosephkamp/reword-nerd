@@ -2,6 +2,7 @@ export const RELEASE_VIDEO_BUDGETS: Readonly<{
   webmBytes: number;
   mp4Bytes: number;
   posterBytes: number;
+  transcriptBytes: number;
   aggregateBytes: number;
 }>;
 

@@ -16,8 +16,18 @@ async function releaseRoot({ git = true } = {}) {
   await mkdir(join(root, "src/export"), { recursive: true });
   await writeFile(join(root, "package.json"), `${JSON.stringify({ name: "reword-nerd", version: "0.6.0" }, null, 2)}\n`);
   await writeFile(join(root, "package-lock.json"), `${JSON.stringify({ name: "reword-nerd", version: "0.6.0", packages: { "": { version: "0.6.0" } } }, null, 2)}\n`);
-  await writeFile(join(root, "src/version.ts"), 'asserts version is "0.6.0" { if (version !== "0.6.0") throw new Error(); }\n');
-  await writeFile(join(root, "src/export/contracts.ts"), 'version: "0.6.0"; schemaVersion: 6; schemaVersion: 1;\n');
+  await writeFile(join(root, "src/version.ts"), `import packageMetadata from "../package.json";
+function assertCurrentVersion(version: string): asserts version is "0.6.0" { if (version !== "0.6.0") throw new Error(); }
+const packageVersion = packageMetadata.version;
+assertCurrentVersion(packageVersion);
+export const APP_VERSION = packageVersion;
+`);
+  await writeFile(join(root, "src/export/contracts.ts"), `export interface PromptPackageManifest {
+  schemaVersion: 6;
+  package: { name: "reword-nerd"; version: "0.6.0"; format: "dual-mode-prompt-package" };
+}
+export interface WorkbookProgress { schemaVersion: 1; }
+`);
   const ledger = {
     schemaVersion: 1,
     site: { title: "reword-nerd Updates", description: "A builder's journal for reword-nerd.", canonicalOrigin: "https://ryanjosephkamp.github.io", basePath: "/reword-nerd/updates/" },
@@ -69,6 +79,64 @@ describe("Updates authoring commands", () => {
     await writeFile(postPath, `${await readFile(postPath, "utf8")}\nHuman-reviewed sentence.\n`);
     expect(await prepareRelease(root, { version: "0.7.0", title: "reword-nerd v0.7", date: "2026-08-13" })).toBe("unchanged");
     expect(await readFile(postPath, "utf8")).toContain("Human-reviewed sentence.");
+  });
+
+  it("rolls back a mid-publication article failure with no orphan post, then recovers deterministically on rerun", async () => {
+    const root = await releaseRoot();
+    const ledgerPath = join(root, "content/updates/releases.json");
+    const postPath = join(root, "content/updates/transaction-check.md");
+    const ledgerBefore = await readFile(ledgerPath);
+
+    await expect(createUpdate(root, { slug: "transaction-check", title: "Transaction check", date: "2026-08-13" }, {
+      beforeStage: ({ index }) => {
+        if (index === 1) throw new Error("injected article staging failure");
+      },
+    })).rejects.toThrow(/injected article staging failure/i);
+    expect(await readFile(ledgerPath)).toEqual(ledgerBefore);
+    await expect(readFile(postPath)).rejects.toThrow();
+
+    await expect(createUpdate(root, { slug: "transaction-check", title: "Transaction check", date: "2026-08-13" }, {
+      beforePublish: ({ index }) => {
+        if (index === 1) throw new Error("injected article publication failure");
+      },
+    })).rejects.toThrow(/injected article publication failure/i);
+
+    expect(await readFile(ledgerPath)).toEqual(ledgerBefore);
+    await expect(readFile(postPath)).rejects.toThrow();
+    expect(await createUpdate(root, { slug: "transaction-check", title: "Transaction check", date: "2026-08-13" })).toBe("created");
+    const recoveredPost = await readFile(postPath, "utf8");
+    const recoveredLedger = await readFile(ledgerPath);
+    expect(await createUpdate(root, { slug: "transaction-check", title: "Transaction check", date: "2026-08-13" })).toBe("unchanged");
+    expect(await readFile(postPath, "utf8")).toBe(recoveredPost);
+    expect(await readFile(ledgerPath)).toEqual(recoveredLedger);
+  });
+
+  it("rolls back a mid-publication release failure with no orphan post or inventory, then recovers on rerun", async () => {
+    const root = await releaseRoot();
+    const existingPaths = [
+      "package.json",
+      "package-lock.json",
+      "src/version.ts",
+      "src/export/contracts.ts",
+      "content/updates/releases.json",
+    ];
+    const before = new Map(await Promise.all(existingPaths.map(async (path) => [path, await readFile(join(root, path))] as const)));
+    const postPath = join(root, "content/updates/v0-7-0.md");
+    const inventoryPath = join(root, "content/updates/release-review-v0.7.0.json");
+
+    await expect(prepareRelease(root, { version: "0.7.0", title: "reword-nerd v0.7", date: "2026-08-13" }, {
+      beforePublish: ({ index }) => {
+        if (index === 4) throw new Error("injected release publication failure");
+      },
+    })).rejects.toThrow(/injected release publication failure/i);
+
+    for (const path of existingPaths) expect(await readFile(join(root, path))).toEqual(before.get(path));
+    await expect(readFile(postPath)).rejects.toThrow();
+    await expect(readFile(inventoryPath)).rejects.toThrow();
+    expect(await prepareRelease(root, { version: "0.7.0", title: "reword-nerd v0.7", date: "2026-08-13" })).toBe("created");
+    const recovered = new Map(await Promise.all([...existingPaths, "content/updates/v0-7-0.md", "content/updates/release-review-v0.7.0.json"].map(async (path) => [path, await readFile(join(root, path))] as const)));
+    expect(await prepareRelease(root, { version: "0.7.0", title: "reword-nerd v0.7", date: "2026-08-13" })).toBe("unchanged");
+    for (const [path, bytes] of recovered) expect(await readFile(join(root, path))).toEqual(bytes);
   });
 
   it("fails clearly when required Git history is unavailable", async () => {

@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, open, rename, rm, stat, writeFile } from "node:fs/promises";
 import { execFile as execFileCallback } from "node:child_process";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
@@ -11,6 +11,7 @@ export const RELEASE_VIDEO_BUDGETS = Object.freeze({
   webmBytes: Math.floor(1.5 * MIB),
   mp4Bytes: 2 * MIB,
   posterBytes: 100 * 1024,
+  transcriptBytes: 256 * 1024,
   aggregateBytes: Math.floor(3.5 * MIB),
 });
 
@@ -93,19 +94,41 @@ function releaseMediaFiles(directory) {
   };
 }
 
+async function readBoundedTranscript(path) {
+  const handle = await open(path, "r");
+  try {
+    const before = await handle.stat();
+    if (!before.isFile()) fail("transcript must be a regular file");
+    if (before.size > RELEASE_VIDEO_BUDGETS.transcriptBytes) fail(`transcript exceeds its ${RELEASE_VIDEO_BUDGETS.transcriptBytes}-byte budget`);
+    const bytes = Buffer.alloc(before.size);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const { bytesRead } = await handle.read(bytes, offset, bytes.length - offset, offset);
+      if (bytesRead === 0) fail("transcript changed while it was being read");
+      offset += bytesRead;
+    }
+    const after = await handle.stat();
+    if (after.size !== before.size) fail("transcript changed while it was being read");
+    return { content: bytes.toString("utf8"), bytes: bytes.length };
+  } finally {
+    await handle.close();
+  }
+}
+
 async function checkReleaseMediaFiles(files, version) {
   await Promise.all(Object.values(files).map((path) => access(path)));
-  const [mp4, webm, poster, transcript] = await Promise.all([inspectVideo(files.mp4Path), inspectVideo(files.webmPath), inspectPoster(files.posterPath), readFile(files.transcriptPath, "utf8")]);
+  const transcript = await readBoundedTranscript(files.transcriptPath);
+  const [mp4, webm, poster] = await Promise.all([inspectVideo(files.mp4Path), inspectVideo(files.webmPath), inspectPoster(files.posterPath)]);
   verifyVideo("MP4", mp4, RELEASE_VIDEO_BUDGETS.mp4Bytes, "h264");
   verifyVideo("WebM", webm, RELEASE_VIDEO_BUDGETS.webmBytes, "vp9");
   if (poster.codec !== "webp") fail(`poster codec must be webp, got ${poster.codec}`);
   if (poster.width !== RELEASE_FORMAT.width || poster.height !== RELEASE_FORMAT.height) fail(`poster dimensions must be ${RELEASE_FORMAT.width}x${RELEASE_FORMAT.height}`);
   if (poster.metadataTags.length > 0) fail(`poster must be metadata-free; found ${poster.metadataTags.join(", ")}`);
   if (poster.bytes > RELEASE_VIDEO_BUDGETS.posterBytes) fail(`poster exceeds its ${RELEASE_VIDEO_BUDGETS.posterBytes}-byte budget`);
-  if (!transcript.includes(`reword-nerd v${version}`) || !transcript.includes("Share the clean URL")) fail("transcript is missing the release walkthrough");
-  const aggregateBytes = mp4.bytes + webm.bytes + poster.bytes;
+  if (!transcript.content.includes(`reword-nerd v${version}`) || !transcript.content.includes("Share the clean URL")) fail("transcript is missing the release walkthrough");
+  const aggregateBytes = mp4.bytes + webm.bytes + poster.bytes + transcript.bytes;
   if (aggregateBytes > RELEASE_VIDEO_BUDGETS.aggregateBytes) fail(`release media exceeds its ${RELEASE_VIDEO_BUDGETS.aggregateBytes}-byte aggregate budget`);
-  return { mp4, webm, poster, transcriptBytes: Buffer.byteLength(transcript), aggregateBytes };
+  return { mp4, webm, poster, transcriptBytes: transcript.bytes, aggregateBytes };
 }
 
 async function validateVersionAssets(rootDirectory, version) {

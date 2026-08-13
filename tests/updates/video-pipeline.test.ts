@@ -13,6 +13,7 @@ import {
 import {
   RELEASE_VIDEO_BUDGETS,
   checkReleaseMedia,
+  checkReleaseMediaDirectory,
   releaseMediaPaths,
 } from "../../scripts/updates/video-lib.mjs";
 
@@ -68,6 +69,23 @@ describe("v0.7 release video contract", () => {
     expect(inspection.mp4.bytes).toBeLessThanOrEqual(RELEASE_VIDEO_BUDGETS.mp4Bytes);
     expect(inspection.poster.bytes).toBeLessThanOrEqual(RELEASE_VIDEO_BUDGETS.posterBytes);
     expect(inspection.aggregateBytes).toBeLessThanOrEqual(RELEASE_VIDEO_BUDGETS.aggregateBytes);
+  });
+
+  it("caps transcript bytes before reading and counts the transcript in the aggregate release budget", async () => {
+    const root = await mkdtemp(join(tmpdir(), "reword-nerd-transcript-budget-"));
+    temporaryRoots.push(root);
+    const source = join(process.cwd(), "public/media/updates/v0-7-0");
+    await Promise.all(["release-update.mp4", "release-update.webm", "poster.webp"].map((file) => copyFile(join(source, file), join(root, file))));
+    const required = "reword-nerd v0.7.0 — Share the clean URL.\n";
+    const atCap = `${required}${" ".repeat(RELEASE_VIDEO_BUDGETS.transcriptBytes - Buffer.byteLength(required))}`;
+    await writeFile(join(root, "transcript.txt"), atCap);
+
+    const boundary = await checkReleaseMediaDirectory(root, "0.7.0");
+    expect(boundary.transcriptBytes).toBe(RELEASE_VIDEO_BUDGETS.transcriptBytes);
+    expect(boundary.aggregateBytes).toBe(boundary.mp4.bytes + boundary.webm.bytes + boundary.poster.bytes + boundary.transcriptBytes);
+
+    await writeFile(join(root, "transcript.txt"), `${atCap}x`);
+    await expect(checkReleaseMediaDirectory(root, "0.7.0")).rejects.toThrow(new RegExp(`transcript exceeds its ${RELEASE_VIDEO_BUDGETS.transcriptBytes}-byte budget`));
   });
 
   it("keeps Remotion default props inline and threads an arbitrary validated version into editable scenes", async () => {

@@ -42,11 +42,16 @@ export interface ReleaseLedgerV1 {
   entries: ReleaseLedgerEntry[];
 }
 
+export interface AuthoringTransactionHooks {
+  beforeStage?: (event: { index: number; stage: "stage" }) => void;
+  beforePublish?: (event: { index: number; stage: "publish" }) => void;
+}
+
 export function validateReleaseLedger<T>(input: T): T;
 export function readReleaseLedger(rootDirectory: string): Promise<ReleaseLedgerV1>;
 export function classifyRelease(version: string): "feature" | "maintenance";
 export function checkUpdates(rootDirectory: string): Promise<{ ledger: ReleaseLedgerV1; posts: Map<string, string>; version: string }>;
 export function renderUpdates(rootDirectory: string, outputDirectory?: string): Promise<string[]>;
 export function validateRenderedPageScripts(html: string): string;
-export function createUpdate(rootDirectory: string, options: { slug: string; title: string; date: string }): Promise<"created" | "unchanged">;
-export function prepareRelease(rootDirectory: string, options: { version: string; title: string; date: string }): Promise<"created" | "unchanged">;
+export function createUpdate(rootDirectory: string, options: { slug: string; title: string; date: string }, transactionHooks?: AuthoringTransactionHooks): Promise<"created" | "unchanged">;
+export function prepareRelease(rootDirectory: string, options: { version: string; title: string; date: string }, transactionHooks?: AuthoringTransactionHooks): Promise<"created" | "unchanged">;
