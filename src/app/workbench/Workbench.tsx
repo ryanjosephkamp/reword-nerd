@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { assessContext, chooseProjectClassification, composeExtractionWithOcr, confirmProjectReview, editProjectEntryText, setProjectEntryInclusion, type OcrReviewStatus, type RewriteSettings, type WorkspaceProject } from "../../domain";
-import type { MobileTab, WorkbenchServices } from "./contracts";
+import type { MobileTab, WorkbenchServices, WorkbenchState } from "./contracts";
 import { createInitialWorkbenchState, workbenchReducer } from "./reducer";
 import {
   selectContextAssessment,
@@ -48,8 +48,16 @@ import {
 
 type ResponsiveMode = "desktop" | "tablet" | "mobile";
 
-function exportDockGuidance(blocker: string | null, message: string): string {
-  if (message) return message;
+function exportDockGuidance(
+  blocker: string | null,
+  message: string,
+  status: WorkbenchState["export"]["status"],
+  hasBuiltPackage: boolean,
+): string {
+  if (message) {
+    if (status !== "failure") return message;
+    return `${message} Next: retry ${hasBuiltPackage ? "DOWNLOAD ZIP" : "BUILD PACKAGE"}.`;
+  }
   if (!blocker) return "Ready to build the reviewed package.";
   if (blocker === "Extraction is in progress.") return "Next: wait for extraction to finish.";
   if (blocker === "Review extracted content before export") return "Next: review extracted content before export.";
@@ -220,7 +228,12 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
   const desktopExportDock = <ExportPanel
     {...exportProps}
     variant="dock"
-    guidance={exportDockGuidance(exporter.blocker, state.export.safeMessage)}
+    guidance={exportDockGuidance(
+      exporter.blocker,
+      state.export.safeMessage,
+      state.export.status,
+      Boolean(state.export.builtPackage),
+    )}
   />;
 
   const settingsProps = {
@@ -541,6 +554,8 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
         queueMicrotask(() => resetPreferencesReturnFocusRef.current?.focus());
       }}
     />
-    <div className="visually-hidden" aria-live="polite" aria-atomic="true">{state.liveMessage}</div>
+    <div className="visually-hidden" aria-live="polite" aria-atomic="true">
+      {state.liveMessage === state.export.safeMessage ? "" : state.liveMessage}
+    </div>
   </main>;
 }

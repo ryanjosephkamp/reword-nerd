@@ -25,7 +25,9 @@ export function ExportPanel({
   onBuild,
   onDownload,
 }: ExportPanelProps) {
-  const statusCopy = message || guidance || "";
+  const statusCopy = variant === "dock"
+    ? guidance || message
+    : message || guidance || "";
   const content = <>
     <button
       type="button"

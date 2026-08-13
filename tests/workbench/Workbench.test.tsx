@@ -171,6 +171,8 @@ describe("Night Terminal workbench", () => {
     fireEvent.click(within(dock).getByRole("button", { name: "BUILD PACKAGE" }));
     await screen.findByRole("heading", { name: "PACKAGE PREVIEW" });
     expect(buildPackage).toHaveBeenCalledTimes(1);
+    expect(within(dock).getByRole("status")).toHaveTextContent("Package ready.");
+    expect(document.querySelector(".visually-hidden[aria-live]")).toBeEmptyDOMElement();
     expect(within(settings).getByRole("button", { name: "Download from Parameters" })).toBeEnabled();
 
     fireEvent.click(within(dock).getByRole("button", { name: "DOWNLOAD ZIP" }));
@@ -225,7 +227,7 @@ describe("Night Terminal workbench", () => {
     const infoButton = screen.getByRole("button", { name: "Info" });
     fireEvent.click(infoButton);
     const dialog = screen.getByRole("dialog", { name: "About reword-nerd" });
-    expect(within(dialog).getByText("reword-nerd v0.5.1")).toBeInTheDocument();
+    expect(within(dialog).getByText("reword-nerd v0.6.0")).toBeInTheDocument();
     expect(within(dialog).getByRole("img", { name: /reword-nerd logo/i })).toBeInTheDocument();
     const repository = within(dialog).getByRole("link", { name: "Repository" });
     const creator = within(dialog).getByRole("region", { name: "Built by Ryan Kamp" });
@@ -662,6 +664,8 @@ describe("Night Terminal workbench", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Package could not be generated. Your session is still available.",
     );
+    expect(screen.getByRole("alert")).toHaveTextContent("Next: retry BUILD PACKAGE.");
+    expect(document.querySelector(".visually-hidden[aria-live]")).toBeEmptyDOMElement();
     expect(screen.getByDisplayValue("Source text")).toBeInTheDocument();
   });
 
@@ -680,7 +684,10 @@ describe("Night Terminal workbench", () => {
     fireEvent.click(buildButton);
     await screen.findAllByText("Package ready.");
     fireEvent.click(screen.getByRole("button", { name: "DOWNLOAD ZIP" }));
-    await screen.findByRole("alert");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Package could not be downloaded. Your built package is still ready. Next: retry DOWNLOAD ZIP.",
+    );
+    expect(document.querySelector(".visually-hidden[aria-live]")).toBeEmptyDOMElement();
     fireEvent.click(screen.getByRole("button", { name: "DOWNLOAD ZIP" }));
 
     expect((await screen.findAllByText("Package downloaded.")).length).toBeGreaterThanOrEqual(1);

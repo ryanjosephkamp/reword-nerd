@@ -10,7 +10,8 @@ import {
   selectWorkingProfile,
 } from "./selectors";
 
-const safeFailure = "Package could not be generated. Your session is still available.";
+const safeBuildFailure = "Package could not be generated. Your session is still available.";
+const safeDownloadFailure = "Package could not be downloaded. Your built package is still ready.";
 
 export function useExportPackage(
   state: WorkbenchState,
@@ -87,12 +88,12 @@ export function useExportPackage(
       });
       const result = await services.buildPackage(snapshot);
       if (!result.ok) {
-        dispatch({ type: "export/build-failed", message: safeFailure, operationId, revision });
+        dispatch({ type: "export/build-failed", message: safeBuildFailure, operationId, revision });
         return;
       }
       dispatch({ type: "export/package-built", builtPackage: result, operationId, revision });
     } catch {
-      dispatch({ type: "export/build-failed", message: safeFailure, operationId, revision });
+      dispatch({ type: "export/build-failed", message: safeBuildFailure, operationId, revision });
     }
   }, [blocker, dispatch, services, state]);
 
@@ -109,9 +110,9 @@ export function useExportPackage(
       const result = services.download(builtPackage.blob);
       dispatch(result.ok
         ? { type: "export/download-succeeded", revision }
-        : { type: "export/download-failed", revision, message: safeFailure });
+        : { type: "export/download-failed", revision, message: safeDownloadFailure });
     } catch {
-      dispatch({ type: "export/download-failed", revision, message: safeFailure });
+      dispatch({ type: "export/download-failed", revision, message: safeDownloadFailure });
     } finally {
       activeDownloadRef.current = false;
     }
