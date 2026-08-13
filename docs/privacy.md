@@ -61,17 +61,22 @@ review. Project packages contain a sanitized reviewed tree for AI context; they
 are not source-control backups. ZIP-container metadata may be recorded for
 provenance, but the original generic ZIP is not copied into the package.
 
-The Info dialog offers exactly four deliberate external navigation
-destinations:
+The Info dialog offers one same-origin Updates route and exactly seven
+deliberate external navigation destinations:
 
 - `https://github.com/ryanjosephkamp/reword-nerd`
+- `https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=bug_report.yml`
+- `https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=feature_request.yml`
+- `https://github.com/ryanjosephkamp/reword-nerd/security/advisories/new`
 - `https://github.com/ryanjosephkamp/`
 - `https://ryanjosephkamp.github.io`
 - `https://github.com/sponsors/ryanjosephkamp`
 
-These links open only after user activation with `noopener noreferrer`. They
-are navigation choices, not application requests, and no document content is
-attached to them.
+The Updates route stays within `/reword-nerd/updates/`. External links open only
+after user activation with `noopener noreferrer`. They are navigation choices,
+not application requests, and no document content is attached to them. Share
+uses only the clean canonical site URL and adds no tracker, counter, shortener,
+query, hash, or uploaded-session state.
 
 The static host receives ordinary requests for application files, not selected
 documents. Browser extensions, device management, local development servers,

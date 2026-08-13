@@ -51,4 +51,23 @@ describe("v0.7 release documentation contract", () => {
       expect(source).toMatch(/distinct from[\s\S]*(?:uploaded|session)|(?:uploaded|session)[\s\S]*distinct from/iu);
     }
   });
+
+  it("documents the complete v0.7 navigation and overlay privacy inventory", () => {
+    // Stale counts or omitted overlays make the source allowlist and focus boundary impossible to audit from the docs.
+    const privacy = read("docs/privacy.md");
+    expect(privacy).toMatch(/exactly seven[\s\S]*external navigation destinations/iu);
+    for (const destination of [
+      "https://github.com/ryanjosephkamp/reword-nerd",
+      "https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=bug_report.yml",
+      "https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=feature_request.yml",
+      "https://github.com/ryanjosephkamp/reword-nerd/security/advisories/new",
+      "https://github.com/ryanjosephkamp/",
+      "https://ryanjosephkamp.github.io",
+      "https://github.com/sponsors/ryanjosephkamp",
+    ]) expect(privacy).toContain(destination);
+
+    const architecture = read("docs/architecture.md");
+    expect(architecture).toContain("Share's manual-copy fallback");
+    expect(architecture).toContain("mutually exclusive modal-overlay");
+  });
 });

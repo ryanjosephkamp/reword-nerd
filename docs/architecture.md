@@ -172,11 +172,12 @@ owner separately chooses the remote review and publication steps.
 
 ## Overlay, guidance, and layout boundary
 
-Quick start, Help, Info, Settings drawer, Reset saved preferences, and New
-session share one mutually exclusive modal-overlay state. The shared shell owns
-focus containment and restoration, Escape/X/direct-backdrop dismissal, and
-confirmation cancellation. Settings question-mark disclosures are local
-non-modal help surfaces with hover/focus previews and pinned click/tap behavior.
+Quick start, Help, Info, Settings drawer, Reset saved preferences, New session,
+and Share's manual-copy fallback share one mutually exclusive modal-overlay
+state. The shared shell owns focus containment and restoration,
+Escape/X/direct-backdrop dismissal, and confirmation cancellation. Settings
+question-mark disclosures are local non-modal help surfaces with hover/focus
+previews and pinned click/tap behavior.
 
 The overview and three Help chapters are pre-rendered, same-origin video assets
 with posters and transcripts. Remotion remains authoring-only under
