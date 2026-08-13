@@ -39,6 +39,16 @@ The application remains a browser-only, dual-mode prompt-package workbench.
 Changes that add a hosted service, account system, persistence layer, model
 execution, or unrelated interface should be discussed before implementation.
 
+## Updates and release media
+
+Public authored Updates posts and release media are site material, distinct from
+uploaded session content, prompt packages, and downloaded progress copies. Keep
+release prose and synthetic media under the reviewed `content/updates/` and
+`public/media/updates/` source paths; never derive them from a user file or put
+them in a package. Follow [the release workflow](docs/release-workflow.md) for
+the local authoring, review, and video checks. Its local commands do not grant
+authority to commit, push, open a pull request, publish, or deploy.
+
 ## Working agreement
 
 - Use TypeScript and React patterns already present in `src/`.
@@ -96,3 +106,5 @@ When changing a root prompt template:
 ## Community standards
 
 Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+For suspected vulnerabilities, do not open a public Issue. Follow the private, synthetic-evidence-only process in the [Security policy](SECURITY.md).

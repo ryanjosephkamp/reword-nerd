@@ -1840,6 +1840,11 @@ button:disabled {
   vertical-align: middle;
 }
 
+.release-link {
+  color: var(--color-ready);
+  text-underline-offset: 3px;
+}
+
 .drawer-backdrop,
 .dialog-backdrop {
   position: fixed;
@@ -2037,6 +2042,7 @@ button:disabled {
   .settings-button,
   .help-button,
   .info-button,
+  .share-button,
   .workbench-footer {
     display: none;
   }

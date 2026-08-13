@@ -2,7 +2,7 @@
 
 ```text
 reword-nerd/
-├── README.md, CONTRIBUTING.md, LICENSE, CODE_OF_CONDUCT.md
+├── README.md, CONTRIBUTING.md, LICENSE, CODE_OF_CONDUCT.md, SECURITY.md
 ├── package.json, package-lock.json
 ├── index.html, vite.config.ts, vitest.config.ts, playwright.config.ts
 ├── prompts/
@@ -13,15 +13,19 @@ reword-nerd/
 │   └── 04_final.md
 ├── examples/                        # synthetic local examples
 ├── docs/
-│   ├── architecture.md, privacy.md, extraction-limitations.md
+│   ├── architecture.md, privacy.md, extraction-limitations.md, release-workflow.md
 │   ├── manifest-v1.md … manifest-v6.md
 │   ├── model-guidance/              # dated strategy evidence and parity
 │   ├── design-principles.md, design-system.md, design-qa.md
 │   └── design/references/           # approved visual references
 ├── public/
 │   ├── brand/                       # metadata-free logo and browser icons
-│   └── media/demo/                  # local videos and static posters
-├── video/remotion/                  # authoring-only deterministic demos
+│   └── media/
+│       ├── demo/                    # local videos and static posters
+│       └── updates/<release>/       # final synthetic release media and transcript
+├── content/updates/                  # release ledger, review inventory, safe authored Markdown
+├── scripts/updates/                  # offline ledger/render/video commands
+├── video/remotion/                  # authoring-only deterministic demos and release clips
 ├── src/
 │   ├── version.ts                   # package-metadata application version
 │   ├── app/workbench/               # item state, safe previews, project review, hooks/UI
@@ -39,6 +43,10 @@ reword-nerd/
 Source, deterministic fixtures, root prompts, authored demo compositions,
 rendered site media, and manifest specifications are versioned. The public
 logo/videos/posters are site assets only and are never added to a user ZIP.
+Public authored Updates posts and release media are site material, distinct from
+uploaded session content, prompt packages, and downloaded progress copies.
+`content/updates/` and `public/media/updates/` contain reviewed release source;
+they never contain selected files and never become package entries.
 `dist/`, dependency folders, coverage, Playwright reports, and
 `output/playwright/` screenshots/download fixtures are generated and ignored;
 see [.gitignore](../.gitignore).

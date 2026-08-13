@@ -21,7 +21,7 @@ export type PreviewMode = "source" | "assets" | "package";
 export type AssetViewMode = "detail" | "gallery";
 export type PackageWorkflow = "one-shot" | "manual";
 export type PackagePreviewTab = "runbook" | PackageWorkflow;
-export type ActiveOverlay = "help" | "info" | "quick-start" | "settings" | "reset-preferences" | "new-session";
+export type ActiveOverlay = "help" | "info" | "quick-start" | "settings" | "reset-preferences" | "new-session" | "share";
 export type BuiltPromptPackage = Extract<PromptPackageResult, { ok: true }>;
 
 export interface WorkbenchDocument extends WorkspaceDocument {

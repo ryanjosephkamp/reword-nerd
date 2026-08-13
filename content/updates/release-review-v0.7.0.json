@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "version": "0.7.0",
+  "previousVersion": "0.6.0",
+  "classification": "feature",
+  "generatedFrom": "local-git-history",
+  "commits": [
+    {
+      "commit": "bb3b2443fb61e4aeee8756519907d8922d92571a",
+      "authoredAt": "2026-08-13T06:01:54-04:00",
+      "subject": "Release v0.6.0: source viewer and project workspaces (#7)"
+    },
+    {
+      "commit": "d653a34f5844689eef8eb4eeaf9a21d5cb6728aa",
+      "authoredAt": "2026-08-12T22:11:04-04:00",
+      "subject": "Release v0.5.1 mobile preview and asset polish (#6)"
+    },
+    {
+      "commit": "582f731f46d8e8e87396d09a5f1b0c6e315403dc",
+      "authoredAt": "2026-08-12T19:16:35-04:00",
+      "subject": "Fix mobile Document processing help placement (#5)"
+    },
+    {
+      "commit": "f3c5743bd597455e2c3b6b978bf4af2a60986af4",
+      "authoredAt": "2026-08-12T19:06:40-04:00",
+      "subject": "Release v0.5 guided help and schema-v5 packages (#4)"
+    },
+    {
+      "commit": "8efb0ac4d9b5c4f7b2e1bfdb0aa36934220d15a2",
+      "authoredAt": "2026-08-12T02:37:40-04:00",
+      "subject": "chore: remove internal implementation report"
+    },
+    {
+      "commit": "98d1b45507d2f248a11010a1185334201448b4c1",
+      "authoredAt": "2026-08-12T02:32:38-04:00",
+      "subject": "Add dual-mode prompt workbooks and mobile release polish (#3)"
+    },
+    {
+      "commit": "10bfed0d80c2b27b985caec2bbbc13efb4191417",
+      "authoredAt": "2026-08-11T21:20:48-04:00",
+      "subject": "Add media OCR LaTeX and mobile workspace (#2)"
+    },
+    {
+      "commit": "af977b445eb35b7744536897fce07ef2ced6731b",
+      "authoredAt": "2026-08-11T17:56:03-04:00",
+      "subject": "Model-guided prompts, combined artifacts, and package preview (#1)"
+    },
+    {
+      "commit": "c36d4447be7695d6d7935f76c06abcc2cdaa73ed",
+      "authoredAt": "2026-08-11T15:01:01-04:00",
+      "subject": "Build browser prompt-package workbench"
+    }
+  ]
+}

@@ -1,18 +1,19 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { FolderIcon, GearIcon, HelpIcon, InfoIcon, MoreIcon, RestartIcon } from "./Icons";
+import { FolderIcon, GearIcon, HelpIcon, InfoIcon, MoreIcon, RestartIcon, ShareIcon } from "./Icons";
 
 interface HeaderProps {
   onOpenFiles(): void;
   onOpenSettings(): void;
   onOpenHelp(returnFocus: HTMLButtonElement): void;
   onOpenInfo(returnFocus: HTMLButtonElement): void;
+  onShare(returnFocus: HTMLButtonElement): void;
   onNewSession(returnFocus: HTMLButtonElement): void;
   settingsExpanded: boolean;
   settingsControls: string;
   settingsButtonRef: RefObject<HTMLButtonElement | null>;
 }
 
-export function Header({ onOpenFiles, onOpenSettings, onOpenHelp, onOpenInfo, onNewSession, settingsExpanded, settingsControls, settingsButtonRef }: HeaderProps) {
+export function Header({ onOpenFiles, onOpenSettings, onOpenHelp, onOpenInfo, onShare, onNewSession, settingsExpanded, settingsControls, settingsButtonRef }: HeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -44,6 +45,7 @@ export function Header({ onOpenFiles, onOpenSettings, onOpenHelp, onOpenInfo, on
       <button type="button" className="icon-button settings-button" aria-label="Settings" aria-expanded={settingsExpanded} aria-controls={settingsControls} onClick={onOpenSettings} ref={settingsButtonRef}><GearIcon /></button>
       <button type="button" className="icon-button help-button" aria-label="Help" onClick={(event) => onOpenHelp(event.currentTarget)}><HelpIcon /></button>
       <button type="button" className="icon-button info-button" aria-label="Info" onClick={(event) => onOpenInfo(event.currentTarget)}><InfoIcon /></button>
+      <button type="button" className="icon-button share-button" aria-label="Share" onClick={(event) => onShare(event.currentTarget)}><ShareIcon /></button>
       <button
         type="button"
         className="icon-button mobile-menu"
@@ -65,6 +67,11 @@ export function Header({ onOpenFiles, onOpenSettings, onOpenHelp, onOpenInfo, on
           setMenuOpen(false);
           if (returnFocus) onOpenInfo(returnFocus);
         }}>Info</button>
+        <button type="button" onClick={() => {
+          const returnFocus = menuButtonRef.current;
+          setMenuOpen(false);
+          if (returnFocus) onShare(returnFocus);
+        }}>Share</button>
         <button type="button" onClick={() => {
           const returnFocus = menuButtonRef.current;
           setMenuOpen(false);

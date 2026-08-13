@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "site": {
+    "title": "reword-nerd Updates",
+    "description": "A first-person builder's journal for reword-nerd releases, decisions, and verification.",
+    "canonicalOrigin": "https://ryanjosephkamp.github.io",
+    "basePath": "/reword-nerd/updates/"
+  },
+  "entries": [
+    {
+      "kind": "article",
+      "slug": "road-to-v0-6",
+      "title": "Road to v0.6",
+      "summary": "How reword-nerd grew from a focused prompt workbench into a safer workspace for files and projects.",
+      "status": "published",
+      "date": "2026-08-13",
+      "author": "Ryan Joseph Kamp",
+      "tags": [
+        "retrospective",
+        "builder's journal"
+      ],
+      "relatedPrs": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "markdownPath": "content/updates/road-to-v0-6.md",
+      "visualChanges": false,
+      "video": {
+        "policy": "none"
+      }
+    },
+    {
+      "kind": "release",
+      "slug": "v0-7-0",
+      "title": "reword-nerd v0.7: Updates, feedback, and Share",
+      "summary": "A static Updates journal, privacy-safe feedback routes, and canonical Share controls.",
+      "status": "current",
+      "date": "2026-08-13",
+      "author": "Ryan Joseph Kamp",
+      "tags": [
+        "release",
+        "updates",
+        "community",
+        "sharing"
+      ],
+      "relatedPrs": [],
+      "markdownPath": "content/updates/v0-7-0.md",
+      "version": "0.7.0",
+      "classification": "feature",
+      "visualChanges": true,
+      "video": {
+        "policy": "required",
+        "mp4Path": "/reword-nerd/media/updates/v0-7-0/release-update.mp4",
+        "webmPath": "/reword-nerd/media/updates/v0-7-0/release-update.webm",
+        "posterPath": "/reword-nerd/media/updates/v0-7-0/poster.webp",
+        "transcriptPath": "/reword-nerd/media/updates/v0-7-0/transcript.txt"
+      }
+    }
+  ]
+}

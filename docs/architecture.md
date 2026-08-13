@@ -149,16 +149,35 @@ tutorial-version preferences. Workbench sources, project decisions, previews,
 and workbook progress are never included.
 
 `src/version.ts` exposes `APP_VERSION` from package metadata. The footer and
-Info dialog render `0.6.0` from that source, while schema-v6 contracts and tests
+Info dialog render `0.7.0` from that source, while schema-v6 contracts and tests
 require the manifest package version to match the release.
+
+## Updates publication boundary
+
+`content/updates/releases.json` and its reviewed Markdown are the
+JSON-authoritative static journal inputs. `scripts/updates/` validates those
+inputs before the Vite build and deterministically emits the archive, posts,
+feed, sitemap, stylesheet, and optional same-origin Share enhancement. Public
+authored Updates posts and release media are site material, distinct from
+uploaded session content, prompt packages, and downloaded progress copies. The
+workbench never reads a session file into these authored sources, and export
+never copies the authored sources or `public/media/updates/` bytes into a user
+package.
+
+Release-video source lives under `video/remotion/release/`; its renderer is an
+authoring tool, not a runtime dependency. Final synthetic MP4, WebM, poster,
+and transcript assets live in `public/media/updates/<release>/` only after
+local validation. The release workflow remains offline until an authorized
+owner separately chooses the remote review and publication steps.
 
 ## Overlay, guidance, and layout boundary
 
-Quick start, Help, Info, Settings drawer, Reset saved preferences, and New
-session share one mutually exclusive modal-overlay state. The shared shell owns
-focus containment and restoration, Escape/X/direct-backdrop dismissal, and
-confirmation cancellation. Settings question-mark disclosures are local
-non-modal help surfaces with hover/focus previews and pinned click/tap behavior.
+Quick start, Help, Info, Settings drawer, Reset saved preferences, New session,
+and Share's manual-copy fallback share one mutually exclusive modal-overlay
+state. The shared shell owns focus containment and restoration,
+Escape/X/direct-backdrop dismissal, and confirmation cancellation. Settings
+question-mark disclosures are local non-modal help surfaces with hover/focus
+previews and pinned click/tap behavior.
 
 The overview and three Help chapters are pre-rendered, same-origin video assets
 with posters and transcripts. Remotion remains authoring-only under
@@ -187,7 +206,9 @@ the runbook or prompt content.
 | `src/export/` | Semantic runbook, immutable workbook/progress engine, schema-v6 manifest, ZIP, safe paths, downloads. |
 | `prompts/` | Canonical One-shot and four Manual Markdown templates. |
 | `public/brand/`, `public/media/demo/` | Same-origin logo/icon and pre-rendered Help media; never exported with document packages. |
-| `video/remotion/` | Authoring-only deterministic demo compositions. |
+| `content/updates/`, `scripts/updates/` | JSON-authoritative authored Updates ledger/posts and offline validation/rendering commands. |
+| `public/media/updates/` | Reviewed, synthetic, same-origin release media; distinct from session content and never exported with packages. |
+| `video/remotion/` | Authoring-only deterministic demo and release compositions. |
 | `tests/e2e/` | Built-preview Chromium, real fixtures, downloads, `file://`, network, and visual QA. |
 
 See [manifest v6](manifest-v6.md), [privacy](privacy.md), [model guidance](model-guidance/README.md),

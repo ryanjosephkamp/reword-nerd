@@ -276,12 +276,11 @@ describe("Night Terminal workbench", () => {
     const infoButton = screen.getByRole("button", { name: "Info" });
     fireEvent.click(infoButton);
     const dialog = screen.getByRole("dialog", { name: "About reword-nerd" });
-    expect(within(dialog).getByText("reword-nerd v0.6.0")).toBeInTheDocument();
+    expect(within(dialog).getByText("reword-nerd v0.7.0")).toBeInTheDocument();
     expect(within(dialog).getByRole("img", { name: /reword-nerd logo/i })).toBeInTheDocument();
     const repository = within(dialog).getByRole("link", { name: "Repository" });
-    const creator = within(dialog).getByRole("region", { name: "Built by Ryan Kamp" });
+    const creator = within(dialog).getByRole("region", { name: "Creator" });
     expect(creator).not.toContainElement(repository);
-    expect(within(creator).getByRole("link", { name: "Ryan Kamp" })).toHaveAttribute("href", "https://ryanjosephkamp.github.io");
     expect(within(creator).getByRole("link", { name: "GitHub profile" })).toHaveAttribute("href", "https://github.com/ryanjosephkamp/");
     const links = {
       Repository: "https://github.com/ryanjosephkamp/reword-nerd",
@@ -292,6 +291,78 @@ describe("Night Terminal workbench", () => {
     for (const [name, href] of Object.entries(links)) {
       expect(within(dialog).getByRole("link", { name })).toHaveAttribute("href", href);
       expect(within(dialog).getByRole("link", { name })).toHaveAttribute("rel", "noopener noreferrer");
+    }
+  });
+
+  it("discovers Updates and privacy-safe community feedback through grouped Info and Help links", () => {
+    // This catches community destinations moving outside their named groups or a missing local Updates path.
+    render(<App services={services()} />);
+    expect(within(screen.getByRole("contentinfo")).getByRole("link", { name: "v0.7.0" })).toHaveAttribute("href", "/updates/v0-7-0/");
+    fireEvent.click(screen.getByRole("button", { name: "Info" }));
+    const info = screen.getByRole("dialog", { name: "About reword-nerd" });
+    const product = within(info).getByRole("region", { name: "Product" });
+    const community = within(info).getByRole("region", { name: "Community" });
+    const creator = within(info).getByRole("region", { name: "Creator" });
+    expect(within(product).getByRole("link", { name: "Updates" })).toHaveAttribute("href", "/updates/v0-7-0/");
+    expect(within(product).getByRole("link", { name: "Repository" })).toHaveAttribute("href", "https://github.com/ryanjosephkamp/reword-nerd");
+    expect(within(community).getByRole("link", { name: "Report a bug" })).toHaveAttribute("href", "https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=bug_report.yml");
+    expect(within(community).getByRole("link", { name: "Suggest a feature" })).toHaveAttribute("href", "https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=feature_request.yml");
+    expect(within(community).getByRole("link", { name: "Security reporting" })).toHaveAttribute("href", "https://github.com/ryanjosephkamp/reword-nerd/security/advisories/new");
+    expect(within(creator).getByRole("link", { name: "GitHub profile" })).toHaveAttribute("href", "https://github.com/ryanjosephkamp/");
+
+    fireEvent.click(screen.getByRole("button", { name: "Close info" }));
+    fireEvent.click(screen.getByRole("button", { name: "Help" }));
+    const help = screen.getByRole("dialog", { name: "Help and workflow guide" });
+    expect(within(help).getByRole("link", { name: "Report a bug" })).toHaveAttribute("href", "https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=bug_report.yml");
+    expect(within(help).getByRole("link", { name: "Suggest a feature" })).toHaveAttribute("href", "https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=feature_request.yml");
+  });
+
+  it("shares the canonical URL through native Share, clipboard, or a focus-restoring manual fallback", async () => {
+    // This catches sharing a session URL, treating cancellation as an error, or trapping the user after copying fails.
+    const shareDescriptor = Object.getOwnPropertyDescriptor(navigator, "share");
+    const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    const secureContextDescriptor = Object.getOwnPropertyDescriptor(globalThis, "isSecureContext");
+    const execCommand = document.execCommand;
+    try {
+      Object.defineProperty(globalThis, "isSecureContext", { configurable: true, value: true });
+      const nativeShare = vi.fn(async () => undefined);
+      Object.defineProperty(navigator, "share", { configurable: true, value: nativeShare });
+      render(<App services={services()} />);
+      const share = screen.getByRole("button", { name: "Share" });
+      fireEvent.click(share);
+      expect(await screen.findByRole("status")).toHaveTextContent("Link shared.");
+      expect(nativeShare).toHaveBeenCalledWith({ title: "reword-nerd", url: "https://ryanjosephkamp.github.io/reword-nerd/" });
+
+      Object.defineProperty(navigator, "share", { configurable: true, value: vi.fn(async () => { throw new DOMException("closed", "AbortError"); }) });
+      fireEvent.click(share);
+      expect(screen.queryByRole("dialog", { name: "Share link" })).not.toBeInTheDocument();
+
+      const writeText = vi.fn(async () => undefined);
+      Object.defineProperty(navigator, "share", { configurable: true, value: undefined });
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+      fireEvent.click(share);
+      expect(await screen.findByRole("status")).toHaveTextContent("Link copied.");
+      expect(writeText).toHaveBeenCalledWith("https://ryanjosephkamp.github.io/reword-nerd/");
+
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async () => { throw new Error("denied"); } } });
+      Object.defineProperty(document, "execCommand", { configurable: true, value: () => false });
+      fireEvent.click(share);
+      const fallback = await screen.findByRole("dialog", { name: "Share link" });
+      const url = within(fallback).getByRole("textbox", { name: "Share URL" }) as HTMLTextAreaElement;
+      expect(url).toHaveValue("https://ryanjosephkamp.github.io/reword-nerd/");
+      expect(url).toHaveFocus();
+      expect(url.selectionStart).toBe(0);
+      expect(url.selectionEnd).toBe(url.value.length);
+      fireEvent.click(within(fallback).getByRole("button", { name: "Close share link" }));
+      expect(share).toHaveFocus();
+    } finally {
+      if (shareDescriptor) Object.defineProperty(navigator, "share", shareDescriptor);
+      else Reflect.deleteProperty(navigator, "share");
+      if (clipboardDescriptor) Object.defineProperty(navigator, "clipboard", clipboardDescriptor);
+      else Reflect.deleteProperty(navigator, "clipboard");
+      if (secureContextDescriptor) Object.defineProperty(globalThis, "isSecureContext", secureContextDescriptor);
+      else Reflect.deleteProperty(globalThis, "isSecureContext");
+      Object.defineProperty(document, "execCommand", { configurable: true, value: execCommand });
     }
   });
 
