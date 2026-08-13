@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "preview": "vite preview",
-    "build": "npm run updates:check && tsc -b && vite build && npm run updates:render",
+    "build": "npm run updates:check && npm run updates:video:check && tsc -b && vite build && npm run updates:render",
     "lint": "eslint .",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
@@ -18,6 +18,8 @@
     "release:prepare": "node scripts/updates/release-prepare.mjs",
     "updates:check": "node scripts/updates/check.mjs",
     "updates:render": "node scripts/updates/render.mjs",
+    "updates:video": "node scripts/updates/video.mjs",
+    "updates:video:check": "node scripts/updates/video-check.mjs",
     "validate": "npm run lint && npm run typecheck && npm test -- --run && npm run build"
   },
   "dependencies": {
@@ -58,6 +60,7 @@
     "typescript": "5.9.3",
     "typescript-eslint": "8.66.0",
     "vite": "8.2.1",
-    "vitest": "4.1.10"
+    "vitest": "4.1.10",
+    "zod": "^4.4.3"
   }
 }

@@ -53,7 +53,7 @@ function validateVideo(value, visualChanges, label) {
   const video = requireObject(value, `${label}.video`);
   if (!["none", "required", "exempt"].includes(video.policy)) fail(`${label}.video.policy is invalid`);
   if (video.policy === "required") {
-    for (const key of ["mp4Path", "posterPath", "transcriptPath"]) requireLocalWebPath(video[key], `${label}.video.${key}`);
+    for (const key of ["mp4Path", "webmPath", "posterPath", "transcriptPath"]) requireLocalWebPath(video[key], `${label}.video.${key}`);
   }
   if (video.policy === "exempt") requireSafeText(video.exemptionReason, `${label}.video.exemptionReason`);
   if (visualChanges && video.policy === "none") fail(`${label} declares visual changes and needs video or an exemption`);
@@ -303,7 +303,7 @@ export async function checkUpdates(rootDirectory) {
     if (problem) throw new Error(`Invalid Markdown in ${entry.markdownPath}: ${problem}`);
     posts.set(entry.slug, markdown);
     if (entry.video.policy === "required") {
-      for (const path of [entry.video.mp4Path, entry.video.posterPath, entry.video.transcriptPath]) {
+      for (const path of [entry.video.mp4Path, entry.video.webmPath, entry.video.posterPath, entry.video.transcriptPath]) {
         try {
           await access(localPathForWebPath(root, path));
         } catch {
@@ -412,6 +412,10 @@ function renderMarkdown(markdown) {
   return output.join("\n");
 }
 
+function renderReleaseVideo(video) {
+  return `<figure class="release-video"><div class="release-video-motion"><video controls muted playsinline preload="none" poster="${escapeHtml(video.posterPath)}"><source src="${escapeHtml(video.webmPath)}" type="video/webm"><source src="${escapeHtml(video.mp4Path)}" type="video/mp4">Your browser cannot play this same-origin release video.</video></div><div class="release-video-poster"><img src="${escapeHtml(video.posterPath)}" alt="Synthetic reword-nerd v0.7 Updates, feedback, and Share release poster"></div><figcaption>Silent, synthetic release walkthrough. <a href="${escapeHtml(video.transcriptPath)}">Read the transcript</a>.</figcaption><p class="release-video-fallback">Video unavailable? <a href="${escapeHtml(video.posterPath)}">Open the release poster</a>.</p></figure>`;
+}
+
 function pageShell({ site, title, description, canonicalPath, type, body, jsonLd }) {
   const canonical = `${site.canonicalOrigin}${canonicalPath}`;
   const image = `${site.canonicalOrigin}/reword-nerd/brand/reword-nerd-logo.webp`;
@@ -452,6 +456,8 @@ const UPDATES_CSS = `:root{color-scheme:dark;--bg:#070b0d;--panel:#0d1417;--line
 
 const UPDATES_SHARE_CSS = ".share-control{margin:1rem 0 0;padding:.6rem .9rem;border:1px solid var(--mint);border-radius:.3rem;color:var(--mint);background:transparent;font:inherit;cursor:pointer}.share-control:hover,.share-control:focus-visible{color:var(--bg);background:var(--mint)}.share-status{min-height:1.65em;color:var(--mint)}.share-fallback-backdrop{position:fixed;inset:0;z-index:10;display:grid;place-items:center;padding:1rem;background:rgb(0 0 0 / .7)}.share-fallback{width:min(100%,36rem);padding:1.25rem;border:1px solid var(--mint);background:var(--panel)}.share-fallback textarea{width:100%;min-height:5.5rem;margin:.75rem 0;padding:.6rem;color:var(--text);background:var(--bg);border:1px solid var(--line);font:inherit}.share-fallback button{padding:.55rem .8rem;color:var(--mint);background:transparent;border:1px solid var(--mint);font:inherit;cursor:pointer}";
 
+const RELEASE_VIDEO_CSS = ".release-video{margin:2.5rem 0;padding:1rem;border:1px solid var(--line);background:var(--panel)}.release-video-motion video,.release-video-poster img{display:block;width:100%;aspect-ratio:16/9;background:var(--bg);object-fit:cover}.release-video-poster{display:none}.release-video figcaption,.release-video-fallback{margin:.8rem 0 0;color:var(--muted);font-size:.9rem}.release-video-fallback{margin-bottom:0}@media(prefers-reduced-motion:reduce){.release-video-motion{display:none}.release-video-poster{display:block}}";
+
 async function writeOutput(path, content) {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, content, "utf8");
@@ -465,12 +471,12 @@ export async function renderUpdates(rootDirectory, outputDirectory = resolve(roo
   const archiveBody = `<main itemscope itemtype="https://schema.org/Blog"><p class="eyebrow">Builder's journal</p><h1>Updates</h1><p>${escapeHtml(ledger.site.description)}</p><button class="share-control" type="button" data-share-url="${escapeHtml(`${ledger.site.canonicalOrigin}${archivePath}`)}" data-share-title="${escapeHtml(ledger.site.title)}">Share</button><ol class="release-list">${entries.map((entry) => `<li class="release-card"><p class="meta"><time datetime="${entry.date}">${entry.date}</time> · ${escapeHtml(entry.kind)}</p><h2><a href="/reword-nerd/updates/${entry.slug}/">${escapeHtml(entry.title)}</a></h2><p>${escapeHtml(entry.summary)}</p><ul class="tags">${entry.tags.map((tag) => `<li>${escapeHtml(tag)}</li>`).join("")}</ul></li>`).join("")}</ol></main>`;
   const blogJsonLd = { "@context": "https://schema.org", "@type": "Blog", name: ledger.site.title, description: ledger.site.description, url: `${ledger.site.canonicalOrigin}${archivePath}` };
   await writeOutput(resolve(outputDirectory, "updates/index.html"), pageShell({ site: ledger.site, title: ledger.site.title, description: ledger.site.description, canonicalPath: archivePath, type: "website", body: archiveBody, jsonLd: blogJsonLd }));
-  await writeOutput(resolve(outputDirectory, "updates/updates.css"), `${UPDATES_CSS}${UPDATES_SHARE_CSS}`);
+  await writeOutput(resolve(outputDirectory, "updates/updates.css"), `${UPDATES_CSS}${UPDATES_SHARE_CSS}${RELEASE_VIDEO_CSS}`);
   await writeOutput(resolve(outputDirectory, "updates/share.js"), await readFile(resolve(rootDirectory, "public/updates/share.js"), "utf8"));
 
   for (const entry of entries) {
     const canonicalPath = `/reword-nerd/updates/${entry.slug}/`;
-    const video = entry.video.policy === "required" ? `<figure><video controls preload="metadata" poster="${escapeHtml(entry.video.posterPath)}"><source src="${escapeHtml(entry.video.mp4Path)}" type="video/mp4"><a href="${escapeHtml(entry.video.mp4Path)}">Download the demonstration video</a></video><figcaption><a href="${escapeHtml(entry.video.transcriptPath)}">Read the transcript</a></figcaption></figure>` : "";
+    const video = entry.video.policy === "required" ? renderReleaseVideo(entry.video) : "";
     const body = `<main><article itemscope itemtype="https://schema.org/BlogPosting"><p class="eyebrow">${escapeHtml(entry.kind === "release" ? `${entry.classification} release` : "retrospective")}</p><p class="meta"><time itemprop="datePublished" datetime="${entry.date}">${entry.date}</time> · ${escapeHtml(entry.author)}</p>${renderMarkdown(posts.get(entry.slug))}${video}</article><button class="share-control" type="button" data-share-url="${escapeHtml(`${ledger.site.canonicalOrigin}${canonicalPath}`)}" data-share-title="${escapeHtml(entry.title)}">Share</button><p><a href="/reword-nerd/updates/">← All Updates</a></p></main>`;
     const jsonLd = { "@context": "https://schema.org", "@type": "BlogPosting", headline: entry.title, description: entry.summary, datePublished: entry.date, author: { "@type": "Person", name: entry.author }, url: `${ledger.site.canonicalOrigin}${canonicalPath}` };
     await writeOutput(resolve(outputDirectory, `updates/${entry.slug}/index.html`), pageShell({ site: ledger.site, title: `${entry.title} · Updates`, description: entry.summary, canonicalPath, type: "article", body, jsonLd }));

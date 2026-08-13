@@ -1,7 +1,7 @@
 export type VideoPolicy =
   | { policy: "none" }
   | { policy: "exempt"; exemptionReason: string }
-  | { policy: "required"; mp4Path: string; posterPath: string; transcriptPath: string };
+  | { policy: "required"; mp4Path: string; webmPath: string; posterPath: string; transcriptPath: string };
 
 export type ReleaseLedgerStatus = "draft" | "current" | "published" | "archived";
 

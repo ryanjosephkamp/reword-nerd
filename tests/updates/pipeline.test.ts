@@ -172,6 +172,41 @@ describe("Updates validation and rendering", () => {
     expect(sitemap).toContain("/reword-nerd/updates/v0-7-0/");
   });
 
+  it("embeds required release media with native quiet controls, a transcript fallback, and a reduced-motion poster", async () => {
+    // Regressing to eager/autoplay media, dropping the WebM fallback, or hiding all visual context for reduced motion must make this fail.
+    const root = await fixtureRoot();
+    const ledgerPath = join(root, "content/updates/releases.json");
+    const ledger = JSON.parse(await readFile(ledgerPath, "utf8"));
+    ledger.entries[0].video = {
+      policy: "required",
+      mp4Path: "/reword-nerd/media/updates/v0-7-0/release-update.mp4",
+      webmPath: "/reword-nerd/media/updates/v0-7-0/release-update.webm",
+      posterPath: "/reword-nerd/media/updates/v0-7-0/poster.webp",
+      transcriptPath: "/reword-nerd/media/updates/v0-7-0/transcript.txt",
+    };
+    await writeFile(ledgerPath, `${JSON.stringify(ledger, null, 2)}\n`);
+    const mediaDirectory = join(root, "public/media/updates/v0-7-0");
+    await mkdir(mediaDirectory, { recursive: true });
+    await Promise.all([
+      writeFile(join(mediaDirectory, "release-update.mp4"), "fixture"),
+      writeFile(join(mediaDirectory, "release-update.webm"), "fixture"),
+      writeFile(join(mediaDirectory, "poster.webp"), "fixture"),
+      writeFile(join(mediaDirectory, "transcript.txt"), "fixture"),
+    ]);
+
+    await renderUpdates(root, join(root, "dist"));
+    const post = await readFile(join(root, "dist/updates/v0-7-0/index.html"), "utf8");
+    const css = await readFile(join(root, "dist/updates/updates.css"), "utf8");
+
+    expect(post).toContain('<video controls muted playsinline preload="none" poster="/reword-nerd/media/updates/v0-7-0/poster.webp">');
+    expect(post).toContain('<source src="/reword-nerd/media/updates/v0-7-0/release-update.webm" type="video/webm">');
+    expect(post).toContain('<source src="/reword-nerd/media/updates/v0-7-0/release-update.mp4" type="video/mp4">');
+    expect(post).toContain('Video unavailable? <a href="/reword-nerd/media/updates/v0-7-0/poster.webp">Open the release poster</a>.');
+    expect(post).toContain('href="/reword-nerd/media/updates/v0-7-0/transcript.txt">Read the transcript</a>');
+    expect(post).toContain('<div class="release-video-poster"><img src="/reword-nerd/media/updates/v0-7-0/poster.webp"');
+    expect(css).toContain("@media(prefers-reduced-motion:reduce){.release-video-motion{display:none}.release-video-poster{display:block}}");
+  });
+
   it("removes stale generated post routes before a standalone re-render", async () => {
     const root = await fixtureRoot();
     const output = join(root, "dist");

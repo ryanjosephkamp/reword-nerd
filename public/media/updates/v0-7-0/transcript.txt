@@ -1,0 +1,7 @@
+reword-nerd v0.7.0 — Updates, feedback, and Share
+
+00:00 — Title: Updates, feedback, and Share. A quiet, local-first release walkthrough.
+00:05 — Context: Release context should be easy to find. The release ledger records version, current status, same-origin media, and the local-first privacy boundary.
+00:09 — Demonstration: The Updates archive shows the current v0.7 release and Road to v0.6. The synthetic interface highlights Report a bug, Suggest a feature, and Share release.
+00:16 — Highlights: Static Updates pages with RSS. Clear bug and feature routes. Canonical Share with no tracking.
+00:20 — Feedback: Find the release. Send useful feedback. Share the clean URL. Built in public. Processed locally.
