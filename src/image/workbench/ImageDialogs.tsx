@@ -37,7 +37,6 @@ export function ImageDialogs(props: ImageDialogsProps) {
       closeLabel="Close Image Quick Start"
       onDismiss={props.onDismissQuickStart}
       className="image-quick-start-dialog"
-      initialFocusSelector="[data-image-start]"
     >
       <div className="image-dialog-artwork">
         <img src={artworkPath} width="112" height="112" alt="Orange pyramid artwork" />

@@ -14,6 +14,7 @@
   grid-template-columns: minmax(260px, auto) 1fr auto;
   align-items: center;
   min-height: 88px;
+  column-gap: 20px;
   padding: 16px 24px;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-bg);
@@ -67,7 +68,7 @@
   letter-spacing: .035em;
 }
 
-.image-workbench button:not(:disabled):hover {
+.image-workbench button:not(:disabled):not([aria-selected="true"]):hover {
   border-color: var(--image-action);
   background: var(--image-panel-tint);
 }
@@ -200,7 +201,7 @@
   border-left: 4px solid var(--image-review);
   padding-left: 12px;
 }
-.image-workbench :is(.image-warning, .image-error-state, .image-error) { color: #a64200; font-weight: 750; }
+.image-workbench :is(.image-warning, .image-error-state, .image-error) { color: var(--color-blocked); font-weight: 750; }
 .image-workbench .image-review-guidance { background: color-mix(in srgb, var(--image-review) 24%, transparent); padding: 8px; }
 
 .image-workbench .image-settings-tabs {
@@ -211,7 +212,7 @@
 }
 .image-workbench [role="tab"][aria-selected="true"] {
   border-color: var(--image-action);
-  background: var(--image-action);
+  background-color: var(--image-action);
   color: #19130a;
 }
 .image-workbench .image-settings-fields { display: grid; gap: 13px; }
@@ -233,7 +234,7 @@
 .image-workbench .image-profile-metadata p { margin: 3px 0; }
 .image-workbench .image-focused-settings,
 .image-workbench .image-build-dock { margin-top: 24px; border-top: 1px solid var(--color-border); padding-top: 18px; }
-.image-workbench .image-build-dock { position: sticky; bottom: -20px; background: var(--color-bg); }
+.image-workbench .image-build-dock { position: static; background: var(--color-surface); }
 .image-workbench .image-package-actions { flex-wrap: wrap; }
 
 .image-workbench .image-dialog-artwork { display: flex; gap: 20px; align-items: flex-start; }
@@ -250,6 +251,7 @@
 
 @media (min-width: 768px) and (max-width: 1279px) {
   .image-workbench-grid { grid-template-columns: minmax(300px, .85fr) minmax(0, 1.45fr); }
+  .image-workbench .image-session-copy { flex-direction: column; align-items: flex-start; gap: 2px; }
   .image-workbench .image-settings-panel { display: none; }
   .image-workbench .image-settings-drawer { width: min(460px, 88vw); }
 }
@@ -299,7 +301,6 @@
   .image-workbench :is(input, select, textarea, button) { font-size: 16px; }
   .image-workbench .image-dialog-artwork { flex-direction: column; }
   .image-workbench .image-bulk-toolbar { top: -16px; margin-inline: -16px; padding-inline: 16px; }
-  .image-workbench .image-build-dock { bottom: -16px; }
 }
 
 @media (max-width: 420px) {

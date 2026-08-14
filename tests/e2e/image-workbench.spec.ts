@@ -1,3 +1,5 @@
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
 const PRIVATE_FILENAME = "local-private-source.png";
@@ -6,6 +8,13 @@ const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
 );
+const visualEvidenceDirectory = process.env.IMAGE_A11Y_SCREENSHOT_DIR;
+
+async function captureEvidence(page: Page, name: string): Promise<void> {
+  if (!visualEvidenceDirectory) return;
+  mkdirSync(visualEvidenceDirectory, { recursive: true });
+  await page.screenshot({ path: join(visualEvidenceDirectory, name), animations: "disabled" });
+}
 
 function tinyPdf(): Buffer {
   const stream = "1 0.5 0 rg\n0 0 32 24 re f\n";
@@ -97,6 +106,8 @@ test("real PNG workflow stays local, keeps package actions truthful, and release
   await expect(page.getByText("Include at least one image.")).toBeVisible();
   await page.getByRole("button", { name: `Include ${PRIVATE_FILENAME}` }).click();
   await page.getByRole("button", { name: "New session" }).click();
+  await page.getByRole("dialog", { name: "Start a new Image session?" })
+    .getByRole("button", { name: "CLEAR IMAGE SESSION" }).click();
   await expect(page.getByText("No images in this local session.")).toBeVisible();
 
   const urlAudit = await page.evaluate(() => {
@@ -203,4 +214,80 @@ test("locked desktop, tablet, and mobile layouts stay contained and keyboard ope
   await expect.poll(() => page.locator(".image-panel").first().evaluate((element) => (
     Number.parseFloat(getComputedStyle(element).transitionDuration)
   ))).toBeLessThanOrEqual(0.00001);
+});
+
+test("Quick Start opens at its title and artwork instead of auto-scrolling to the CTA", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto("image/");
+  const dialog = page.getByRole("dialog", { name: "Image Quick Start" });
+
+  await expect(dialog).toBeFocused();
+  await expect(dialog.getByRole("heading", { name: "Image Quick Start" })).toBeVisible();
+  await expect(dialog.getByRole("img", { name: "Orange pyramid artwork" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Close Image Quick Start" })).toBeVisible();
+  expect(await dialog.evaluate((element) => element.scrollTop)).toBe(0);
+  await captureEvidence(page, "quick-start-top-320x568.png");
+});
+
+test("settings remain unobscured and usable at every audited width", async ({ page }) => {
+  const sizes = [
+    { width: 320, height: 720, mode: "mobile" },
+    { width: 390, height: 844, mode: "mobile" },
+    { width: 412, height: 915, mode: "mobile" },
+    { width: 1024, height: 768, mode: "tablet" },
+    { width: 1586, height: 992, mode: "desktop" },
+  ] as const;
+
+  for (const size of sizes) {
+    await page.setViewportSize(size);
+    await openWorkbench(page);
+    if (size.mode === "mobile") {
+      const settingsTab = page.getByRole("tab", { name: "SETTINGS", exact: true });
+      await settingsTab.click();
+      expect(await settingsTab.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          actionColor: style.getPropertyValue("--image-action").trim(),
+          backgroundColor: style.backgroundColor,
+          color: style.color,
+        };
+      })).toEqual({
+        actionColor: "#ff9f1c",
+        backgroundColor: "rgb(255, 159, 28)",
+        color: "rgb(25, 19, 10)",
+      });
+    }
+    if (size.mode === "tablet") await page.getByRole("button", { name: "Settings" }).click();
+
+    const surface = size.mode === "tablet"
+      ? page.getByRole("dialog", { name: "Image settings" })
+      : page.getByRole("region", { name: "Image settings" });
+    const fields = surface.locator(".image-settings-fields").first();
+    const dock = surface.locator(".image-build-dock");
+    const [fieldsBox, dockBox] = await Promise.all([fields.boundingBox(), dock.boundingBox()]);
+    expect(fieldsBox).not.toBeNull();
+    expect(dockBox).not.toBeNull();
+    expect(dockBox!.y).toBeGreaterThanOrEqual(fieldsBox!.y + fieldsBox!.height - 1);
+
+    const packagePreview = surface.getByRole("article", { name: "Package preview" });
+    await packagePreview.scrollIntoViewIfNeeded();
+    await expect(packagePreview).toBeVisible();
+    await captureEvidence(page, `settings-bottom-${size.width}x${size.height}.png`);
+  }
+});
+
+test("tablet header separates brand, local-session copy, and actions", async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await openWorkbench(page);
+  const groups = page.locator(".image-header > :is(.brand-portal, .image-session-copy, .image-header-actions)");
+  const boxes = await groups.evaluateAll((elements) => elements.map((element) => {
+    const box = element.getBoundingClientRect();
+    return { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
+  }));
+
+  expect(boxes).toHaveLength(3);
+  expect(boxes[1].left - boxes[0].right).toBeGreaterThanOrEqual(16);
+  expect(boxes[2].left - boxes[1].right).toBeGreaterThanOrEqual(16);
+  expect(boxes[0].bottom).toBeLessThanOrEqual(boxes[1].bottom + 24);
+  await captureEvidence(page, "header-spacing-1024x768.png");
 });

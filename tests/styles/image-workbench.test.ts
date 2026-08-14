@@ -1,9 +1,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { cssRuleProperty } from "./css-contract";
+import { contrastRatio, cssRuleProperty } from "./css-contract";
 
 describe("scoped Image workbench visual contract", () => {
   const css = readFileSync(join(process.cwd(), "src/styles/image-workbench.css"), "utf8");
+  const globalCss = readFileSync(join(process.cwd(), "src/styles/index.css"), "utf8")
+    .replaceAll(/@import[^;]+;\s*/gu, "");
 
   it("keeps Image action/review identity scoped without replacing Text ready teal", () => {
     expect(cssRuleProperty(css, ".image-workbench", "--image-action")).toBe("#ff9f1c");
@@ -23,6 +25,29 @@ describe("scoped Image workbench visual contract", () => {
     expect(cssRuleProperty(css, ".image-workbench .image-ocr-needs-review", "border-left"))
       .toContain("var(--image-review)");
     expect(css).toMatch(/\.image-review-state/u);
+  });
+
+  it("keeps warnings readable on the canvas, including compact queue warnings", () => {
+    const alertColor = cssRuleProperty(
+      css,
+      ".image-workbench :is(.image-warning, .image-error-state, .image-error)",
+      "color",
+    );
+    const blocked = cssRuleProperty(globalCss, ":root", "--color-blocked");
+    const canvas = cssRuleProperty(globalCss, ":root", "--color-canvas");
+
+    expect(alertColor).toBe("var(--color-blocked)");
+    expect(contrastRatio(blocked!, canvas!)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("keeps review/build content in normal flow on an opaque surface", () => {
+    expect(cssRuleProperty(css, ".image-workbench .image-build-dock", "position")).toBe("static");
+    expect(cssRuleProperty(css, ".image-workbench .image-build-dock", "background"))
+      .toBe("var(--color-surface)");
+  });
+
+  it("reserves real horizontal separation between the three header groups", () => {
+    expect(cssRuleProperty(css, ".image-workbench .image-header", "column-gap")).toBe("20px");
   });
 
   it("defines independent desktop panels, tablet drawer, and safe mobile navigation", () => {

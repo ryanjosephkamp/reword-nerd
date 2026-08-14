@@ -35,6 +35,8 @@ describe("Image workbench layout and local-only guidance", () => {
     render(<ImageApp />);
 
     const dialog = screen.getByRole("dialog", { name: "Image Quick Start" });
+    expect(dialog).toHaveFocus();
+    expect(within(dialog).getByRole("button", { name: "START LOCAL SESSION" })).not.toHaveFocus();
     expect(within(dialog).getByRole("img", { name: "Orange pyramid artwork" })).toHaveAttribute(
       "src",
       "/image/orange-pyramid.webp",
