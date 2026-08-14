@@ -115,6 +115,20 @@ button:disabled {
   background: var(--color-canvas);
 }
 
+.image-shell a:link,
+.image-shell a:visited {
+  color: #ff9f1c;
+}
+
+.image-shell .portal-link-text:link,
+.image-shell .portal-link-text:visited {
+  color: var(--color-ready);
+}
+
+.image-shell :focus-visible {
+  outline-color: #ff9f1c;
+}
+
 .image-shell-header {
   display: flex;
   min-height: 70px;

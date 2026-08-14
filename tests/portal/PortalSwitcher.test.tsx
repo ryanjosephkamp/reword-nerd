@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { PortalSwitcher } from "../../src/app/portal/PortalSwitcher";
 import { canonicalPortalUrl, portalHref } from "../../src/app/portal/portalUrls";
@@ -68,5 +68,32 @@ describe("portal switching", () => {
     lastChoice.focus();
     fireEvent.keyDown(lastChoice, { key: "Tab" });
     expect(within(dialog).getByRole("button", { name: "Close portal switch confirmation" })).toHaveFocus();
+  });
+
+  it("keeps trigger focus custody across initial focus, both Tab boundaries, and dismissal", async () => {
+    // This catches a portal confirmation that strands keyboard users after they cancel a session-preserving switch.
+    render(<PortalSwitcher currentPortal="text" hasSessionWork onClearSession={vi.fn()} basePath="/reword-nerd/" />);
+
+    const trigger = screen.getByRole("link", { name: "IMAGE" });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const dialog = screen.getByRole("dialog", { name: "Switch to Image?" });
+    const close = within(dialog).getByRole("button", { name: "Close portal switch confirmation" });
+    const firstChoice = within(dialog).getByRole("button", { name: "Open Image in a new tab" });
+    const lastChoice = within(dialog).getByRole("button", { name: "Clear Text session and open Image" });
+
+    expect(firstChoice).toHaveFocus();
+    close.focus();
+    fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
+    expect(lastChoice).toHaveFocus();
+    fireEvent.keyDown(lastChoice, { key: "Tab" });
+    expect(close).toHaveFocus();
+
+    fireEvent.click(close);
+    await waitFor(() => expect(trigger).toHaveFocus());
+
+    fireEvent.click(trigger);
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Switch to Image?" }), { key: "Escape" });
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 });

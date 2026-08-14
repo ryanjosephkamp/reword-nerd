@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ModalShell } from "../workbench/components/ModalShell";
 import { portalHref, type Portal } from "./portalUrls";
 
@@ -13,6 +13,7 @@ interface PortalSwitcherProps {
 
 export function PortalSwitcher({ currentPortal, hasSessionWork, onClearSession, basePath, onNavigate, onOpenNewTab }: PortalSwitcherProps) {
   const [targetPortal, setTargetPortal] = useState<Portal | null>(null);
+  const triggerRef = useRef<HTMLAnchorElement>(null);
   const navigate = (href: string) => {
     if (onNavigate) onNavigate(href);
     else window.location.assign(href);
@@ -21,9 +22,10 @@ export function PortalSwitcher({ currentPortal, hasSessionWork, onClearSession, 
     if (onOpenNewTab) onOpenNewTab(href);
     else window.open(href, "_blank", "noopener");
   };
-  const requestPortal = (portal: Portal) => {
+  const requestPortal = (portal: Portal, trigger: HTMLAnchorElement) => {
     if (portal === currentPortal) return;
     if (hasSessionWork) {
+      triggerRef.current = trigger;
       setTargetPortal(portal);
       return;
     }
@@ -42,7 +44,7 @@ export function PortalSwitcher({ currentPortal, hasSessionWork, onClearSession, 
         aria-current={portal === currentPortal ? "page" : undefined}
         onClick={(event) => {
           event.preventDefault();
-          requestPortal(portal);
+          requestPortal(portal, event.currentTarget);
         }}
       >{portal.toUpperCase()}</a>)}
     </nav>
@@ -51,6 +53,7 @@ export function PortalSwitcher({ currentPortal, hasSessionWork, onClearSession, 
       title={`Switch to ${targetLabel}?`}
       closeLabel="Close portal switch confirmation"
       onDismiss={() => setTargetPortal(null)}
+      returnFocusRef={triggerRef}
       className="portal-switch-dialog confirm-dialog"
       initialFocusSelector="[data-portal-choice]"
     >

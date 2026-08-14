@@ -7,7 +7,7 @@ interface ModalShellProps {
   title: string;
   closeLabel: string;
   onDismiss(): void;
-  returnFocusRef?: RefObject<HTMLButtonElement | null>;
+  returnFocusRef?: RefObject<HTMLElement | null>;
   children: ReactNode;
   className?: string;
   initialFocus?: "dialog" | "first";
