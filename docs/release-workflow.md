@@ -6,10 +6,9 @@ Running a local command does not publish, commit, push, merge, open a pull
 request, change a GitHub setting, or deploy.
 
 The current application has a physical default Text page and a physical Image
-companion at `/reword-nerd/image/`. Image publication remains a separate
-owner-authorization gate; documenting or locally validating the page does not
-release it. The Image Quick Start embeds a silent same-origin video with a
-poster and transcript. The prepared v0.8 article records the local Image work
+companion at `/reword-nerd/image/`. Image publication remains a separate owner-authorization gate; documenting or locally validating the page does not
+release it. The Image Quick Start video is embedded as silent same-origin media
+with a poster and transcript. The prepared v0.8 article records the local Image work
 and declares separate same-origin update media, while the formal
 version change, merge, and Pages deployment remain separately gated.
 

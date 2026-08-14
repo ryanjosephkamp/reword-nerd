@@ -63,7 +63,7 @@ describe("Image preferences", () => {
           requestedChanges: "Use a cream background.",
           mustPreserve: "",
         },
-        tutorialVersion: "0.8",
+        tutorialVersion: "0.8-image-quick-start",
       },
     });
     expect(serialized).not.toMatch(/private|bytes|filename|path|bulkSelected|ocr|prompt|package/iu);
