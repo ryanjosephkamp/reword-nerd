@@ -12,6 +12,17 @@ import type { ArchiveEntryAdapter, ArchiveReaderAdapter } from "../../src/image/
 import type { ImagePdfAdapter, ImagePdfPage } from "../../src/image/pdfIntake";
 import type { DocxConverterAdapter } from "../../src/image/docxIntake";
 
+const browserPdf = vi.hoisted(() => ({
+  GlobalWorkerOptions: { workerSrc: "" },
+  OPS: {
+    paintImageXObject: 91,
+    paintInlineImageXObject: 92,
+  },
+  getDocument: vi.fn(),
+}));
+
+vi.mock("pdfjs-dist", () => browserPdf);
+
 const PNG = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1]);
 const GIF = new TextEncoder().encode("GIF89a");
 const ZIP = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 1]);
@@ -315,5 +326,108 @@ describe("Image intake integration", () => {
     expect(renders).toEqual([[1, 3], [2, 3], [3, 3]]);
     expect(result.admissions).toHaveLength(3);
     expect(result.admissions.map(({ provenance }) => provenance.pageNumber)).toEqual([1, 2, 3]);
+  });
+
+  it.each(["operator-list", "image-object"] as const)(
+    "reset aborts a browser PDF %s wait so fresh serialized intake proceeds before stale parser work settles",
+    async (waitKind) => {
+      // Catches detached PDF.js parser waits continuing to own the intake coordinator queue after reset.
+      let staleWorkSettled = false;
+      const staleWait = new Promise<never>(() => undefined)
+        .finally(() => { staleWorkSettled = true; });
+      const destroyDocument = vi.fn(async () => undefined);
+      const destroyTask = vi.fn(async () => undefined);
+      const getObject = vi.fn(() => null);
+      const getOperatorList = vi.fn(() => waitKind === "operator-list"
+        ? staleWait
+        : Promise.resolve({ fnArray: [browserPdf.OPS.paintImageXObject], argsArray: [["img-1"]] }));
+      browserPdf.getDocument.mockReturnValue({
+        promise: Promise.resolve({
+          numPages: 1,
+          getPage: async () => ({
+            getOperatorList,
+            objs: {
+              get: waitKind === "image-object"
+                ? getObject
+                : () => null,
+            },
+            cleanup: () => undefined,
+          }),
+          destroy: destroyDocument,
+        }),
+        destroy: destroyTask,
+        onPassword: undefined,
+      });
+      const { service } = harness();
+      const stale = service.intake([
+        file("stale.pdf", new TextEncoder().encode("%PDF-1.7\nfixture"), "application/pdf"),
+      ]);
+      void stale.catch(() => undefined);
+      await vi.waitFor(() => waitKind === "operator-list"
+        ? expect(getOperatorList).toHaveBeenCalledOnce()
+        : expect(getObject).toHaveBeenCalledOnce());
+
+      service.reset();
+      const fresh = service.intake([file("fresh.png", PNG, "image/png")]);
+      await vi.waitFor(() => expect(service.snapshot().count).toBe(1), { timeout: 200 });
+      await expect(fresh).resolves.toMatchObject({ admissions: [expect.objectContaining({ id: "occ-1" })] });
+      await expect(stale).rejects.toMatchObject({ name: "AbortError" });
+      expect(staleWorkSettled).toBe(false);
+      expect(destroyDocument).toHaveBeenCalledOnce();
+      expect(destroyTask).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("reset cancels the retained browser PDF render task and frees fresh serialized intake", async () => {
+    // Catches page capture awaiting a discarded RenderTask forever after reset.
+    const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext")
+      .mockReturnValue({} as never);
+    const cancelRender = vi.fn();
+    let renderSettled = false;
+    const renderWait = new Promise<void>(() => undefined)
+      .finally(() => { renderSettled = true; });
+    const render = vi.fn(() => ({ promise: renderWait, cancel: cancelRender }));
+    const destroyDocument = vi.fn(async () => undefined);
+    const destroyTask = vi.fn(async () => undefined);
+    browserPdf.getDocument.mockReturnValue({
+      promise: Promise.resolve({
+        numPages: 1,
+        getPage: async () => ({
+          getOperatorList: async () => ({ fnArray: [], argsArray: [] }),
+          objs: { get: () => null },
+          getViewport: () => ({ width: 20, height: 10 }),
+          render,
+          cleanup: () => undefined,
+        }),
+        destroy: destroyDocument,
+      }),
+      destroy: destroyTask,
+      onPassword: undefined,
+    });
+    const { service } = harness({
+      resolvePdfCapture: async () => ({
+        mode: "embedded-and-pages",
+        pages: [1],
+        quality: "standard",
+      }),
+    });
+    const stale = service.intake([
+      file("stale.pdf", new TextEncoder().encode("%PDF-1.7\nfixture"), "application/pdf"),
+    ]);
+    void stale.catch(() => undefined);
+    try {
+      await vi.waitFor(() => expect(render).toHaveBeenCalledOnce());
+      service.reset();
+      const fresh = service.intake([file("fresh.png", PNG, "image/png")]);
+      await vi.waitFor(() => expect(service.snapshot().count).toBe(1), { timeout: 200 });
+      await expect(fresh).resolves.toMatchObject({ admissions: [expect.objectContaining({ id: "occ-1" })] });
+      await expect(stale).rejects.toMatchObject({ name: "AbortError" });
+      expect(cancelRender).toHaveBeenCalledOnce();
+      expect(renderSettled).toBe(false);
+      expect(destroyDocument).toHaveBeenCalledOnce();
+      expect(destroyTask).toHaveBeenCalledOnce();
+    } finally {
+      getContext.mockRestore();
+    }
   });
 });

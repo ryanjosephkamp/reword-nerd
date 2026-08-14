@@ -146,4 +146,78 @@ describe("Image OCR service", () => {
     await expect(resetPending).rejects.toMatchObject({ name: "AbortError" });
     await service.dispose();
   });
+
+  it("detaches a cancelled recognition that never settles and serially recreates the worker for queued OCR", async () => {
+    // Catches a resolved terminate leaving the queue pump blocked forever on Tesseract's stale recognize promise.
+    const events: string[] = [];
+    let workerCreates = 0;
+    const service = createImageOcrService({
+      createWorker: async () => {
+        workerCreates += 1;
+        const workerNumber = workerCreates;
+        events.push(`create:${workerNumber}`);
+        return {
+          recognize: async () => {
+            events.push(`recognize:${workerNumber}`);
+            return workerNumber === 1 ? new Promise<string>(() => undefined) : "FRESH";
+          },
+          terminate: async () => {
+            await Promise.resolve();
+            events.push(`terminate:${workerNumber}`);
+          },
+        };
+      },
+      isCurrent: () => true,
+    });
+    const cancelled = service.recognize(job("cancelled"));
+    const queued = service.recognize(job("queued"));
+    void cancelled.catch(() => undefined);
+    void queued.catch(() => undefined);
+    try {
+      await vi.waitFor(() => expect(events).toContain("recognize:1"));
+      await service.cancelItem("cancelled", "hash-cancelled");
+      await expect(cancelled).rejects.toMatchObject({ name: "AbortError" });
+      await vi.waitFor(() => expect(events).toContain("recognize:2"), { timeout: 200 });
+      await expect(queued).resolves.toMatchObject({ detectedText: "FRESH" });
+      expect(events.indexOf("terminate:1")).toBeLessThan(events.indexOf("create:2"));
+    } finally {
+      await service.dispose();
+    }
+  });
+
+  it("reset detaches a recognition that never settles and permits future OCR on a recreated worker", async () => {
+    // Catches a reset settling only its caller while the old queue pump still owns the serial worker lane.
+    const events: string[] = [];
+    let workerCreates = 0;
+    const service = createImageOcrService({
+      createWorker: async () => {
+        workerCreates += 1;
+        const workerNumber = workerCreates;
+        events.push(`create:${workerNumber}`);
+        return {
+          recognize: async () => {
+            events.push(`recognize:${workerNumber}`);
+            return workerNumber === 1 ? new Promise<string>(() => undefined) : "AFTER-RESET";
+          },
+          terminate: async () => {
+            await Promise.resolve();
+            events.push(`terminate:${workerNumber}`);
+          },
+        };
+      },
+      isCurrent: () => true,
+    });
+    const stale = service.recognize(job("before-reset"));
+    void stale.catch(() => undefined);
+    try {
+      await vi.waitFor(() => expect(events).toContain("recognize:1"));
+      await service.reset();
+      await expect(stale).rejects.toMatchObject({ name: "AbortError" });
+      const future = service.recognize(job("after-reset"));
+      await expect(future).resolves.toMatchObject({ detectedText: "AFTER-RESET" });
+      expect(events.indexOf("terminate:1")).toBeLessThan(events.indexOf("create:2"));
+    } finally {
+      await service.dispose();
+    }
+  });
 });

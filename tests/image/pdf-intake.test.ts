@@ -184,6 +184,28 @@ describe("Image PDF intake", () => {
     expect(destroyed).toBe(1);
   });
 
+  it("preserves abort custody while PDF loading is still pending and destroys the loading task", async () => {
+    // Catches reset cancellation being mislabeled as a malformed document while the parser promise is detached.
+    const controller = new AbortController();
+    let destroyed = 0;
+    const load = vi.fn(() => ({
+      promise: new Promise<ImagePdfDocument>(() => undefined),
+      destroy: async () => { destroyed += 1; },
+    }));
+    const pdfAdapter: ImagePdfAdapter = {
+      load,
+    };
+    const pending = extractPdfImages(pdfBlob(), {
+      ...options(pdfAdapter),
+      signal: controller.signal,
+    });
+    void pending.catch(() => undefined);
+    await vi.waitFor(() => expect(load).toHaveBeenCalledOnce());
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(destroyed).toBe(1);
+  });
+
   it("rejects page cap and no-supported-image documents with complete cleanup", async () => {
     // Catches unbounded page enumeration or a visual-empty PDF being reported as successful.
     for (const document of [

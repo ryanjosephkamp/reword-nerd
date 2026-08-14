@@ -40,7 +40,7 @@ export interface ImagePdfPage {
 
 export interface ImagePdfDocument {
   readonly numPages: number;
-  getPage(pageNumber: number): Promise<ImagePdfPage>;
+  getPage(pageNumber: number, signal?: AbortSignal): Promise<ImagePdfPage>;
   destroy(): Promise<void> | void;
 }
 
@@ -92,6 +92,41 @@ export interface PdfImageResult {
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new DOMException("PDF intake cancelled.", "AbortError");
+}
+
+function waitForPdfOperation<T>(
+  operation: PromiseLike<T>,
+  signal?: AbortSignal,
+  cancel?: () => void,
+): Promise<T> {
+  throwIfAborted(signal);
+  if (!signal) return Promise.resolve(operation);
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const finish = (complete: (value: T) => void, value: T) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", abort);
+      complete(value);
+    };
+    const fail = (reason: unknown) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", abort);
+      reject(reason);
+    };
+    const abort = () => {
+      if (settled) return;
+      try { cancel?.(); } catch { /* cancellation remains authoritative */ }
+      fail(new DOMException("PDF intake cancelled.", "AbortError"));
+    };
+    signal.addEventListener("abort", abort, { once: true });
+    if (signal.aborted) abort();
+    Promise.resolve(operation).then(
+      (value) => finish(resolve, value),
+      fail,
+    );
+  });
 }
 
 function pdfIssueFor(error: unknown): "PDF_PASSWORD_PROTECTED" | "MALFORMED_PDF" {
@@ -192,8 +227,9 @@ export async function extractPdfImages(source: Blob, options: ExtractPdfOptions)
   }
   let sourceBytes: Uint8Array;
   try {
-    sourceBytes = new Uint8Array(await source.arrayBuffer());
-  } catch {
+    sourceBytes = new Uint8Array(await waitForPdfOperation(source.arrayBuffer(), options.signal));
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
     failImageIntake("READ_FAILED");
   }
   if (sourceBytes.byteLength !== source.size
@@ -208,8 +244,9 @@ export async function extractPdfImages(source: Blob, options: ExtractPdfOptions)
   const pages: Array<{ pageNumber: number; page: ImagePdfPage; rasters: readonly ImagePdfRaster[] }> = [];
   try {
     try {
-      document = await loadingTask.promise;
+      document = await waitForPdfOperation(loadingTask.promise, options.signal);
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") throw error;
       failImageIntake(pdfIssueFor(error));
     }
     throwIfAborted(options.signal);
@@ -230,12 +267,12 @@ export async function extractPdfImages(source: Blob, options: ExtractPdfOptions)
     if (options.resolveCapture) {
       try {
         const signal = options.signal ?? new AbortController().signal;
-        const choice = await options.resolveCapture({
+        const choice = await waitForPdfOperation(Promise.resolve(options.resolveCapture({
           containerName: options.containerName,
           containerPath: options.containerPath ?? null,
           pageCount: document.numPages,
           signal,
-        });
+        })), options.signal);
         throwIfAborted(options.signal);
         capture = normalizeCaptureChoice(choice, document.numPages);
       } catch (error) {
@@ -248,10 +285,16 @@ export async function extractPdfImages(source: Blob, options: ExtractPdfOptions)
     try {
       for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
         throwIfAborted(options.signal);
-        const page = await document.getPage(pageNumber);
+        const page = await waitForPdfOperation(
+          document.getPage(pageNumber, options.signal),
+          options.signal,
+        );
         const acquired = { pageNumber, page, rasters: [] as readonly ImagePdfRaster[] };
         pages.push(acquired);
-        acquired.rasters = await page.enumerateEmbeddedRasters(options.signal);
+        acquired.rasters = await waitForPdfOperation(
+          page.enumerateEmbeddedRasters(options.signal),
+          options.signal,
+        );
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") throw error;
@@ -269,7 +312,7 @@ export async function extractPdfImages(source: Blob, options: ExtractPdfOptions)
         try {
           validateImageDimensions(raster.width, raster.height);
           throwIfAborted(options.signal);
-          const bytes = await raster.readPng(options.signal);
+          const bytes = await waitForPdfOperation(raster.readPng(options.signal), options.signal);
           throwIfAborted(options.signal);
           images.push(await candidateFromPng(
             bytes,
@@ -292,7 +335,10 @@ export async function extractPdfImages(source: Blob, options: ExtractPdfOptions)
       if (!captures.has(pageNumber)) continue;
       visualCandidateCount += 1;
       try {
-        const capture = await page.renderCapturePng(captureScale, options.signal);
+        const capture = await waitForPdfOperation(
+          page.renderCapturePng(captureScale, options.signal),
+          options.signal,
+        );
         throwIfAborted(options.signal);
         images.push(await candidateFromPng(
           capture.bytes,
@@ -407,13 +453,14 @@ export async function loadBrowserImagePdfAdapter(): Promise<ImagePdfAdapter> {
       return {
         promise: Promise.race([loadingTask.promise, password]).then((pdf): ImagePdfDocument => ({
           numPages: pdf.numPages,
-          async getPage(pageNumber) {
-            const page = await pdf.getPage(pageNumber);
+          async getPage(pageNumber, signal) {
+            const page = await waitForPdfOperation(pdf.getPage(pageNumber), signal);
             return {
-              async enumerateEmbeddedRasters() {
-                const operatorList = await page.getOperatorList();
+              async enumerateEmbeddedRasters(signal) {
+                const operatorList = await waitForPdfOperation(page.getOperatorList(), signal);
                 const rasters: ImagePdfRaster[] = [];
                 for (let index = 0; index < operatorList.fnArray.length; index += 1) {
+                  throwIfAborted(signal);
                   const operation = operatorList.fnArray[index];
                   if (operation !== pdfjs.OPS.paintImageXObject
                     && operation !== pdfjs.OPS.paintInlineImageXObject) continue;
@@ -422,29 +469,31 @@ export async function loadBrowserImagePdfAdapter(): Promise<ImagePdfAdapter> {
                   try {
                     object = operation === pdfjs.OPS.paintInlineImageXObject
                       ? args[0] as PdfJsImageObject
-                      : await new Promise<PdfJsImageObject>((resolve, reject) => {
+                      : await waitForPdfOperation(new Promise<PdfJsImageObject>((resolve, reject) => {
                           try {
                             const current = page.objs.get(String(args[0]), (value: unknown) => resolve(value as PdfJsImageObject));
                             if (current) resolve(current as PdfJsImageObject);
                           } catch (error) { reject(error); }
-                        });
-                  } catch {
+                        }), signal);
+                  } catch (error) {
+                    if (error instanceof DOMException && error.name === "AbortError") throw error;
                     object = null;
                   }
                   const raster = object;
                   rasters.push({
                     width: raster?.width ?? 0,
                     height: raster?.height ?? 0,
-                    readPng: async () => {
+                    readPng: async (signal) => {
                       if (!raster) throw new Error("Unsupported PDF raster object.");
-                      return imageObjectPng(raster);
+                      return waitForPdfOperation(imageObjectPng(raster), signal);
                     },
                     close: () => raster?.bitmap?.close(),
                   });
                 }
                 return rasters;
               },
-              async renderCapturePng(scale) {
+              async renderCapturePng(scale, signal) {
+                throwIfAborted(signal);
                 const viewport = page.getViewport({ scale });
                 const width = Math.ceil(viewport.width);
                 const height = Math.ceil(viewport.height);
@@ -452,8 +501,10 @@ export async function loadBrowserImagePdfAdapter(): Promise<ImagePdfAdapter> {
                 const canvas = createCanvas(width, height);
                 const canvasContext = canvas.getContext("2d", { alpha: false });
                 if (!canvasContext) throw new Error("Canvas unavailable.");
-                await page.render({ canvas, canvasContext, viewport }).promise;
-                return { bytes: await canvasPng(canvas), width, height };
+                const renderTask = page.render({ canvas, canvasContext, viewport });
+                await waitForPdfOperation(renderTask.promise, signal, () => renderTask.cancel());
+                const bytes = await waitForPdfOperation(canvasPng(canvas), signal);
+                return { bytes, width, height };
               },
               cleanup: () => page.cleanup(),
             };
