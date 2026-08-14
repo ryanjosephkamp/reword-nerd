@@ -853,6 +853,7 @@ button:disabled {
 .pdf-page-slot {
   display: grid;
   width: 100%;
+  height: max-content;
   min-width: 0;
   place-items: start center;
   scroll-margin-top: 12px;
@@ -877,12 +878,36 @@ button:disabled {
 
 .pdf-page details {
   width: min(100%, 70ch);
+  max-width: 100%;
+  min-width: 0;
   margin-top: 8px;
   color: var(--color-muted);
   font-size: 11px;
 }
 
 .pdf-page summary { cursor: pointer; }
+
+.pdf-page .pdf-selectable-text[open] {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+}
+
+.pdf-page .pdf-selectable-text[open] > summary {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.pdf-page .pdf-selectable-text[open] > p {
+  max-width: 100%;
+  max-height: min(38vh, 360px);
+  margin: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
 
 .pdf-page-gallery {
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));

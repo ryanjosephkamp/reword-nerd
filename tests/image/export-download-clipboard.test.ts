@@ -62,6 +62,7 @@ describe("Image clipboard and deliberate download adapters", () => {
   it("initiates exactly one explicit ZIP download and revokes its owned URL", () => {
     // Catches Build auto-downloading, a wrong filename, or a leaked download URL.
     vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-14T21:06:53.456Z"));
     const createObjectURL = vi.fn((source: Blob) => { void source; return "blob:image-package"; });
     const revokeObjectURL = vi.fn();
     vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
@@ -72,7 +73,7 @@ describe("Image clipboard and deliberate download adapters", () => {
     expect(initiateImagePackageDownload(packageBytes)).toEqual({ ok: true });
     expect(click).toHaveBeenCalledTimes(1);
     const anchor = click.mock.instances[0] as HTMLAnchorElement;
-    expect(anchor.download).toBe("reword-nerd-image-prompt-package.zip");
+    expect(anchor.download).toBe("reword-nerd-image-prompt-package-2026-08-14T21-06-53Z.zip");
     expect(anchor.href).toBe("blob:image-package");
     expect(revokeObjectURL).not.toHaveBeenCalled();
     vi.runAllTimers();

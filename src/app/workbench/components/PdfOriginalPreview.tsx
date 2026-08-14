@@ -128,7 +128,12 @@ function PdfPageCanvas({ page, pageNumber, scale, active }: { page: PdfPreviewPa
   }, [page, scale]);
   return <div className={`pdf-page${active ? " is-active" : " is-adjacent"}`}>
     <canvas ref={canvasRef} aria-hidden="true" style={{ width: `${Math.max(1, page.width * scale)}px`, height: `${Math.max(1, page.height * scale)}px` }} />
-    <details><summary>SELECTABLE TEXT · PAGE {pageNumber}</summary><p>{page.text || `Page ${pageNumber} has no selectable text.`}</p></details>
+    <details className="pdf-selectable-text">
+      <summary>SELECTABLE TEXT · PAGE {pageNumber}</summary>
+      <p role="region" aria-label={`Selectable text for PDF page ${pageNumber}`} tabIndex={0}>
+        {page.text || `Page ${pageNumber} has no selectable text.`}
+      </p>
+    </details>
   </div>;
 }
 

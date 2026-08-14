@@ -121,7 +121,7 @@ test("mixed real formats preserve the complete historical document contract in a
   }
 
   const download = await captureDownload(page);
-  expect(download.suggestedFilename()).toBe("reword-nerd-prompt-package.zip");
+  expect(download.suggestedFilename()).toMatch(/^reword-nerd-text-prompt-package-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z\.zip$/u);
   const archiveBytes = await downloadBytes(download);
   const archive = await JSZip.loadAsync(archiveBytes, { checkCRC32: true });
   const manifestText = await archive.file("manifest.json")?.async("string");
@@ -440,7 +440,7 @@ test("keyboard navigation, modal focus, live state, removal focus, and reduced m
   const downloadButton = page.getByRole("button", { name: "DOWNLOAD ZIP" });
   await downloadButton.focus();
   await page.keyboard.press("Enter");
-  expect((await download).suggestedFilename()).toBe("reword-nerd-prompt-package.zip");
+  expect((await download).suggestedFilename()).toMatch(/^reword-nerd-text-prompt-package-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z\.zip$/u);
   expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });

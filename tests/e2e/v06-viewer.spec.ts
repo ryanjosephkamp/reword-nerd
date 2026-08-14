@@ -149,6 +149,28 @@ test("multi-page PDF ORIGINAL scrolls continuously and offers a bounded page gal
 
   const pageWindow = page.locator(".pdf-continuous-list");
   await expect(pageWindow.getByRole("region", { name: /PDF page slot/u })).toHaveCount(6);
+  const secondSlot = pageWindow.getByRole("region", { name: "PDF page slot 2" });
+  await secondSlot.locator("summary").click();
+  const selectableText = secondSlot.locator("details > p");
+  await expect(selectableText).toContainText("Long selectable text remains readable");
+  const selectableGeometry = await selectableText.evaluate((text) => {
+    const details = text.closest("details");
+    const slot = text.closest<HTMLElement>("[data-pdf-page]");
+    const nextSlot = slot?.nextElementSibling as HTMLElement | null;
+    if (!details || !slot || !nextSlot) throw new Error("Missing continuous page geometry");
+    return {
+      textScrollHeight: text.scrollHeight,
+      textClientHeight: text.clientHeight,
+      textBottom: text.getBoundingClientRect().bottom,
+      detailsBottom: details.getBoundingClientRect().bottom,
+      slotBottom: slot.getBoundingClientRect().bottom,
+      nextTop: nextSlot.getBoundingClientRect().top,
+    };
+  });
+  expect(selectableGeometry.textScrollHeight).toBeGreaterThan(selectableGeometry.textClientHeight);
+  expect(selectableGeometry.textBottom).toBeLessThanOrEqual(selectableGeometry.detailsBottom + 0.5);
+  expect(selectableGeometry.detailsBottom).toBeLessThanOrEqual(selectableGeometry.slotBottom + 0.5);
+  expect(selectableGeometry.slotBottom).toBeLessThanOrEqual(selectableGeometry.nextTop + 0.5);
   await pageWindow.evaluate((windowNode) => {
     const slot = windowNode.querySelector<HTMLElement>('[data-pdf-page="4"]');
     if (!slot) throw new Error("Missing page 4 slot");

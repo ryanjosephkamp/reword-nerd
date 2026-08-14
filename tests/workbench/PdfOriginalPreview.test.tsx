@@ -61,6 +61,29 @@ describe("PDF ORIGINAL preview", () => {
     expect(destroy).toHaveBeenCalledOnce();
   });
 
+  it("exposes long selectable page text as its own keyboard-readable scroll region", async () => {
+    // This catches expanded PDF text escaping its page slot and becoming unreadable over the next canvas.
+    const loader: PdfPreviewLoader = { load: () => ({
+      promise: Promise.resolve({
+        numPages: 1,
+        getPage: async () => ({
+          width: 600,
+          height: 800,
+          text: "Long selectable page text. ".repeat(120),
+          render: async () => undefined,
+          cleanup: vi.fn(),
+        }),
+        destroy: vi.fn(),
+      }),
+      destroy: vi.fn(),
+    }) };
+
+    render(<PdfOriginalPreview bytes={new Uint8Array([1])} loader={loader} identity="long-text-pdf" />);
+
+    const textRegion = await screen.findByRole("region", { name: "Selectable text for PDF page 1" });
+    expect(textRegion).toHaveAttribute("tabindex", "0");
+  });
+
   it("updates the active page from scrolling without requiring Next Page", async () => {
     const cleanup = vi.fn();
     const getPage = vi.fn(async (pageNumber: number) => ({

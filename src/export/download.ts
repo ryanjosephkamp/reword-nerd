@@ -1,4 +1,5 @@
 import type { DownloadResult } from "./contracts";
+import { createTimestampedZipFilename } from "../downloadFilename";
 
 function initiateDownload(blob: Blob, filename: string): DownloadResult {
   let url: string | undefined;
@@ -23,7 +24,7 @@ function initiateDownload(blob: Blob, filename: string): DownloadResult {
 }
 
 export function initiatePromptPackageDownload(blob: Blob): DownloadResult {
-  return initiateDownload(blob, "reword-nerd-prompt-package.zip");
+  return initiateDownload(blob, createTimestampedZipFilename("reword-nerd-text-prompt-package"));
 }
 
 export function initiateWorkbookProgressDownload(html: string, filename: string): DownloadResult {

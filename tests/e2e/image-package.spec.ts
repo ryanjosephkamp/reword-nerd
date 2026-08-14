@@ -15,7 +15,7 @@ const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
 );
-const IMAGE_PACKAGE_FILENAME = "reword-nerd-image-prompt-package.zip";
+const IMAGE_PACKAGE_FILENAME = /^reword-nerd-image-prompt-package-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z\.zip$/u;
 
 async function downloadBytes(download: Download): Promise<Buffer> {
   const stream = await download.createReadStream();
@@ -106,9 +106,10 @@ test("real local Image package is deterministic, portable, stale-safe, and side-
   const firstDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "DOWNLOAD ZIP" }).click();
   const firstArchive = await firstDownload;
-  expect(firstArchive.suggestedFilename()).toBe(IMAGE_PACKAGE_FILENAME);
+  expect(firstArchive.suggestedFilename()).toMatch(IMAGE_PACKAGE_FILENAME);
   const firstBytes = await downloadBytes(firstArchive);
-  expect(downloads).toEqual([IMAGE_PACKAGE_FILENAME]);
+  expect(downloads).toHaveLength(1);
+  expect(downloads[0]).toMatch(IMAGE_PACKAGE_FILENAME);
 
   const archive = await JSZip.loadAsync(firstBytes, { checkCRC32: true });
   const tree = Object.values(archive.files)
