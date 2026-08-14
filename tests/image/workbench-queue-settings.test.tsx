@@ -166,6 +166,24 @@ describe("Image queue interaction domains", () => {
     expect(within(second).getByRole("button", { name: "Focus second.png" })).toHaveAttribute("aria-current", "true");
   });
 
+  it("uses the whole queue-card summary as the single focus target without hijacking row controls", async () => {
+    await renderWithImages();
+    const first = screen.getByRole("group", { name: "first.png image controls" });
+    const second = screen.getByRole("group", { name: "second.png image controls" });
+    const secondFocusSurface = within(second).getByRole("button", { name: "Focus second.png" });
+
+    expect(within(second).getAllByRole("button", { name: "Focus second.png" })).toHaveLength(1);
+    fireEvent.click(within(second).getByText("second.png"));
+    expect(secondFocusSurface).toHaveAttribute("aria-current", "true");
+
+    fireEvent.click(within(first).getByRole("button", { name: "Focus first.png" }));
+    fireEvent.click(within(second).getByRole("checkbox", { name: "Select second.png" }));
+    fireEvent.click(within(second).getByRole("button", { name: "Omit second.png" }));
+    expect(within(first).getByRole("button", { name: "Focus first.png" })).toHaveAttribute("aria-current", "true");
+    expect(within(second).getByRole("checkbox", { name: "Select second.png" })).toBeChecked();
+    expect(within(second).getByText("OMITTED")).toBeInTheDocument();
+  });
+
   it("confirms selected removal and lets the reducer choose the next focus", async () => {
     await renderWithImages();
     const first = screen.getByRole("group", { name: "first.png image controls" });

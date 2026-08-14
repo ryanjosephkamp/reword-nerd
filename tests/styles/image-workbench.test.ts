@@ -84,6 +84,16 @@ describe("scoped Image workbench visual contract", () => {
       .toContain("var(--image-review)");
   });
 
+  it("contains the complete package hash inside the Settings preview", () => {
+    expect(cssRuleProperty(css, ".image-workbench .image-package-preview", "min-width")).toBe("0px");
+    expect(cssRuleProperty(css, ".image-workbench .image-package-preview dl div", "min-width")).toBe("0px");
+    expect(cssRuleProperty(css, ".image-workbench .image-package-preview dd", "margin")).toBe("0px");
+    expect(cssRuleProperty(css, ".image-workbench .image-package-preview dd", "min-width")).toBe("0px");
+    expect(cssRuleProperty(css, ".image-workbench .image-package-hash", "max-width")).toBe("100%");
+    expect(cssRuleProperty(css, ".image-workbench .image-package-hash", "overflow-wrap")).toBe("anywhere");
+    expect(cssRuleProperty(css, ".image-workbench .image-package-hash", "word-break")).toBe("break-all");
+  });
+
   it("reserves real horizontal separation between the three header groups", () => {
     expect(cssRuleProperty(css, ".image-workbench .image-header", "column-gap")).toBe("20px");
   });

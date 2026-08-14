@@ -41,22 +41,30 @@ function ImageQueueRow({
     aria-label={`${name} image controls`}
     data-image-id={item.id}
   >
-    <div className="image-thumbnail-frame">
-      {thumbnailUrl ? <img src={thumbnailUrl} alt="" /> : <span aria-hidden="true">▧</span>}
-    </div>
-    <div className="image-row-copy">
-      <strong>{name}</strong>
-      <span>{item.dimensions.width} × {item.dimensions.height} · {formatBytes(item.byteCount)}</span>
-      <span>{item.provenance.intakeKind.toUpperCase()} · OCR {item.ocr.status.toUpperCase()}</span>
-      {item.provenance.sourcePath ? <span>{item.provenance.sourcePath}</span> : null}
-      {item.provenance.containerChain.length > 0
-        ? <span>{item.provenance.containerChain.map((node) => node.name).join(" › ")}</span>
-        : null}
-      {item.warnings.map((warning) => <span className="image-warning" key={warning}>WARNING · {warning}</span>)}
-      <span className={item.included ? "image-included" : "image-omitted"}>{item.included ? "INCLUDED" : "OMITTED"}</span>
-    </div>
+    <button
+      id={`image-focus-${item.id}`}
+      type="button"
+      className="image-row-focus-surface"
+      aria-label={`Focus ${name}`}
+      aria-current={focused ? "true" : undefined}
+      onClick={onFocus}
+    >
+      <span className="image-thumbnail-frame">
+        {thumbnailUrl ? <img src={thumbnailUrl} alt="" /> : <span aria-hidden="true">▧</span>}
+      </span>
+      <span className="image-row-copy">
+        <strong>{name}</strong>
+        <span>{item.dimensions.width} × {item.dimensions.height} · {formatBytes(item.byteCount)}</span>
+        <span>{item.provenance.intakeKind.toUpperCase()} · OCR {item.ocr.status.toUpperCase()}</span>
+        {item.provenance.sourcePath ? <span>{item.provenance.sourcePath}</span> : null}
+        {item.provenance.containerChain.length > 0
+          ? <span>{item.provenance.containerChain.map((node) => node.name).join(" › ")}</span>
+          : null}
+        {item.warnings.map((warning) => <span className="image-warning" key={warning}>WARNING · {warning}</span>)}
+        <span className={item.included ? "image-included" : "image-omitted"}>{item.included ? "INCLUDED" : "OMITTED"}</span>
+      </span>
+    </button>
     <div className="image-row-controls">
-      <button id={`image-focus-${item.id}`} type="button" aria-label={`Focus ${name}`} aria-current={focused ? "true" : undefined} onClick={onFocus}>FOCUS</button>
       <label><input type="checkbox" aria-label={`Select ${name}`} checked={item.bulkSelected} onChange={(event) => onSelect(event.target.checked)} /> SELECT</label>
       <button type="button" aria-label={`${item.included ? "Omit" : "Include"} ${name}`} onClick={() => onInclusion(!item.included)}>{item.included ? "OMIT" : "INCLUDE"}</button>
       <button type="button" aria-label={`Remove ${name}`} onClick={(event) => onRemove(event.currentTarget)}>REMOVE</button>

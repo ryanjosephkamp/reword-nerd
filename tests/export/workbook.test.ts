@@ -79,26 +79,46 @@ async function sha256(bytes: Uint8Array): Promise<string> {
 }
 
 describe("v6 workbook package", () => {
-  it("styles standalone workbook and OPEN-ME links with the same readable teal after navigation", async () => {
-    // This catches packaged runbook/workbook links rendering browser blue or purple, or low-contrast mint on light paper.
-    const { buildPromptPackage } = await import("../../src/export");
+  it("gives every standalone workbook and OPEN-ME the dark Night Terminal system with Text teal", async () => {
+    // This catches one export surface retaining the old light paper or browser blue/purple links.
+    const { buildPromptPackage, createWorkbookProgress, renderWorkbookProgressHtml } = await import("../../src/export");
     const result = await buildPromptPackage([documentInput()]);
     if (!result.ok) throw new Error("fixture should export");
     const archive = await JSZip.loadAsync(result.blob, { checkCRC32: true });
     const openMe = await archive.file("OPEN-ME.html")?.async("string");
     if (!openMe) throw new Error("fixture should include OPEN-ME.html");
 
+    const progress = renderWorkbookProgressHtml(
+      result.workbooks[0],
+      createWorkbookProgress(result.workbooks[0]),
+    );
     for (const html of [
       result.workbooks[0].oneShot.html,
       result.workbooks[0].manual.html,
       result.workbooks[0].combined.html,
+      result.workbooks[0].combined.fullHtml,
+      progress,
       openMe,
-    ]) {
-      expect(inlineCssRuleProperty(html, "a:link, a:visited", "color")).toBe("var(--link)");
-      const teal = inlineCssRuleProperty(html, ":root", "--link");
-      expect(teal).toBe("#007a5a");
-      expect(contrastRatio(teal!, "#ffffff")).toBeGreaterThanOrEqual(4.5);
-      expect(contrastRatio(teal!, "#f7f7f7")).toBeGreaterThanOrEqual(4.5);
+    ].filter((html): html is string => typeof html === "string")) {
+      expect(inlineCssRuleProperty(html, ":root", "color-scheme")).toBe("dark");
+      expect(inlineCssRuleProperty(html, ":root", "--canvas")).toBe("#090b10");
+      expect(inlineCssRuleProperty(html, ":root", "--surface")).toBe("#11151f");
+      expect(inlineCssRuleProperty(html, ":root", "--accent")).toBe("#42e8b4");
+      expect(inlineCssRuleProperty(html, "a:link, a:visited", "color")).toBe("var(--accent)");
+      expect(contrastRatio("#42e8b4", "#090b10")).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio("#42e8b4", "#11151f")).toBeGreaterThanOrEqual(4.5);
+      expect(html).toContain("REWORD NERD / TEXT");
+      expect(html).toContain('class="package-header"');
+    }
+    for (const html of [
+      result.workbooks[0].oneShot.html,
+      result.workbooks[0].manual.html,
+      result.workbooks[0].combined.html,
+      result.workbooks[0].combined.fullHtml,
+      progress,
+    ].filter((html): html is string => typeof html === "string")) {
+      expect(html).toContain('class="workbook-card"');
+      expect(html).toMatch(/\.runbook-table\s*\{[^}]*overflow-x:\s*auto/su);
     }
   });
 

@@ -12,6 +12,7 @@ import type {
 import { PROJECT_ONE_SHOT_RESPONSE_LABEL } from "./contracts";
 import { renderRunbookHtml, serializeRunbookMarkdown } from "./runbook";
 import { isSafeArchivePath } from "./paths";
+import { TEXT_HTML_THEME_CSS } from "./textHtmlTheme";
 
 const textEncoder = new TextEncoder();
 
@@ -374,7 +375,7 @@ function standaloneHtml(
     : "One-shot final document and compact audit";
   const manualMarkup = workflow === "one-shot" ? "" : manualStages.map((stage) => promptEditor(stage, progress.manual.prompts[stage])
     .replace(`data-response-stage="${stage}" rows="10"></textarea>`, `data-response-stage="${stage}" rows="10">${escapeHtml(responseValues[stage])}</textarea>`)).join("\n");
-  const oneShotMarkup = workflow === "manual" ? "" : `<section id="panel-one-shot"${showTabs ? ' role="tabpanel" aria-labelledby="tab-one-shot" hidden' : ""}>
+  const oneShotMarkup = workflow === "manual" ? "" : `<section class="workbook-card" id="panel-one-shot"${showTabs ? ' role="tabpanel" aria-labelledby="tab-one-shot" hidden' : ""}>
       <h2>One-shot</h2><label for="prompt-oneShot">Editable One-shot prompt</label><textarea id="prompt-oneShot" data-prompt-stage="oneShot" rows="20">${escapeHtml(progress.oneShotPrompt.text)}</textarea>
       <div class="prompt-actions"><button type="button" data-reset-stage="oneShot">Reset</button></div>
       <label for="response-oneShot">${oneShotResponseLabel}</label><textarea id="response-oneShot" data-response-stage="oneShot" rows="12">${escapeHtml(responseValues.oneShot)}</textarea>
@@ -387,40 +388,38 @@ function standaloneHtml(
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
   <title>${title} — ${escapeHtml(source.originalDisplayName)}</title>
   <style>
-    :root { --link: #007a5a; color-scheme: light; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    * { box-sizing: border-box; } body { margin: 0; background: #fff; color: #111; line-height: 1.5; }
-    a:link, a:visited { color: var(--link); text-underline-offset: 3px; overflow-wrap: anywhere; }
-    main { width: min(100% - 32px, 980px); margin: 0 auto; padding: 32px 0 72px; }
-    h1 { margin: 0 0 20px; font-size: clamp(1.75rem, 6vw, 3rem); line-height: 1.08; } h2 { margin: 0; font-size: 1.15rem; }
+    ${TEXT_HTML_THEME_CSS}
+    h2 { font-size: 1.15rem; }
     .top-actions, .tabs, .prompt-heading, .prompt-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-    .top-actions { position: sticky; top: 0; z-index: 2; padding: 12px 0; background: #fff; border-bottom: 1px solid #bbb; }
-    .tabs { margin: 24px 0; } [role="tab"][aria-selected="true"] { background: #111; color: #fff; }
-    .runbook, textarea { width: 100%; border: 1px solid #777; background: #f7f7f7; padding: 14px; color: #111; font: .9rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
-    .runbook { overflow: auto; margin-bottom: 32px; } textarea { display: block; resize: vertical; }
-    .prompt-section, .assets { margin-top: 32px; } .prompt-heading { justify-content: space-between; margin-bottom: 8px; }
+    .top-actions { position: sticky; top: 0; z-index: 2; padding: 12px 0; background: var(--canvas); border-block: 1px solid var(--border-soft); }
+    .tabs { margin: 24px 0; } [role="tab"][aria-selected="true"] { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+    .runbook, textarea { width: 100%; border: 1px solid var(--border-soft); background: var(--deep); padding: 14px; color: var(--text); font: .9rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .runbook { overflow: auto; margin-bottom: 24px; } .runbook-table { max-width: 100%; overflow-x: auto; } .runbook table { min-width: 720px; border-collapse: collapse; } .runbook :is(th,td) { border: 1px solid var(--border-soft); padding: 8px; text-align: left; }
+    textarea { display: block; resize: vertical; }
+    .prompt-section, .assets { margin-top: 24px; border-top: 1px solid var(--border-soft); padding-top: 24px; } .prompt-heading { justify-content: space-between; margin-bottom: 8px; }
     .asset-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px; }
-    .asset-card { border: 1px solid #bbb; padding: 16px; min-width: 0; } .asset-card img { width: 100%; max-height: 480px; object-fit: contain; }
+    .asset-card { border: 1px solid var(--border); background: var(--deep); padding: 16px; min-width: 0; } .asset-card img { width: 100%; max-height: 480px; object-fit: contain; }
     .asset-card dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; } .asset-card dd { margin: 0; overflow-wrap: anywhere; }
-    button { min-height: 44px; border: 2px solid #111; background: #fff; color: #111; padding: 8px 14px; font: inherit; font-weight: 700; cursor: pointer; }
-    button:hover, button:focus-visible { background: #111; color: #fff; } button:disabled { cursor: not-allowed; opacity: .45; }
-    label { display: block; margin: 14px 0 6px; font-weight: 700; } .stale { border-left: 4px solid #8a5600; padding-left: 10px; font-weight: 700; }
-    #copy-status { min-height: 1.5em; font-weight: 700; }
+    button { min-height: 44px; border: 1px solid var(--accent); background: var(--deep); color: var(--accent); padding: 8px 14px; font: inherit; font-weight: 700; cursor: pointer; }
+    button:hover { background: var(--accent); color: var(--accent-ink); } button:disabled { cursor: not-allowed; opacity: .45; }
+    label { display: block; margin: 14px 0 6px; font-weight: 700; } .stale { border-left: 4px solid var(--warning); padding-left: 10px; font-weight: 700; }
+    #copy-status { min-height: 1.5em; color: var(--accent); font-weight: 700; }
     [hidden] { display: none !important; }
-    @media (max-width: 480px) { main { width: min(100% - 24px, 980px); padding-top: 16px; } .top-actions, .prompt-heading, .prompt-actions { align-items: stretch; flex-direction: column; } button { width: 100%; } .asset-card dl { grid-template-columns: 1fr; } }
+    @media (max-width: 480px) { .top-actions, .prompt-heading, .prompt-actions { align-items: stretch; flex-direction: column; } button { width: 100%; } .asset-card dl { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <main>
-    <h1>${title} — ${escapeHtml(source.originalDisplayName)}</h1>
+    <header class="package-header"><p class="eyebrow">REWORD NERD / TEXT</p><h1>${title} — ${escapeHtml(source.originalDisplayName)}</h1><p class="intro">A local, offline prompt workbook. Copy prompts into your chosen model and keep each response in this file as you progress.</p></header>
     <div class="top-actions">
       ${workflow === "manual" ? "" : '<button type="button" data-copy-stage="oneShot">COPY ONE-SHOT PROMPT</button>'}
       ${workflow === "one-shot" ? "" : "<button type=\"button\" data-copy-active-manual>COPY CURRENT MANUAL PROMPT</button>"}
       <button type="button" data-download-progress>DOWNLOAD PROGRESS COPY</button>
     </div>
     ${showTabs ? `<div class="tabs" role="tablist" aria-label="Workbook sections"><button type="button" role="tab" id="tab-readme" aria-controls="panel-readme" aria-selected="true" data-workflow-tab="readme">README</button><button type="button" role="tab" id="tab-one-shot" aria-controls="panel-one-shot" aria-selected="false" tabindex="-1" data-workflow-tab="one-shot">ONE-SHOT</button><button type="button" role="tab" id="tab-manual" aria-controls="panel-manual" aria-selected="false" tabindex="-1" data-workflow-tab="manual">MANUAL</button></div>` : ""}
-    <section id="panel-readme"${showTabs ? ' role="tabpanel" aria-labelledby="tab-readme"' : ""}>${renderRunbookHtml(source.runbookDocument, { archiveRootPrefix: archiveRootPrefix(workbookPath) })}<section class="assets" aria-labelledby="assets-heading"><h2 id="assets-heading">Visual assets</h2>${assetHtml(source.visualAssets, mediaMode, workbookPath)}</section></section>
+    <section class="workbook-card" id="panel-readme"${showTabs ? ' role="tabpanel" aria-labelledby="tab-readme"' : ""}>${renderRunbookHtml(source.runbookDocument, { archiveRootPrefix: archiveRootPrefix(workbookPath) })}<section class="assets" aria-labelledby="assets-heading"><h2 id="assets-heading">Visual assets</h2>${assetHtml(source.visualAssets, mediaMode, workbookPath)}</section></section>
     ${oneShotMarkup}
-    ${workflow === "one-shot" ? "" : `<section id="panel-manual"${showTabs ? ' role="tabpanel" aria-labelledby="tab-manual"' : ""}${workflowHidden ? " hidden" : ""}>${manualMarkup}</section>`}
+    ${workflow === "one-shot" ? "" : `<section class="workbook-card" id="panel-manual"${showTabs ? ' role="tabpanel" aria-labelledby="tab-manual"' : ""}${workflowHidden ? " hidden" : ""}>${manualMarkup}</section>`}
     <p id="copy-status" role="status" aria-live="polite"></p>
   </main>
   <script type="application/json" id="workbook-data">${escapeJsonForScript(payload)}</script>

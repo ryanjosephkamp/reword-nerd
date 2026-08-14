@@ -596,6 +596,12 @@ test("standalone file workbook supports both workflows, copy paths, and progress
     }
   });
   await standalone.goto(pathToFileURL(standalonePath).href);
+  for (const viewport of [{ width: 320, height: 720 }, { width: 390, height: 844 }, { width: 1586, height: 992 }]) {
+    await standalone.setViewportSize(viewport);
+    await expect(standalone.locator("body")).toHaveCSS("background-color", "rgb(9, 11, 16)");
+    await expect(standalone.locator(".eyebrow")).toHaveCSS("color", "rgb(66, 232, 180)");
+    expect(await standalone.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  }
   const readmeTab = standalone.getByRole("tab", { name: "README" });
   await expect(readmeTab).toHaveAttribute("aria-selected", "true");
   await expect(standalone.getByRole("heading", { name: "reword-nerd prompt package" })).toBeVisible();

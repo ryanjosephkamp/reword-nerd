@@ -80,7 +80,7 @@ describe("Text package checkpoint fixture", () => {
 
     expect(first).toEqual(repeated);
     expect(first).toEqual(reversed);
-    expect(first.byteLength).toBe(70_237);
-    expect(sha256(first)).toBe("a0b60f66401e1ad93686066432bcdb92df61e9932085ac3eb4ec1451e9828a88");
+    expect(first.byteLength).toBe(74_326);
+    expect(sha256(first)).toBe("d4db79a7295737bbf265c19da03fbe4a4c2faa0198477fde285a99efe248ca22");
   });
 });

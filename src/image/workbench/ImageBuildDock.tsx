@@ -72,7 +72,7 @@ export function ImageBuildDock({
         ? <dl>
             <div><dt>Pairs</dt><dd>{state.builtOutput.itemCount} {state.builtOutput.itemCount === 1 ? "pair" : "pairs"}</dd></div>
             <div><dt>Package</dt><dd>{formatPackageBytes(state.builtOutput.packageByteCount)} ZIP</dd></div>
-            <div><dt>SHA-256</dt><dd><code>{state.builtOutput.packageSha256}</code></dd></div>
+            <div><dt>SHA-256</dt><dd><code className="image-package-hash">{state.builtOutput.packageSha256}</code></dd></div>
             <div><dt>Full HTML</dt><dd>{fullHtml?.status === "generated"
               ? "Self-contained HTML generated."
               : "Self-contained HTML omitted at the 32 MiB limit."}</dd></div>

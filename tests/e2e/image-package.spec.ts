@@ -50,6 +50,9 @@ test("real local Image package is deterministic, portable, stale-safe, and side-
     { name: "two.png", mimeType: "image/png", buffer: PNG },
   ]);
   await expect(page.getByRole("button", { name: "Focus two.png" })).toBeVisible();
+  const secondQueueCard = page.getByRole("group", { name: "two.png image controls" });
+  await secondQueueCard.getByText("two.png", { exact: true }).click();
+  await expect(secondQueueCard.getByRole("button", { name: "Focus two.png" })).toHaveAttribute("aria-current", "true");
   await page.getByRole("checkbox", { name: "Select one.png" }).check();
   await page.getByRole("checkbox", { name: "Select two.png" }).check();
   await page.getByRole("button", { name: "SELECTED [2]" }).click();
@@ -60,6 +63,9 @@ test("real local Image package is deterministic, portable, stale-safe, and side-
 
   await page.getByRole("button", { name: "BUILD PACKAGE" }).click();
   await expect(page.getByRole("button", { name: "DOWNLOAD ZIP" })).toBeEnabled({ timeout: 60_000 });
+  const packageHash = page.locator(".image-package-hash");
+  await expect(packageHash).toHaveText(/^[a-f0-9]{64}$/u);
+  expect(await packageHash.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
   expect(downloads).toEqual([]);
   const pairs = page.getByRole("region", { name: "Built package pairs" });
   await expect(pairs.getByRole("group", { name: "one.png built package pair" })).toBeVisible();

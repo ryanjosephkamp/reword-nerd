@@ -44,6 +44,7 @@ import type {
 import { extensionForFormat, isSafeArchivePath, normalizeDocumentBase, stableCompare } from "./paths";
 import { createDocumentWorkbook, escapeMarkdownText } from "./artifacts";
 import { createRunbookDocument, serializeRunbookMarkdown } from "./runbook";
+import { TEXT_HTML_THEME_CSS } from "./textHtmlTheme";
 
 const textEncoder = new TextEncoder();
 const fixedDate = new Date(Date.UTC(1980, 0, 1));
@@ -1079,7 +1080,7 @@ function markdownCodeSpan(value: string): string {
 }
 
 function createOpenMe(manifest: PromptPackageManifest): string {
-  const documents = manifest.documents.map((document) => `<article>
+  const documents = manifest.documents.map((document) => `<article class="root-card">
     <h2>${escapeHtml(document.originalDisplayName)}</h2>
     <p><code>${escapeHtml(document.key)}</code></p>
     <ul>
@@ -1095,9 +1096,9 @@ function createOpenMe(manifest: PromptPackageManifest): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
   <title>Open reword-nerd workbooks</title>
-  <style>:root{--link:#007a5a;font-family:system-ui,sans-serif;color-scheme:light}*{box-sizing:border-box}body{margin:0;background:#fff;color:#111;line-height:1.5}main{width:min(100% - 24px,900px);margin:auto;padding:32px 0 64px}article{border:1px solid #999;padding:16px;margin:16px 0}a:link,a:visited{color:var(--link);text-underline-offset:3px;overflow-wrap:anywhere}code{overflow-wrap:anywhere}</style>
+  <style>${TEXT_HTML_THEME_CSS}.root-card ul{display:grid;gap:10px;padding-left:22px}.root-card code{color:var(--muted)}</style>
 </head>
-<body><main><h1>reword-nerd workbooks</h1><p>Choose a document and workflow. Everything remains inside its document folder.</p>${documents}</main></body>
+<body><main><header class="package-header"><p class="eyebrow">REWORD NERD / TEXT</p><h1>reword-nerd workbooks</h1><p class="intro">Choose a document and workflow. Everything remains inside its document folder.</p></header>${documents}</main></body>
 </html>
 `;
 }
