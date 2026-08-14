@@ -84,6 +84,10 @@ function serviceHarness(run?: (
       dispose: vi.fn(async () => undefined),
     }),
     createObjectUrls: () => new ImageObjectUrlRegistry(() => "blob:test", () => undefined),
+    buildPackage: vi.fn(async () => ({ ok: false, error: { code: "INVALID_SNAPSHOT", message: "Not used in this test." } } as const)),
+    downloadPackage: vi.fn(() => ({ ok: false, message: "Not used in this test." } as const)),
+    copyPrompt: vi.fn(async () => ({ ok: false, reason: "unavailable" } as const)),
+    copyImage: vi.fn(async () => ({ ok: false, reason: "unavailable" } as const)),
   };
   return { services, service, reconcile, reset, intake, intakeFolder, options: () => options };
 }

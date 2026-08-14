@@ -68,6 +68,10 @@ function harness(recognizeImpl: (job: ImageOcrJob) => Promise<ImageOcrResult>) {
     createIntake: (created) => { options = created; return service; },
     createOcr: () => ({ recognize, cancelItem, reset, dispose: vi.fn(async () => undefined) }),
     createObjectUrls: () => new ImageObjectUrlRegistry(() => "blob:ocr", () => undefined),
+    buildPackage: vi.fn(async () => ({ ok: false, error: { code: "INVALID_SNAPSHOT", message: "Not used in this test." } } as const)),
+    downloadPackage: vi.fn(() => ({ ok: false, message: "Not used in this test." } as const)),
+    copyPrompt: vi.fn(async () => ({ ok: false, reason: "unavailable" } as const)),
+    copyImage: vi.fn(async () => ({ ok: false, reason: "unavailable" } as const)),
   };
   return { services, admissions, recognize, cancelItem, reset };
 }
@@ -158,8 +162,8 @@ describe("Image OCR review and confirmation", () => {
     expect(screen.getByText("Ready to confirm the current image set.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "CONFIRM IMAGE SET" }));
     expect(screen.getByText("Image set confirmed for the current review generation.")).toBeInTheDocument();
-    expect(screen.getByText("Package export is not available in this preview. No ZIP has been created.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "BUILD PACKAGE" })).toBeDisabled();
+    expect(screen.getByText(/creates a local ZIP in memory/iu)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "BUILD PACKAGE" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "DOWNLOAD ZIP" })).toBeDisabled();
     expect(screen.getByText("No package has been built.")).toBeInTheDocument();
 

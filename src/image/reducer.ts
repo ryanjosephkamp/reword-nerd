@@ -7,8 +7,13 @@ import {
   isImageOcrTextWithinLimit,
   type ImagePortalItem,
   type ImagePromptSettings,
-  type ImmutableImageBytes,
 } from "./contracts";
+import {
+  IMAGE_PACKAGE_FILENAME,
+  IMAGE_PACKAGE_FORMAT,
+  IMAGE_PACKAGE_SCHEMA_VERSION,
+  type ImageBuiltOutput,
+} from "./export/contracts";
 import type { ImageAdmission } from "./intakeContracts";
 import type { SavedImagePreferences } from "./preferences";
 
@@ -24,12 +29,6 @@ export type ImageSettingChangeAction = {
     value: ImagePromptSettings[Field];
   }
 }[ImageSettingField];
-
-export interface ImageBuiltOutput {
-  readonly packageName: string;
-  readonly packageBytes: ImmutableImageBytes;
-  readonly itemCount: number;
-}
 
 export type ImageBuildStatus = "idle" | "building" | "ready" | "error";
 
@@ -205,6 +204,44 @@ function canConfirm(items: readonly ImagePortalItem[]): boolean {
 
 function withWarning(warnings: readonly string[], warning: string): readonly string[] {
   return warnings.includes(warning) ? warnings : [...warnings, warning];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isCurrentBuiltOutput(
+  state: ImagePortalState,
+  generation: number,
+  expectedReviewGeneration: number,
+  candidate: unknown,
+): candidate is ImageBuiltOutput {
+  if (!isRecord(candidate)
+    || !(candidate.packageBytes instanceof Blob)
+    || !Array.isArray(candidate.previewPairs)
+    || !isRecord(candidate.manifest)
+    || !isRecord(candidate.manifest.package)
+    || !Array.isArray(candidate.manifest.pairs)) return false;
+
+  return candidate.buildGeneration === generation
+    && candidate.builtForReviewGeneration === expectedReviewGeneration
+    && candidate.builtForSessionGeneration === state.sessionGeneration
+    && candidate.packageName === IMAGE_PACKAGE_FILENAME
+    && candidate.packageBytes.type === "application/zip"
+    && Number.isSafeInteger(candidate.packageByteCount)
+    && (candidate.packageByteCount as number) > 0
+    && candidate.packageBytes.size === candidate.packageByteCount
+    && typeof candidate.packageSha256 === "string"
+    && /^[a-f0-9]{64}$/u.test(candidate.packageSha256)
+    && Number.isSafeInteger(candidate.itemCount)
+    && (candidate.itemCount as number) >= 1
+    && (candidate.itemCount as number) <= 100
+    && candidate.itemCount === candidate.previewPairs.length
+    && candidate.itemCount === candidate.manifest.package.pairCount
+    && candidate.itemCount === candidate.manifest.pairs.length
+    && candidate.manifest.schemaVersion === IMAGE_PACKAGE_SCHEMA_VERSION
+    && candidate.manifest.package.format === IMAGE_PACKAGE_FORMAT
+    && candidate.manifest.package.filename === IMAGE_PACKAGE_FILENAME;
 }
 
 export function imagePortalReducer(state: ImagePortalState, action: ImagePortalAction): ImagePortalState {
@@ -471,6 +508,7 @@ export function imagePortalReducer(state: ImagePortalState, action: ImagePortalA
         && action.generation === state.buildGeneration
         && action.expectedReviewGeneration === state.reviewGeneration
         && state.confirmedReviewGeneration === state.reviewGeneration
+        && isCurrentBuiltOutput(state, action.generation, action.expectedReviewGeneration, action.output)
         ? { ...state, buildStatus: "ready", builtOutput: action.output, safeBuildMessage: "" }
         : state;
 

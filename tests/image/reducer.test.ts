@@ -6,6 +6,7 @@ import {
   type ImagePortalState,
 } from "../../src/image/reducer";
 import type { ImageAdmission } from "../../src/image/intakeContracts";
+import type { ImageBuiltOutput, ImagePackageManifestV1 } from "../../src/image/export";
 
 type ImageOcrAction = Extract<ImagePortalAction, { type: `ocr/${string}` }>;
 type ImageOcrTokenField = "expectedSessionGeneration" | "expectedItemIncarnation" | "expectedSourceHash";
@@ -85,12 +86,110 @@ function confirmAndBuild(state: ImagePortalState, generation: number): ImagePort
     type: "build/completed",
     generation,
     expectedReviewGeneration: started.reviewGeneration,
-    output: {
-      packageName: "reword-nerd-image-prompt-package.zip",
-      packageBytes: ownImageBytes(new Uint8Array([80, 75, generation])),
-      itemCount: started.items.filter((item) => item.included).length,
-    },
+    output: builtOutput(started, generation),
   });
+}
+
+function manifest(pairCount: number): ImagePackageManifestV1 {
+  const artifact = (path: string, mediaType: string) => ({
+    path,
+    byteCount: 1,
+    sha256: "e".repeat(64),
+    mediaType,
+  });
+  return {
+    schemaVersion: 1,
+    package: {
+      name: "reword-nerd",
+      format: "image-reference-prompt-package",
+      filename: "reword-nerd-image-prompt-package.zip",
+      fixedTimestamp: "1980-01-01T00:00:00.000Z",
+      pairCount,
+      pairOrder: "confirmed-queue-order",
+    },
+    privacy: {
+      generatedLocally: true,
+      automaticUploads: false,
+      networkRequests: false,
+      sourceBytesMayRetainExifOrLocation: true,
+      originalContainersIncluded: false,
+    },
+    rootArtifacts: {
+      readme: { path: "README.md", byteCount: 1, sha256: "a".repeat(64), mediaType: "text/markdown" },
+      openMe: { path: "OPEN-ME.html", byteCount: 1, sha256: "b".repeat(64), mediaType: "text/html" },
+      fullOpenMe: { status: "omitted", path: null, byteCount: null, sha256: null, limitBytes: 33_554_432, reason: "encoded-size-limit" },
+    },
+    pairs: Array.from({ length: pairCount }, (_, index) => ({
+      ordinal: index + 1,
+      key: `${String(index + 1).padStart(3, "0")}-image`,
+      displayName: `image-${index + 1}.png`,
+      source: {
+        path: `pairs/${String(index + 1).padStart(3, "0")}-image/source.png`,
+        mediaType: "image/png" as const,
+        extension: "png" as const,
+        byteCount: 1,
+        sha256: "d".repeat(64),
+        width: 1,
+        height: 1,
+        provenance: admission(`item-${index}`).provenance,
+      },
+      configuration: {
+        settings: DEFAULT_IMAGE_PROMPT_SETTINGS,
+        profile: {
+          id: "openai-gpt-image" as const,
+          label: "OpenAI GPT Image",
+          referenceModel: "gpt-image-2 edit",
+          profileVersion: "2026-08-14-v1",
+          lastVerifiedAt: "2026-08-14",
+          officialSourceUrls: [],
+          capabilityNotes: [],
+        },
+      },
+      ocr: { accepted: false, acceptedTextSha256: null, acceptedCodePoints: null },
+      warnings: [],
+      artifacts: {
+        source: artifact(`pairs/${String(index + 1).padStart(3, "0")}-image/source.png`, "image/png"),
+        prompt: artifact(`pairs/${String(index + 1).padStart(3, "0")}-image/prompt.txt`, "text/plain"),
+        runCard: artifact(`pairs/${String(index + 1).padStart(3, "0")}-image/run-card.md`, "text/markdown"),
+        metadata: artifact(`pairs/${String(index + 1).padStart(3, "0")}-image/metadata.json`, "application/json"),
+        openMe: artifact(`pairs/${String(index + 1).padStart(3, "0")}-image/OPEN-ME.html`, "text/html"),
+      },
+    })),
+    artifactInventory: [],
+    manifestSelfRecord: { path: "manifest.json", sha256: null, reason: "self-referential-artifact" },
+  };
+}
+
+function builtOutput(state: ImagePortalState, generation: number): ImageBuiltOutput {
+  const packageBytes = new Blob([new Uint8Array([80, 75, generation])], { type: "application/zip" });
+  const itemCount = state.items.filter((item) => item.included).length;
+  return {
+    packageName: "reword-nerd-image-prompt-package.zip",
+    packageBytes,
+    packageByteCount: packageBytes.size,
+    packageSha256: "c".repeat(64),
+    itemCount,
+    builtForSessionGeneration: state.sessionGeneration,
+    builtForReviewGeneration: state.reviewGeneration,
+    buildGeneration: generation,
+    manifest: manifest(itemCount),
+    previewPairs: Array.from({ length: itemCount }, (_, index) => ({
+      occurrenceId: `item-${index}`,
+      sourceHash: "d".repeat(64),
+      key: `${String(index + 1).padStart(3, "0")}-image`,
+      displayName: `image-${index + 1}.png`,
+      sourceFilename: "source.png",
+      sourceBytes: ownImageBytes(new Uint8Array([1]), "image/png"),
+      mimeType: "image/png",
+      width: 1,
+      height: 1,
+      provenance: admission(`item-${index}`).provenance,
+      profileLabel: "OpenAI GPT Image",
+      prompt: "prompt",
+      runCard: "run card",
+      warnings: [],
+    })),
+  };
 }
 
 describe("Image portal reducer", () => {
@@ -877,6 +976,7 @@ describe("Image portal reducer", () => {
     state = imagePortalReducer(state, { type: "review/confirmed", expectedReviewGeneration: state.reviewGeneration });
     const buildGeneration = state.buildGeneration + 1;
     state = imagePortalReducer(state, { type: "build/started", generation: buildGeneration, expectedReviewGeneration: state.reviewGeneration });
+    const beforeBuildInvalidation = state;
     state = imagePortalReducer(state, {
       type: "item/setting-changed",
       itemId: "current",
@@ -888,7 +988,10 @@ describe("Image portal reducer", () => {
       type: "build/completed",
       generation: buildGeneration,
       expectedReviewGeneration: state.reviewGeneration - 1,
-      output: { packageName: "stale.zip", packageBytes: ownImageBytes(new Uint8Array([1])), itemCount: 1 },
+      output: {
+        ...builtOutput(beforeBuildInvalidation, buildGeneration),
+        packageName: "stale.zip",
+      } as unknown as ImageBuiltOutput,
     });
     expect(state.builtOutput).toBeNull();
 
@@ -902,6 +1005,77 @@ describe("Image portal reducer", () => {
     state = imagePortalReducer(state, { type: "ocr/completed", itemId: "current", generation: 5, expectedSessionGeneration: beforeReset.sessionGeneration, detectedText: "LATE" });
     state = imagePortalReducer(state, { type: "items/admitted", generation: 3, expectedSessionGeneration: beforeReset.sessionGeneration, items: [admission("resurrected")] });
     expect(state.items).toEqual([]);
+  });
+
+  it("accepts only a fully correlated schema-1 Image package completion", () => {
+    // Catches a malformed or cross-session ZIP being accepted as current ready output.
+    let state = admit(createInitialImagePortalState(), 1, admission("one"));
+    state = imagePortalReducer(state, { type: "review/confirmed", expectedReviewGeneration: state.reviewGeneration });
+    const generation = state.buildGeneration + 1;
+    state = imagePortalReducer(state, { type: "build/started", generation, expectedReviewGeneration: state.reviewGeneration });
+    const valid = builtOutput(state, generation);
+
+    const malformed: ImageBuiltOutput[] = [
+      { ...valid, buildGeneration: generation + 1 },
+      { ...valid, builtForReviewGeneration: state.reviewGeneration + 1 },
+      { ...valid, builtForSessionGeneration: state.sessionGeneration + 1 },
+      { ...valid, packageByteCount: valid.packageByteCount + 1 },
+      { ...valid, packageBytes: new Blob([], { type: "application/zip" }), packageByteCount: 0 },
+      { ...valid, packageByteCount: Number.MAX_SAFE_INTEGER + 1 },
+      { ...valid, packageSha256: "not-a-sha256" },
+      { ...valid, itemCount: 0, previewPairs: [], manifest: manifest(0) },
+      { ...valid, itemCount: Number.MAX_SAFE_INTEGER + 1 },
+      { ...valid, itemCount: 2 },
+      { ...valid, previewPairs: [] },
+      { ...valid, manifest: { ...valid.manifest, pairs: [] } },
+      { ...valid, manifest: { ...valid.manifest, schemaVersion: 2 as 1 } },
+      {
+        ...valid,
+        manifest: {
+          ...valid.manifest,
+          package: { ...valid.manifest.package, format: "text-prompt-package" as "image-reference-prompt-package" },
+        },
+      },
+      { ...valid, packageBytes: ownImageBytes(new Uint8Array([80, 75, 1]), "application/octet-stream") },
+    ];
+
+    for (const output of malformed) {
+      const result = imagePortalReducer(state, {
+        type: "build/completed",
+        generation,
+        expectedReviewGeneration: state.reviewGeneration,
+        output,
+      });
+      expect(result).toBe(state);
+    }
+
+    const ready = imagePortalReducer(state, {
+      type: "build/completed",
+      generation,
+      expectedReviewGeneration: state.reviewGeneration,
+      output: valid,
+    });
+    expect(ready.buildStatus).toBe("ready");
+    expect(ready.builtOutput).toBe(valid);
+  });
+
+  it("fails closed without throwing when a JavaScript caller forges a structurally malformed completion", () => {
+    // Catches reducer boundary code dereferencing null/partial package payloads before validating shape.
+    let state = admit(createInitialImagePortalState(), 1, admission("one"));
+    state = imagePortalReducer(state, { type: "review/confirmed", expectedReviewGeneration: state.reviewGeneration });
+    const generation = state.buildGeneration + 1;
+    state = imagePortalReducer(state, { type: "build/started", generation, expectedReviewGeneration: state.reviewGeneration });
+
+    for (const output of [null, {}, { packageBytes: null }, { packageBytes: {} }, { previewPairs: null }, { manifest: null }]) {
+      const action = {
+        type: "build/completed",
+        generation,
+        expectedReviewGeneration: state.reviewGeneration,
+        output,
+      } as unknown as ImagePortalAction;
+      expect(() => strictImagePortalReducer(state, action)).not.toThrow();
+      expect(strictImagePortalReducer(state, action)).toBe(state);
+    }
   });
 
   it("ignores mismatched or duplicate generations instead of moving counters backward", () => {

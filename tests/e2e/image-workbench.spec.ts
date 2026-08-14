@@ -97,8 +97,8 @@ test("real PNG workflow stays local, keeps package actions truthful, and release
   await expect(page.getByRole("region", { name: "Prompt prose" })).toContainText(OCR_MARKER);
 
   await page.getByRole("button", { name: "CONFIRM IMAGE SET" }).click();
-  await expect(page.getByText("Package export is not available in this preview. No ZIP has been created.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "BUILD PACKAGE" })).toBeDisabled();
+  await expect(page.getByText(/creates a local ZIP in memory/iu)).toBeVisible();
+  await expect(page.getByRole("button", { name: "BUILD PACKAGE" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "DOWNLOAD ZIP" })).toBeDisabled();
   await expect(page.getByRole("article", { name: "Package preview" })).toContainText("No package has been built.");
 
@@ -119,7 +119,7 @@ test("real PNG workflow stays local, keeps package actions truthful, and release
   expect(urlAudit.created).toBeGreaterThan(0);
   expect(urlAudit.live).toBe(0);
   expect(urlAudit.revoked).toBe(urlAudit.created);
-  expect(urlAudit.peak).toBeLessThanOrEqual(25);
+  expect(urlAudit.peak).toBeLessThanOrEqual(37);
 
   const storage = await page.evaluate(() => Object.fromEntries(
     Array.from({ length: localStorage.length }, (_, index) => {
@@ -331,6 +331,6 @@ test("thirty-image queue rotates the bounded thumbnail leases with its real scro
     }).__imageUrlAudit;
     return { live: value.live.size, peak: value.peak };
   });
-  expect(audit.live).toBeLessThanOrEqual(25);
-  expect(audit.peak).toBeLessThanOrEqual(25);
+  expect(audit.live).toBeLessThanOrEqual(37);
+  expect(audit.peak).toBeLessThanOrEqual(37);
 });

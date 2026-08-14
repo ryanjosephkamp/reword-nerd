@@ -59,6 +59,10 @@ function componentHarness() {
     createIntake: (created) => { options = created; return service; },
     createOcr: () => ({ recognize: vi.fn(), cancelItem: vi.fn(), reset: vi.fn(), dispose: vi.fn() }),
     createObjectUrls: () => new ImageObjectUrlRegistry(() => "blob:component", () => undefined),
+    buildPackage: vi.fn(async () => ({ ok: false, error: { code: "INVALID_SNAPSHOT", message: "Not used in this test." } } as const)),
+    downloadPackage: vi.fn(() => ({ ok: false, message: "Not used in this test." } as const)),
+    copyPrompt: vi.fn(async () => ({ ok: false, reason: "unavailable" } as const)),
+    copyImage: vi.fn(async () => ({ ok: false, reason: "unavailable" } as const)),
   };
   return { services, intake, intakeFolder };
 }

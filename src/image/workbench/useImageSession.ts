@@ -6,6 +6,12 @@ import {
   useState,
 } from "react";
 import type { ImagePortalItem } from "../contracts";
+import {
+  IMAGE_PACKAGE_FILENAME,
+  snapshotConfirmedImagePackage,
+  type ImageBuiltOutput,
+  type ImageDownloadResult,
+} from "../export";
 import type {
   ImageInputFile,
   ImageIntakePdfCaptureContext,
@@ -38,6 +44,13 @@ interface ActiveIntakeRun {
   readonly generation: number;
 }
 
+interface ActiveBuildRun {
+  readonly sessionGeneration: number;
+  readonly reviewGeneration: number;
+  readonly buildGeneration: number;
+  readonly controller: AbortController;
+}
+
 interface PendingPdfCapture {
   readonly context: ImageIntakePdfCaptureContext;
   readonly resolve: (choice: ImagePdfCaptureChoice) => void;
@@ -61,6 +74,8 @@ export interface ImageSessionController {
   runOcr(itemIds: readonly string[]): Promise<void>;
   reviewOcr(itemId: string, status: "accepted" | "rejected", reviewedText: string | null): boolean;
   isCurrentOcrToken(token: ImageOcrToken): boolean;
+  buildPackage(): Promise<boolean>;
+  downloadPackage(): ImageDownloadResult;
 }
 
 function issuesFromResult(result: ImageIntakeResult): readonly ImageIntakeIssue[] {
@@ -69,6 +84,22 @@ function issuesFromResult(result: ImageIntakeResult): readonly ImageIntakeIssue[
 
 function abortError(): DOMException {
   return new DOMException("PDF capture selection cancelled.", "AbortError");
+}
+
+const IMAGE_BUILD_FAILED_MESSAGE = "The local Image package could not be built safely.";
+const IMAGE_DOWNLOAD_UNAVAILABLE_MESSAGE = "The local Image package is not available for download.";
+
+function boundedBuildMessage(value: unknown): string {
+  if (typeof value !== "string") return IMAGE_BUILD_FAILED_MESSAGE;
+  const characters = Array.from(value);
+  return characters.length >= 1
+    && characters.length <= 180
+    && !characters.some((character) => {
+      const point = character.codePointAt(0) ?? 0;
+      return point <= 31 || point === 127;
+    })
+    ? value
+    : IMAGE_BUILD_FAILED_MESSAGE;
 }
 
 export function useImageSession(
@@ -84,17 +115,25 @@ export function useImageSession(
   const [nextIntakeIdRef] = useState(() => ({ current: 0 }));
   const [pendingPdfRef] = useState<{ current: PendingPdfCapture | null }>(() => ({ current: null }));
   const [mountedRef] = useState(() => ({ current: true }));
+  const [activeBuildRef] = useState<{ current: ActiveBuildRun | null }>(() => ({ current: null }));
 
   const dispatch = useCallback((action: ImagePortalAction): boolean => {
     const previous = stateRef.current;
     const next = imagePortalReducer(previous, action);
+    const activeBuild = activeBuildRef.current;
+    if (activeBuild
+      && (next.sessionGeneration !== activeBuild.sessionGeneration
+        || next.reviewGeneration !== activeBuild.reviewGeneration)) {
+      activeBuild.controller.abort();
+      activeBuildRef.current = null;
+    }
     if (next !== previous) stateRef.current = next;
     rawDispatch(action);
     if (next !== previous && (action.type === "defaults/changed" || action.type === "tutorial/seen")) {
       saveImagePreferences(snapshotImagePreferences(next.defaults, next.tutorialSeenVersion));
     }
     return next !== previous;
-  }, [stateRef]);
+  }, [activeBuildRef, stateRef]);
 
   const isCurrentOcrToken = useCallback((token: ImageOcrToken): boolean => {
     const current = stateRef.current;
@@ -220,6 +259,8 @@ export function useImageSession(
   }, [activeIntakeRef, dispatch, intakeRef, mountedRef, nextIntakeIdRef, stateRef]);
 
   const resetSession = useCallback(() => {
+    activeBuildRef.current?.controller.abort();
+    activeBuildRef.current = null;
     activeIntakeRef.current = null;
     const pending = pendingPdfRef.current;
     if (pending) {
@@ -234,7 +275,7 @@ export function useImageSession(
     setLedger([]);
     setIntakeBusy(false);
     dispatch({ type: "session/reset" });
-  }, [activeIntakeRef, dispatch, intakeRef, objectUrls, ocrRef, pendingPdfRef]);
+  }, [activeBuildRef, activeIntakeRef, dispatch, intakeRef, objectUrls, ocrRef, pendingPdfRef]);
 
   const discardItem = useCallback((item: Readonly<ImagePortalItem>) => {
     void ocrRef.current?.cancelItem(item.id, item.sourceHash);
@@ -309,11 +350,112 @@ export function useImageSession(
     });
   }, [dispatch, stateRef]);
 
+  const isCurrentBuild = useCallback((run: ActiveBuildRun): boolean => {
+    const current = stateRef.current;
+    return mountedRef.current
+      && activeBuildRef.current === run
+      && !run.controller.signal.aborted
+      && current.sessionGeneration === run.sessionGeneration
+      && current.reviewGeneration === run.reviewGeneration
+      && current.confirmedReviewGeneration === run.reviewGeneration
+      && current.buildGeneration === run.buildGeneration
+      && current.buildStatus === "building";
+  }, [activeBuildRef, mountedRef, stateRef]);
+
+  const buildPackage = useCallback(async (): Promise<boolean> => {
+    const current = stateRef.current;
+    if (activeBuildRef.current || current.buildStatus === "building") return false;
+    const snapshotResult = snapshotConfirmedImagePackage(current);
+    if (!snapshotResult.ok) return false;
+    const generation = current.buildGeneration + 1;
+    const run: ActiveBuildRun = {
+      sessionGeneration: snapshotResult.snapshot.sessionGeneration,
+      reviewGeneration: snapshotResult.snapshot.reviewGeneration,
+      buildGeneration: generation,
+      controller: new AbortController(),
+    };
+    if (!dispatch({
+      type: "build/started",
+      generation,
+      expectedReviewGeneration: run.reviewGeneration,
+    })) return false;
+    activeBuildRef.current = run;
+
+    try {
+      const result = await services.buildPackage(snapshotResult.snapshot, { signal: run.controller.signal });
+      if (!isCurrentBuild(run)) return false;
+      if (!result.ok) {
+        dispatch({
+          type: "build/failed",
+          generation: run.buildGeneration,
+          expectedReviewGeneration: run.reviewGeneration,
+          message: boundedBuildMessage(result.error.message),
+        });
+        return false;
+      }
+      const output: ImageBuiltOutput = {
+        ...result.output,
+        builtForSessionGeneration: run.sessionGeneration,
+        builtForReviewGeneration: run.reviewGeneration,
+        buildGeneration: run.buildGeneration,
+      };
+      if (dispatch({
+        type: "build/completed",
+        generation: run.buildGeneration,
+        expectedReviewGeneration: run.reviewGeneration,
+        output,
+      })) return true;
+      if (isCurrentBuild(run)) {
+        dispatch({
+          type: "build/failed",
+          generation: run.buildGeneration,
+          expectedReviewGeneration: run.reviewGeneration,
+          message: IMAGE_BUILD_FAILED_MESSAGE,
+        });
+      }
+      return false;
+    } catch {
+      if (isCurrentBuild(run)) {
+        dispatch({
+          type: "build/failed",
+          generation: run.buildGeneration,
+          expectedReviewGeneration: run.reviewGeneration,
+          message: IMAGE_BUILD_FAILED_MESSAGE,
+        });
+      }
+      return false;
+    } finally {
+      if (activeBuildRef.current === run) activeBuildRef.current = null;
+    }
+  }, [activeBuildRef, dispatch, isCurrentBuild, services, stateRef]);
+
+  const downloadPackage = useCallback((): ImageDownloadResult => {
+    const current = stateRef.current;
+    const output = current.builtOutput;
+    if (current.buildStatus !== "ready"
+      || current.confirmedReviewGeneration !== current.reviewGeneration
+      || !output
+      || output.builtForSessionGeneration !== current.sessionGeneration
+      || output.builtForReviewGeneration !== current.reviewGeneration
+      || output.buildGeneration !== current.buildGeneration
+      || output.packageName !== IMAGE_PACKAGE_FILENAME
+      || !(output.packageBytes instanceof Blob)
+      || output.packageBytes.type !== "application/zip"
+      || !Number.isSafeInteger(output.packageByteCount)
+      || output.packageByteCount < 1
+      || output.packageBytes.size !== output.packageByteCount) {
+      return { ok: false, message: IMAGE_DOWNLOAD_UNAVAILABLE_MESSAGE };
+    }
+    return services.downloadPackage(output.packageBytes);
+  }, [services, stateRef]);
+
   useEffect(() => {
     mountedRef.current = true;
     initializeServices();
     return () => {
       mountedRef.current = false;
+      activeBuildRef.current?.controller.abort();
+      activeBuildRef.current = null;
       activeIntakeRef.current = null;
       const pending = pendingPdfRef.current;
       if (pending) {
@@ -329,7 +471,7 @@ export function useImageSession(
       ocrRef.current = null;
       void ocr?.dispose();
     };
-  }, [activeIntakeRef, initializeServices, intakeRef, mountedRef, objectUrls, ocrRef, pendingPdfRef]);
+  }, [activeBuildRef, activeIntakeRef, initializeServices, intakeRef, mountedRef, objectUrls, ocrRef, pendingPdfRef]);
 
   return {
     state,
@@ -347,5 +489,7 @@ export function useImageSession(
     runOcr,
     reviewOcr,
     isCurrentOcrToken,
+    buildPackage,
+    downloadPackage,
   };
 }

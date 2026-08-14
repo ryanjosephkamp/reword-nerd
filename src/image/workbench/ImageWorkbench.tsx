@@ -8,6 +8,7 @@ import { ImageBuildDock } from "./ImageBuildDock";
 import { ImageHeader } from "./ImageHeader";
 import { ImageMobileTabs } from "./ImageMobileTabs";
 import { ImagePdfCaptureDialog } from "./ImagePdfCaptureDialog";
+import { ImagePackagePreview } from "./ImagePackagePreview";
 import { ImagePreviewPanel } from "./ImagePreviewPanel";
 import { ImageQueuePanel } from "./ImageQueuePanel";
 import { ImageSettingsPanel } from "./ImageSettingsPanel";
@@ -81,7 +82,12 @@ export function ImageWorkbench({
       focusedItem={focusedItem}
       dispatch={session.dispatch}
     />
-    <ImageBuildDock state={session.state} dispatch={session.dispatch} />
+    <ImageBuildDock
+      state={session.state}
+      dispatch={session.dispatch}
+      buildPackage={session.buildPackage}
+      downloadPackage={session.downloadPackage}
+    />
   </>;
 
   return <main
@@ -205,6 +211,15 @@ export function ImageWorkbench({
             if (focusedItem) session.reviewOcr(focusedItem.id, status, reviewedText);
           }}
         />
+        {session.state.buildStatus === "ready" && session.state.builtOutput
+          ? <ImagePackagePreview
+              pairs={session.state.builtOutput.previewPairs}
+              objectUrls={session.objectUrls}
+              leaseEnabled={responsiveMode !== "mobile" || activeTab === "preview"}
+              copyPrompt={services.copyPrompt}
+              copyImage={services.copyImage}
+            />
+          : null}
       </section>
       {responsiveMode !== "tablet" ? <section
           id="image-panel-settings"

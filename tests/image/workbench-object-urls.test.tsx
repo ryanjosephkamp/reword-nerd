@@ -10,6 +10,11 @@ import type {
 import { ImageObjectUrlRegistry } from "../../src/image/objectUrlRegistry";
 import { IMAGE_PREFERENCES_STORAGE_KEY } from "../../src/image/preferences";
 import { ImageWorkbench } from "../../src/image/workbench/ImageWorkbench";
+import { ImagePackagePreview } from "../../src/image/workbench/ImagePackagePreview";
+import {
+  MAX_ACTIVE_IMAGE_PACKAGE_PREVIEWS,
+  updateImagePackagePreviewWindow,
+} from "../../src/image/workbench/packagePreviewWindow";
 import type { ImageWorkbenchServices } from "../../src/image/workbench/services";
 import { MAX_ACTIVE_IMAGE_THUMBNAILS, updateImageThumbnailWindow } from "../../src/image/workbench/thumbnailWindow";
 import { useImageObjectUrl } from "../../src/image/workbench/useImageObjectUrl";
@@ -148,6 +153,10 @@ function workbenchHarness(itemCount = 1) {
       dispose: vi.fn(),
     }),
     createObjectUrls: () => objectUrls,
+    buildPackage: vi.fn(async () => ({ ok: false, error: { code: "INVALID_SNAPSHOT", message: "Not used in this test." } } as const)),
+    downloadPackage: vi.fn(() => ({ ok: false, message: "Not used in this test." } as const)),
+    copyPrompt: vi.fn(async () => ({ ok: false, reason: "unavailable" } as const)),
+    copyImage: vi.fn(async () => ({ ok: false, reason: "unavailable" } as const)),
   };
   return { services, created, revoked, live };
 }
@@ -177,6 +186,51 @@ describe("Image object URL custody", () => {
     expect(result.activeIds).toHaveLength(24);
     expect(result.activeIds).toContain("image-30");
     expect(new Set(result.activeIds).size).toBe(24);
+  });
+
+  it("caps built package leases at 12 and the combined Image URL contract at 37", async () => {
+    const keys = Array.from({ length: 100 }, (_, index) => `pair-${index + 1}`);
+    expect(updateImagePackagePreviewWindow({
+      pairKeys: keys,
+      nearVisibleKeys: [],
+      previousRecency: [],
+      observerAvailable: false,
+    }).activeKeys).toEqual(keys.slice(0, 12));
+    expect(MAX_ACTIVE_IMAGE_THUMBNAILS + 1 + MAX_ACTIVE_IMAGE_PACKAGE_PREVIEWS).toBe(37);
+
+    const harness = workbenchHarness();
+    const pairs = keys.map((key, index) => ({
+      occurrenceId: key,
+      sourceHash: `${String(index).padStart(2, "0")}${"d".repeat(62)}`,
+      key: `${String(index + 1).padStart(3, "0")}-pair`,
+      displayName: `${key}.png`,
+      sourceFilename: "source.png",
+      sourceBytes: ownImageBytes(new Uint8Array([index]), "image/png"),
+      mimeType: "image/png" as const,
+      width: 1,
+      height: 1,
+      provenance: { ...provenance, sourceName: `${key}.png` },
+      profileLabel: "OpenAI GPT Image",
+      prompt: `prompt ${index}`,
+      runCard: `run ${index}`,
+      warnings: [],
+    }));
+    const view = render(<ImagePackagePreview
+      pairs={pairs}
+      objectUrls={harness.services.createObjectUrls()}
+      leaseEnabled
+      copyPrompt={harness.services.copyPrompt}
+      copyImage={harness.services.copyImage}
+    />);
+    await waitFor(() => expect(harness.live.size).toBe(12));
+    view.rerender(<ImagePackagePreview
+      pairs={pairs}
+      objectUrls={harness.services.createObjectUrls()}
+      leaseEnabled={false}
+      copyPrompt={harness.services.copyPrompt}
+      copyImage={harness.services.copyImage}
+    />);
+    await waitFor(() => expect(harness.live.size).toBe(0));
   });
 
   it("promotes recently visible IDs and evicts the least-recent eligible lease", () => {
