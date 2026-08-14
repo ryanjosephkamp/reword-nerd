@@ -101,7 +101,7 @@ describe("DemoVideo", () => {
     ]);
     for (const guidance of [
       "Add images or a folder",
-      "Focus an image by selecting its card",
+      "Click or activate an image card to focus it",
       "Apply shared settings to selected images",
       "Review warnings and optional local OCR",
       "Build the confirmed package in memory",

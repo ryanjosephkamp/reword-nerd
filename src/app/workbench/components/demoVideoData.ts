@@ -59,7 +59,7 @@ export const DEMO_DEFINITIONS: Readonly<Record<DemoVideoId, DemoDefinition>> = {
     posterAlt: "reword_nerd Image Quick Start demonstration poster",
     transcript: [
       "Enter the Image portal from the TEXT / IMAGE switch.",
-      "Add images or a folder, then focus an image by selecting its card.",
+      "Add images or a folder, then click or activate an image card to focus it.",
       "Apply shared settings to selected images using Defaults or Selected.",
       "Review warnings and optional local OCR before accepting any visible text.",
       "Confirm the image set and build the confirmed package in memory.",

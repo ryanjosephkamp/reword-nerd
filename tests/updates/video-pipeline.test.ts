@@ -160,6 +160,19 @@ describe("v0.8 release video contract", () => {
     expect(v08?.component).not.toBe(v07?.component);
   });
 
+  it("uses authorized Remotion image assets for the v0.8 queue thumbnails and focused preview", async () => {
+    // Replacing real synthetic assets with gradient or div-drawn image placeholders must make this fail.
+    const source = await readFile(join(process.cwd(), "video/remotion/release-v08/scenes/ImagePortalSceneV08.tsx"), "utf8");
+    expect(source).toContain("Img");
+    expect(source).toContain("staticFile");
+    expect(source).toContain('staticFile("image/orange-pyramid.webp")');
+    expect(source).toContain('staticFile("media/demo/overview-poster.webp")');
+    expect(source).toContain('staticFile("media/demo/package-poster.webp")');
+    expect(source).toContain("<Img src={source.src}");
+    expect(source).toContain("<Img src={focusedSource.src}");
+    expect(source).not.toMatch(/(?:linear|radial)-gradient/iu);
+  });
+
   it("configures separate deterministic compositions and action-led transcripts for v0.7 and v0.8", async () => {
     // Mapping v0.8 to the old composition, omitting it from checks, or using first-person release copy must make this fail.
     const pipeline = await import("../../scripts/updates/video-lib.mjs") as Record<string, unknown>;

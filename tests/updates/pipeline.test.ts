@@ -228,7 +228,7 @@ describe("Updates validation and rendering", () => {
     const post = await readFile(join(root, "dist/updates/v0-7-0/index.html"), "utf8");
     const css = await readFile(join(root, "dist/updates/updates.css"), "utf8");
 
-    expect(post).toContain('<video controls muted playsinline preload="none" poster="/reword-nerd/media/updates/v0-7-0/poster.webp">');
+    expect(post).toContain('<video controls muted playsinline preload="none" aria-label="Silent, synthetic release walkthrough for reword-nerd v0.7" poster="/reword-nerd/media/updates/v0-7-0/poster.webp">');
     expect(post).toContain('<source src="/reword-nerd/media/updates/v0-7-0/release-update.webm" type="video/webm">');
     expect(post).toContain('<source src="/reword-nerd/media/updates/v0-7-0/release-update.mp4" type="video/mp4">');
     expect(post).toContain('Video unavailable? <a href="/reword-nerd/media/updates/v0-7-0/poster.webp">Open the release poster</a>.');
