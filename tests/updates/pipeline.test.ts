@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { checkUpdates, renderUpdates, validateRenderedPageScripts } from "../../scripts/updates/lib.mjs";
+import { contrastRatio, cssRuleProperty } from "../styles/css-contract";
 
 const roots: string[] = [];
 
@@ -59,7 +60,7 @@ export interface WorkbookProgress { schemaVersion: 1; }
 
 ## At a glance
 
-I added a static builder's journal.
+A static builder's journal records each release.
 
 ## Added
 
@@ -99,7 +100,7 @@ The release passed local tests and a production build.
 
 ## What comes next
 
-I will keep the journal current.
+Future meaningful releases will receive a reviewed entry.
 
 ## Feedback and contribution links
 
@@ -114,11 +115,39 @@ afterEach(async () => {
 });
 
 describe("Updates validation and rendering", () => {
+  it("renders unvisited and visited archive and post links with the same readable mint", async () => {
+    // This catches generated static links reverting to browser blue or purple on either dark Updates surface.
+    const root = await fixtureRoot();
+    await renderUpdates(root, join(root, "dist"));
+    const css = await readFile(join(root, "dist/updates/updates.css"), "utf8");
+    const linkColor = cssRuleProperty(css, "a:link, a:visited", "color");
+    const mint = cssRuleProperty(css, ":root", "--mint");
+
+    expect(linkColor).toBe("var(--mint)");
+    expect(mint).toBe("#42e8b4");
+    for (const backgroundToken of ["--bg", "--panel"]) {
+      const background = cssRuleProperty(css, ":root", backgroundToken);
+      expect(background).toBeDefined();
+      expect(contrastRatio(mint!, background!)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
   it("fails a draft current release, version disagreement, placeholders, and raw HTML", async () => {
     // Removing any production gate below must make this test accept an unsafe release.
     await expect(checkUpdates(await fixtureRoot({ status: "draft" }))).rejects.toThrow(/draft|current/i);
     await expect(checkUpdates(await fixtureRoot({ version: "0.6.0" }))).rejects.toThrow(/version/i);
     await expect(checkUpdates(await fixtureRoot({ markdown: "# TODO\n\n<script>alert(1)</script>" }))).rejects.toThrow(/placeholder|raw HTML/i);
+  });
+
+  it("rejects first-person singular prose from public Updates posts", async () => {
+    // Removing the editorial gate must let "I added"-style release copy ship again.
+    for (const firstPersonCopy of ["I added a static builder's journal.", "Me and my release notes explain the change."]) {
+      const root = await fixtureRoot();
+      const postPath = join(root, "content/updates/v0-7-0.md");
+      const neutralPost = await readFile(postPath, "utf8");
+      await writeFile(postPath, neutralPost.replace("A static builder's journal records each release.", firstPersonCopy));
+      await expect(checkUpdates(root)).rejects.toThrow(/first-person singular/i);
+    }
   });
 
   it("reads the actual version and schema declarations instead of matching unrelated text", async () => {

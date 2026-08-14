@@ -1095,7 +1095,7 @@ function createOpenMe(manifest: PromptPackageManifest): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
   <title>Open reword-nerd workbooks</title>
-  <style>:root{font-family:system-ui,sans-serif;color-scheme:light}*{box-sizing:border-box}body{margin:0;background:#fff;color:#111;line-height:1.5}main{width:min(100% - 24px,900px);margin:auto;padding:32px 0 64px}article{border:1px solid #999;padding:16px;margin:16px 0}a{color:#111;text-underline-offset:3px;overflow-wrap:anywhere}code{overflow-wrap:anywhere}</style>
+  <style>:root{--link:#007a5a;font-family:system-ui,sans-serif;color-scheme:light}*{box-sizing:border-box}body{margin:0;background:#fff;color:#111;line-height:1.5}main{width:min(100% - 24px,900px);margin:auto;padding:32px 0 64px}article{border:1px solid #999;padding:16px;margin:16px 0}a:link,a:visited{color:var(--link);text-underline-offset:3px;overflow-wrap:anywhere}code{overflow-wrap:anywhere}</style>
 </head>
 <body><main><h1>reword-nerd workbooks</h1><p>Choose a document and workflow. Everything remains inside its document folder.</p>${documents}</main></body>
 </html>

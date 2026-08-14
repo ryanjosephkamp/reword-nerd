@@ -2,29 +2,29 @@
 
 ## At a glance
 
-I started reword-nerd as a focused way to turn source material into inspectable rewriting prompts. By v0.6, it had become a local browser workspace that could review individual documents and bounded project trees without sending their contents to a server.
+reword-nerd began as a focused way to turn source material into inspectable rewriting prompts. By v0.6, it had become a local browser workspace for reviewing individual documents and bounded project trees without sending their contents to a server.
 
 ## Added
 
-- I added guided model profiles, package previews, OCR review, LaTeX handling, and Markdown-aware media extraction.
-- I added One-shot and four-stage Manual workflows with deterministic workbooks and progress copies.
-- I added project workspaces for folders and ZIP files, including source viewers, reviewed text, exclusions, and tree-level integrity records.
+- Added guided model profiles, package previews, OCR review, LaTeX handling, and Markdown-aware media extraction.
+- Added One-shot and four-stage Manual workflows with deterministic workbooks and progress copies.
+- Added project workspaces for folders and ZIP files, including source viewers, reviewed text, exclusions, and tree-level integrity records.
 
 ## Changed
 
-- I moved the product toward a dense Night Terminal workbench that remains usable from narrow mobile screens through desktop layouts.
-- I centralized release versions and evolved the package manifest deliberately through schema 6 while keeping workbook progress at schema 1.
-- I made generated archives easier to inspect offline with an opening guide, runbook, manifests, and companion HTML workbooks.
+- Shifted the product toward a dense Night Terminal workbench that remains usable from narrow mobile screens through desktop layouts.
+- Centralized release versions and evolved the package manifest deliberately through schema 6 while keeping workbook progress at schema 1.
+- Made generated archives easier to inspect offline with an opening guide, runbook, manifests, and companion HTML workbooks.
 
 ## Fixed
 
-- I tightened mobile scrolling, preview layout, settings placement, and source-review navigation across several small releases.
-- I closed gaps where unsafe project entries, stale review state, or changed source bytes could have entered an export.
-- I removed an internal implementation artifact that had been published accidentally and added that lesson to the release checklist.
+- Tightened mobile scrolling, preview layout, settings placement, and source-review navigation across several small releases.
+- Closed gaps where unsafe project entries, stale review state, or changed source bytes could have entered an export.
+- Removed an internal implementation artifact that had been published accidentally and added that lesson to the release checklist.
 
 ## Why this matters
 
-I want the workbench to make AI-assisted rewriting more legible. The source, prompt instructions, review decisions, expected outputs, and package hashes should stay visible enough that a person can understand what they are about to send elsewhere.
+The workbench is designed to make AI-assisted rewriting more legible. Source text, prompt instructions, review decisions, expected outputs, and package hashes stay visible enough for a person to understand what they are about to send elsewhere.
 
 ## See it in action
 
@@ -48,7 +48,7 @@ Each release was checked with focused unit tests, TypeScript, lint, production b
 
 ## What comes next
 
-I am adding a static Updates journal so release notes and verification can live beside the workbench without introducing a publishing backend or client-side router.
+A static Updates journal is next, allowing release notes and verification to live beside the workbench without introducing a publishing backend or client-side router.
 
 ## Feedback and contribution links
 

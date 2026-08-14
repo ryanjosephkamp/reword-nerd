@@ -19,6 +19,11 @@
   font-synthesis: none;
 }
 
+a:link,
+a:visited {
+  color: var(--color-ready);
+}
+
 * {
   box-sizing: border-box;
 }

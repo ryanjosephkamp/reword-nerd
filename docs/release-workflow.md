@@ -44,6 +44,12 @@ lockfile, `src/version.ts`, and schema-v6 contracts. Write all builder's-journal
 sections in reviewed safe Markdown; raw HTML, MDX, placeholders, remote media,
 and unapproved links are rejected.
 
+Use a terse, neutral changelog voice throughout public post bodies. Prefer
+action-led fragments such as “Added …”, “Changed …”, and “Fixed …”; do not use
+first-person singular pronouns (`I`, `me`, `my`, `mine`, or `myself`). The
+authoring commands scaffold this voice, and production validation rejects posts
+that drift back to first-person singular prose.
+
 ## 3. Create and review release media when required
 
 Visual feature and visual maintenance releases require a final same-origin MP4,

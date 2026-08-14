@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "site": {
     "title": "reword-nerd Updates",
-    "description": "A first-person builder's journal for reword-nerd releases, decisions, and verification.",
+    "description": "A concise builder's journal for reword-nerd releases, decisions, and verification.",
     "canonicalOrigin": "https://ryanjosephkamp.github.io",
     "basePath": "/reword-nerd/updates/"
   },

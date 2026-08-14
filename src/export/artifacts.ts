@@ -387,8 +387,9 @@ function standaloneHtml(
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
   <title>${title} — ${escapeHtml(source.originalDisplayName)}</title>
   <style>
-    :root { color-scheme: light; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    :root { --link: #007a5a; color-scheme: light; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     * { box-sizing: border-box; } body { margin: 0; background: #fff; color: #111; line-height: 1.5; }
+    a:link, a:visited { color: var(--link); text-underline-offset: 3px; overflow-wrap: anywhere; }
     main { width: min(100% - 32px, 980px); margin: 0 auto; padding: 32px 0 72px; }
     h1 { margin: 0 0 20px; font-size: clamp(1.75rem, 6vw, 3rem); line-height: 1.08; } h2 { margin: 0; font-size: 1.15rem; }
     .top-actions, .tabs, .prompt-heading, .prompt-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }

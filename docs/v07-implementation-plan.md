@@ -40,7 +40,7 @@
   `/updates/v0-7-0/`, `/updates/feed.xml`, and sitemap entries with semantic
   HTML, canonical/OG/Twitter metadata, Blog/BlogPosting JSON-LD, RSS summaries,
   same-origin assets, and no required client JavaScript.
-- Adopt the first-person builder's-journal template: At a glance; Added,
+- Adopt the terse, neutral builder's-journal template: At a glance; Added,
   Changed, Fixed; Why this matters; See it in action; How to use it;
   Compatibility and limitations; Privacy; Verification; What comes next;
   Feedback and contribution links.
