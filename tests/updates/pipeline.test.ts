@@ -237,6 +237,51 @@ describe("Updates validation and rendering", () => {
     expect(css).toContain("@media(prefers-reduced-motion:reduce){.release-video-motion{display:none}.release-video-poster{display:block}}");
   });
 
+  it("describes required media from each entry instead of hard-coding the v0.7 release", async () => {
+    // Keeping the old fixed v0.7 poster description must mislabel later visual Updates articles.
+    const root = await fixtureRoot();
+    const ledgerPath = join(root, "content/updates/releases.json");
+    const sourcePostPath = join(root, "content/updates/v0-7-0.md");
+    const articlePostPath = join(root, "content/updates/v0-8-0.md");
+    const ledger = JSON.parse(await readFile(ledgerPath, "utf8"));
+    const title = "reword-nerd v0.8: Image prompt packages";
+    ledger.entries.push({
+      kind: "article",
+      slug: "v0-8-0",
+      title,
+      summary: "Image prompt packages.",
+      status: "published",
+      date: "2026-08-14",
+      author: "Ryan Joseph Kamp",
+      tags: ["image portal"],
+      relatedPrs: [10],
+      markdownPath: "content/updates/v0-8-0.md",
+      visualChanges: true,
+      video: {
+        policy: "required",
+        mp4Path: "/reword-nerd/media/updates/v0-8-0/release-update.mp4",
+        webmPath: "/reword-nerd/media/updates/v0-8-0/release-update.webm",
+        posterPath: "/reword-nerd/media/updates/v0-8-0/poster.webp",
+        transcriptPath: "/reword-nerd/media/updates/v0-8-0/transcript.txt",
+      },
+    });
+    await writeFile(ledgerPath, `${JSON.stringify(ledger, null, 2)}\n`);
+    await writeFile(articlePostPath, (await readFile(sourcePostPath, "utf8")).replace("# reword-nerd v0.7", `# ${title}`));
+    const mediaDirectory = join(root, "public/media/updates/v0-8-0");
+    await mkdir(mediaDirectory, { recursive: true });
+    await Promise.all([
+      writeFile(join(mediaDirectory, "release-update.mp4"), "fixture"),
+      writeFile(join(mediaDirectory, "release-update.webm"), "fixture"),
+      writeFile(join(mediaDirectory, "poster.webp"), "fixture"),
+      writeFile(join(mediaDirectory, "transcript.txt"), "fixture"),
+    ]);
+
+    await renderUpdates(root, join(root, "dist"));
+    const post = await readFile(join(root, "dist/updates/v0-8-0/index.html"), "utf8");
+    expect(post).toContain('alt="Synthetic Updates walkthrough poster for reword-nerd v0.8: Image prompt packages"');
+    expect(post).toContain('<p class="eyebrow">builder&#39;s journal</p>');
+  });
+
   it("removes stale generated post routes before a standalone re-render", async () => {
     const root = await fixtureRoot();
     const output = join(root, "dist");

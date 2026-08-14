@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, open, rename, rm, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, open, rename, rm, stat, statfs, writeFile } from "node:fs/promises";
 import { execFile as execFileCallback } from "node:child_process";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
@@ -6,6 +6,9 @@ import { randomUUID } from "node:crypto";
 
 const execFile = promisify(execFileCallback);
 const MIB = 1024 * 1024;
+const GIB = 1024n * 1024n * 1024n;
+
+export const RELEASE_VIDEO_MINIMUM_FREE_BYTES = 6n * GIB;
 
 export const RELEASE_VIDEO_BUDGETS = Object.freeze({
   webmBytes: Math.floor(1.5 * MIB),
@@ -16,7 +19,33 @@ export const RELEASE_VIDEO_BUDGETS = Object.freeze({
 });
 
 const RELEASE_FORMAT = Object.freeze({ width: 1280, height: 720, fps: 30 });
-const SUPPORTED_VERSION = "0.7.0";
+const RELEASE_VIDEO_CONFIGURATIONS = Object.freeze({
+  "0.7.0": Object.freeze({
+    compositionId: "ReleaseUpdate",
+    stagingPrefix: ".v0-7-0-staged-",
+    posterTimestamp: "00:00:12",
+    transcript: "reword-nerd v0.7.0 — Updates, feedback, and Share\n\n00:00 — Title: Updates, feedback, and Share. A quiet, local-first release walkthrough.\n00:05 — Context: Release context should be easy to find. The release ledger records version, current status, same-origin media, and the local-first privacy boundary.\n00:09 — Demonstration: The Updates archive shows the current v0.7 release and Road to v0.6. The synthetic interface highlights Report a bug, Suggest a feature, and Share release.\n00:16 — Highlights: Static Updates pages with RSS. Clear bug and feature routes. Canonical Share with no tracking.\n00:20 — Feedback: Find the release. Send useful feedback. Share the clean URL. Built in public. Processed locally.\n",
+    requiredTranscriptFragments: Object.freeze(["reword-nerd v0.7.0", "Share the clean URL"]),
+    forbidFirstPersonSingular: false,
+  }),
+  "0.8.0": Object.freeze({
+    compositionId: "ReleaseUpdateV08",
+    stagingPrefix: ".v0-8-0-staged-",
+    posterTimestamp: "00:00:12",
+    transcript: "reword-nerd v0.8 — IMAGE portal and workbench polish\n\n00:00 — Added the IMAGE portal with an orange, local-first workbench for reference-image prompt packages.\n00:05 — Added safe local intake, per-image settings, optional OCR review, and deterministic package exports.\n00:10 — Changed PDF review with Continuous view and a page Gallery, and refreshed TEXT package HTML in the Night Terminal style.\n00:15 — Fixed selectable-text containment, accessible portal accents, and focused-image navigation.\n00:20 — Added timestamped ZIP downloads for both TEXT and IMAGE packages.\n00:23 — No model runs. Nothing uploads. Files stay in the browser until a deliberate download.\n",
+    requiredTranscriptFragments: Object.freeze([
+      "reword-nerd v0.8 —",
+      "Added the IMAGE portal",
+      "Changed PDF review",
+      "Fixed selectable-text containment",
+      "timestamped ZIP downloads",
+      "No model runs. Nothing uploads.",
+    ]),
+    forbidFirstPersonSingular: true,
+  }),
+});
+
+export const RELEASE_VIDEO_VERSIONS = Object.freeze(Object.keys(RELEASE_VIDEO_CONFIGURATIONS));
 
 function fail(message) {
   throw new Error(`Release media check failed: ${message}`);
@@ -25,6 +54,42 @@ function fail(message) {
 function releaseSlug(version) {
   if (typeof version !== "string" || !/^\d+\.\d+\.\d+$/u.test(version)) throw new Error(`Invalid release version: ${version}`);
   return `v${version.replaceAll(".", "-")}`;
+}
+
+export function releaseVideoConfiguration(version) {
+  const configuration = RELEASE_VIDEO_CONFIGURATIONS[version];
+  if (!configuration) throw new Error(`No deterministic release-update composition is configured for ${version}`);
+  return configuration;
+}
+
+export function releaseVideoTranscript(version) {
+  return releaseVideoConfiguration(version).transcript;
+}
+
+export async function assertReleaseVideoDiskFloor(rootDirectory, inspect = (path) => statfs(path, { bigint: true })) {
+  const volume = await inspect(resolve(rootDirectory));
+  const availableBytes = BigInt(volume.bavail) * BigInt(volume.bsize);
+  if (availableBytes < RELEASE_VIDEO_MINIMUM_FREE_BYTES) {
+    fail(`rendering requires at least 6 GiB free; found ${(Number(availableBytes) / Number(GIB)).toFixed(2)} GiB`);
+  }
+  return availableBytes;
+}
+
+export function releaseRenderInvocation(rootDirectory, version, outputPath) {
+  const configuration = releaseVideoConfiguration(version);
+  return {
+    executable: join(resolve(rootDirectory), "node_modules", ".bin", "remotion"),
+    args: [
+      "render",
+      "video/remotion/index.ts",
+      configuration.compositionId,
+      outputPath,
+      "--codec=h264",
+      "--crf=32",
+      "--concurrency=2",
+      "--log=error",
+    ],
+  };
 }
 
 export function releaseMediaPaths(version) {
@@ -81,10 +146,6 @@ function verifyVideo(label, inspection, budget, expectedCodec) {
   if (inspection.bytes > budget) fail(`${label} exceeds its ${budget}-byte budget`);
 }
 
-function releaseTranscript(version) {
-  return `reword-nerd v${version} — Updates, feedback, and Share\n\n00:00 — Title: Updates, feedback, and Share. A quiet, local-first release walkthrough.\n00:05 — Context: Release context should be easy to find. The release ledger records version, current status, same-origin media, and the local-first privacy boundary.\n00:09 — Demonstration: The Updates archive shows the current v0.7 release and Road to v0.6. The synthetic interface highlights Report a bug, Suggest a feature, and Share release.\n00:16 — Highlights: Static Updates pages with RSS. Clear bug and feature routes. Canonical Share with no tracking.\n00:20 — Feedback: Find the release. Send useful feedback. Share the clean URL. Built in public. Processed locally.\n`;
-}
-
 function releaseMediaFiles(directory) {
   return {
     mp4Path: join(directory, "release-update.mp4"),
@@ -116,6 +177,7 @@ async function readBoundedTranscript(path) {
 }
 
 async function checkReleaseMediaFiles(files, version) {
+  const configuration = releaseVideoConfiguration(version);
   await Promise.all(Object.values(files).map((path) => access(path)));
   const transcript = await readBoundedTranscript(files.transcriptPath);
   const [mp4, webm, poster] = await Promise.all([inspectVideo(files.mp4Path), inspectVideo(files.webmPath), inspectPoster(files.posterPath)]);
@@ -125,14 +187,16 @@ async function checkReleaseMediaFiles(files, version) {
   if (poster.width !== RELEASE_FORMAT.width || poster.height !== RELEASE_FORMAT.height) fail(`poster dimensions must be ${RELEASE_FORMAT.width}x${RELEASE_FORMAT.height}`);
   if (poster.metadataTags.length > 0) fail(`poster must be metadata-free; found ${poster.metadataTags.join(", ")}`);
   if (poster.bytes > RELEASE_VIDEO_BUDGETS.posterBytes) fail(`poster exceeds its ${RELEASE_VIDEO_BUDGETS.posterBytes}-byte budget`);
-  if (!transcript.content.includes(`reword-nerd v${version}`) || !transcript.content.includes("Share the clean URL")) fail("transcript is missing the release walkthrough");
+  const missingTranscriptFragment = configuration.requiredTranscriptFragments.find((fragment) => !transcript.content.includes(fragment));
+  if (missingTranscriptFragment) fail(`transcript is missing required release copy: ${missingTranscriptFragment}`);
+  if (configuration.forbidFirstPersonSingular && /\b(?:I|me|my)\b/iu.test(transcript.content)) fail("transcript must not use first-person singular prose");
   const aggregateBytes = mp4.bytes + webm.bytes + poster.bytes + transcript.bytes;
   if (aggregateBytes > RELEASE_VIDEO_BUDGETS.aggregateBytes) fail(`release media exceeds its ${RELEASE_VIDEO_BUDGETS.aggregateBytes}-byte aggregate budget`);
   return { mp4, webm, poster, transcriptBytes: transcript.bytes, aggregateBytes };
 }
 
 async function validateVersionAssets(rootDirectory, version) {
-  if (version !== SUPPORTED_VERSION) throw new Error(`No deterministic ReleaseUpdate composition is configured for ${version}`);
+  releaseVideoConfiguration(version);
   const paths = releaseMediaPaths(version);
   const files = Object.fromEntries(Object.entries(paths).map(([key, path]) => [key, localPathForWebPath(rootDirectory, path)]));
   return { paths, files };
@@ -178,21 +242,23 @@ export async function publishReleaseMediaCandidate(candidateDirectory, targetDir
 }
 
 export async function renderReleaseMedia(rootDirectory, version) {
-  if (version !== SUPPORTED_VERSION) throw new Error(`No deterministic ReleaseUpdate composition is configured for ${version}`);
   const root = resolve(rootDirectory);
+  const configuration = releaseVideoConfiguration(version);
+  await assertReleaseVideoDiskFloor(root);
   const paths = releaseMediaPaths(version);
   const output = Object.fromEntries(Object.entries(paths).map(([key, path]) => [key, localPathForWebPath(root, path)]));
   const targetDirectory = dirname(output.mp4Path);
   await mkdir(dirname(targetDirectory), { recursive: true });
-  const temporary = await mkdtemp(join(dirname(targetDirectory), ".v0-7-0-staged-"));
+  const temporary = await mkdtemp(join(dirname(targetDirectory), configuration.stagingPrefix));
   try {
     const sourceMp4 = join(temporary, "source.mp4");
     const { mp4Path: mp4, webmPath: webm, posterPath: poster, transcriptPath } = releaseMediaFiles(temporary);
-    await execFile("npx", ["remotion", "render", "video/remotion/index.ts", "ReleaseUpdate", sourceMp4, "--codec=h264", "--crf=32", "--concurrency=2", "--log=error"], { cwd: root, encoding: "utf8" });
+    const invocation = releaseRenderInvocation(root, version, sourceMp4);
+    await execFile(invocation.executable, invocation.args, { cwd: root, encoding: "utf8" });
     await execFile("ffmpeg", ["-y", "-i", sourceMp4, "-map_metadata", "-1", "-map_chapters", "-1", "-an", "-c:v", "libx264", "-preset", "slow", "-crf", "32", "-movflags", "+faststart", mp4], { encoding: "utf8" });
     await execFile("ffmpeg", ["-y", "-i", sourceMp4, "-map_metadata", "-1", "-map_chapters", "-1", "-an", "-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "47", "-row-mt", "1", webm], { encoding: "utf8" });
-    await execFile("ffmpeg", ["-y", "-ss", "00:00:12", "-i", sourceMp4, "-frames:v", "1", "-map_metadata", "-1", "-c:v", "libwebp", "-q:v", "62", poster], { encoding: "utf8" });
-    await writeFile(transcriptPath, releaseTranscript(version), "utf8");
+    await execFile("ffmpeg", ["-y", "-ss", configuration.posterTimestamp, "-i", sourceMp4, "-frames:v", "1", "-map_metadata", "-1", "-c:v", "libwebp", "-q:v", "62", poster], { encoding: "utf8" });
+    await writeFile(transcriptPath, releaseVideoTranscript(version), "utf8");
     await rm(sourceMp4, { force: true });
     await publishReleaseMediaCandidate(temporary, targetDirectory, version);
     return checkReleaseMedia(root, version);

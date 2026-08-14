@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 import { runCommand } from "./cli.mjs";
-import { checkReleaseMedia } from "./video-lib.mjs";
+import { RELEASE_VIDEO_VERSIONS, checkReleaseMedia } from "./video-lib.mjs";
 
 await runCommand(async () => {
-  const result = await checkReleaseMedia(process.cwd(), "0.7.0");
-  return `Release media valid: MP4 ${result.mp4.bytes} bytes, WebM ${result.webm.bytes} bytes, poster ${result.poster.bytes} bytes, aggregate ${result.aggregateBytes} bytes.`;
+  const results = [];
+  for (const version of RELEASE_VIDEO_VERSIONS) {
+    const result = await checkReleaseMedia(process.cwd(), version);
+    results.push(`v${version}: MP4 ${result.mp4.bytes} bytes, WebM ${result.webm.bytes} bytes, poster ${result.poster.bytes} bytes, aggregate ${result.aggregateBytes} bytes`);
+  }
+  return `Release media valid — ${results.join("; ")}.`;
 });

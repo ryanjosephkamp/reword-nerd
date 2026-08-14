@@ -421,8 +421,9 @@ function renderMarkdown(markdown) {
   return output.join("\n");
 }
 
-function renderReleaseVideo(video) {
-  return `<figure class="release-video"><div class="release-video-motion"><video controls muted playsinline preload="none" poster="${escapeHtml(video.posterPath)}"><source src="${escapeHtml(video.webmPath)}" type="video/webm"><source src="${escapeHtml(video.mp4Path)}" type="video/mp4">Your browser cannot play this same-origin release video.</video></div><div class="release-video-poster"><img src="${escapeHtml(video.posterPath)}" alt="Synthetic reword-nerd v0.7 Updates, feedback, and Share release poster"></div><figcaption>Silent, synthetic release walkthrough. <a href="${escapeHtml(video.transcriptPath)}">Read the transcript</a>.</figcaption><p class="release-video-fallback">Video unavailable? <a href="${escapeHtml(video.posterPath)}">Open the release poster</a>.</p></figure>`;
+function renderReleaseVideo(entry) {
+  const { video } = entry;
+  return `<figure class="release-video"><div class="release-video-motion"><video controls muted playsinline preload="none" poster="${escapeHtml(video.posterPath)}"><source src="${escapeHtml(video.webmPath)}" type="video/webm"><source src="${escapeHtml(video.mp4Path)}" type="video/mp4">Your browser cannot play this same-origin release video.</video></div><div class="release-video-poster"><img src="${escapeHtml(video.posterPath)}" alt="Synthetic Updates walkthrough poster for ${escapeHtml(entry.title)}"></div><figcaption>Silent, synthetic release walkthrough. <a href="${escapeHtml(video.transcriptPath)}">Read the transcript</a>.</figcaption><p class="release-video-fallback">Video unavailable? <a href="${escapeHtml(video.posterPath)}">Open the release poster</a>.</p></figure>`;
 }
 
 function pageShell({ site, title, description, canonicalPath, type, body, jsonLd }) {
@@ -486,8 +487,9 @@ export async function renderUpdates(rootDirectory, outputDirectory = resolve(roo
 
   for (const entry of entries) {
     const canonicalPath = `/reword-nerd/updates/${entry.slug}/`;
-    const video = entry.video.policy === "required" ? renderReleaseVideo(entry.video) : "";
-    const body = `<main><article itemscope itemtype="https://schema.org/BlogPosting"><p class="eyebrow">${escapeHtml(entry.kind === "release" ? `${entry.classification} release` : "retrospective")}</p><p class="meta"><time itemprop="datePublished" datetime="${entry.date}">${entry.date}</time> · ${escapeHtml(entry.author)}</p>${renderMarkdown(posts.get(entry.slug))}${video}</article><button class="share-control" type="button" data-share-url="${escapeHtml(`${ledger.site.canonicalOrigin}${canonicalPath}`)}" data-share-title="${escapeHtml(entry.title)}">Share</button><p><a href="/reword-nerd/updates/">← All Updates</a></p></main>`;
+    const video = entry.video.policy === "required" ? renderReleaseVideo(entry) : "";
+    const articleLabel = entry.tags.includes("retrospective") ? "retrospective" : "builder's journal";
+    const body = `<main><article itemscope itemtype="https://schema.org/BlogPosting"><p class="eyebrow">${escapeHtml(entry.kind === "release" ? `${entry.classification} release` : articleLabel)}</p><p class="meta"><time itemprop="datePublished" datetime="${entry.date}">${entry.date}</time> · ${escapeHtml(entry.author)}</p>${renderMarkdown(posts.get(entry.slug))}${video}</article><button class="share-control" type="button" data-share-url="${escapeHtml(`${ledger.site.canonicalOrigin}${canonicalPath}`)}" data-share-title="${escapeHtml(entry.title)}">Share</button><p><a href="/reword-nerd/updates/">← All Updates</a></p></main>`;
     const jsonLd = { "@context": "https://schema.org", "@type": "BlogPosting", headline: entry.title, description: entry.summary, datePublished: entry.date, author: { "@type": "Person", name: entry.author }, url: `${ledger.site.canonicalOrigin}${canonicalPath}` };
     await writeOutput(resolve(outputDirectory, `updates/${entry.slug}/index.html`), pageShell({ site: ledger.site, title: `${entry.title} · Updates`, description: entry.summary, canonicalPath, type: "article", body, jsonLd }));
   }

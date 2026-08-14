@@ -60,6 +60,33 @@
         "posterPath": "/reword-nerd/media/updates/v0-7-0/poster.webp",
         "transcriptPath": "/reword-nerd/media/updates/v0-7-0/transcript.txt"
       }
+    },
+    {
+      "kind": "article",
+      "slug": "v0-8-0",
+      "title": "reword-nerd v0.8: Image prompt packages",
+      "summary": "A local Image companion, one-reference prompt packages, and focused Text and export polish.",
+      "status": "published",
+      "date": "2026-08-14",
+      "author": "Ryan Joseph Kamp",
+      "tags": [
+        "image portal",
+        "prompt packages",
+        "local processing",
+        "accessibility"
+      ],
+      "relatedPrs": [
+        10
+      ],
+      "markdownPath": "content/updates/v0-8-0.md",
+      "visualChanges": true,
+      "video": {
+        "policy": "required",
+        "mp4Path": "/reword-nerd/media/updates/v0-8-0/release-update.mp4",
+        "webmPath": "/reword-nerd/media/updates/v0-8-0/release-update.webm",
+        "posterPath": "/reword-nerd/media/updates/v0-8-0/poster.webp",
+        "transcriptPath": "/reword-nerd/media/updates/v0-8-0/transcript.txt"
+      }
     }
   ]
 }
