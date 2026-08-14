@@ -291,3 +291,46 @@ test("tablet header separates brand, local-session copy, and actions", async ({ 
   expect(boxes[0].bottom).toBeLessThanOrEqual(boxes[1].bottom + 24);
   await captureEvidence(page, "header-spacing-1024x768.png");
 });
+
+test("thirty-image queue rotates the bounded thumbnail leases with its real scroll viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 1586, height: 992 });
+  await installUrlAudit(page);
+  await openWorkbench(page);
+  await page.getByLabel("Add image files").setInputFiles(Array.from({ length: 30 }, (_, index) => ({
+    name: `batch-${String(index + 1).padStart(2, "0")}.png`,
+    mimeType: "image/png",
+    buffer: PNG,
+  })));
+
+  const queue = page.getByRole("region", { name: "Image queue" });
+  const topVisibleRow = page.getByRole("group", { name: "batch-02.png image controls" });
+  const lastRow = page.getByRole("group", { name: "batch-30.png image controls" });
+  await expect(lastRow).toBeAttached();
+  await expect.poll(() => topVisibleRow.locator(".image-thumbnail-frame img").count()).toBe(1);
+  await expect.poll(() => lastRow.locator(".image-thumbnail-frame img").count()).toBe(0);
+
+  const activeIds = () => queue.locator("[data-image-id]").evaluateAll((rows) => rows.flatMap((row) => (
+    row.querySelector(".image-thumbnail-frame img") && row instanceof HTMLElement && row.dataset.imageId
+      ? [row.dataset.imageId]
+      : []
+  )));
+  const before = await activeIds();
+  expect(before.length).toBeLessThanOrEqual(24);
+  await captureEvidence(page, "thumbnail-window-top-30.png");
+
+  await queue.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await expect.poll(() => lastRow.locator(".image-thumbnail-frame img").count()).toBe(1);
+  const after = await activeIds();
+  expect(after.length).toBeLessThanOrEqual(24);
+  expect(after).not.toEqual(before);
+  await captureEvidence(page, "thumbnail-window-bottom-30.png");
+
+  const audit = await page.evaluate(() => {
+    const value = (window as unknown as Window & {
+      __imageUrlAudit: { peak: number; live: Set<string> };
+    }).__imageUrlAudit;
+    return { live: value.live.size, peak: value.peak };
+  });
+  expect(audit.live).toBeLessThanOrEqual(25);
+  expect(audit.peak).toBeLessThanOrEqual(25);
+});

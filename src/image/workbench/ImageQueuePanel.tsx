@@ -99,7 +99,9 @@ export function ImageQueuePanel({
   const activeThumbnailIds = new Set(thumbnailWindow.activeIds);
 
   useEffect(() => {
-    if (!observerAvailable || !listRef.current) return;
+    const list = listRef.current;
+    const scrollRoot = list?.closest<HTMLElement>(".image-panel");
+    if (!observerAvailable || !list || !scrollRoot) return;
     const observedItemIds = items.map((item) => item.id);
     const observer = new IntersectionObserver((entries) => {
       const nearVisibleIds = entries.flatMap((entry) => {
@@ -114,8 +116,8 @@ export function ImageQueuePanel({
         previousRecency: current,
         observerAvailable: true,
       }).recency);
-    }, { root: listRef.current, rootMargin: "180px 0px" });
-    for (const row of listRef.current.querySelectorAll<HTMLElement>("[data-image-id]")) observer.observe(row);
+    }, { root: scrollRoot, rootMargin: "180px 0px" });
+    for (const row of list.querySelectorAll<HTMLElement>("[data-image-id]")) observer.observe(row);
     return () => observer.disconnect();
   }, [focusedItemId, items, observerAvailable]);
 
