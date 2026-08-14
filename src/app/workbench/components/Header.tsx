@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { PortalSwitcher } from "../../portal/PortalSwitcher";
 import { FolderIcon, GearIcon, HelpIcon, InfoIcon, MoreIcon, RestartIcon, ShareIcon } from "./Icons";
 
 interface HeaderProps {
@@ -11,9 +12,11 @@ interface HeaderProps {
   settingsExpanded: boolean;
   settingsControls: string;
   settingsButtonRef: RefObject<HTMLButtonElement | null>;
+  hasSessionWork: boolean;
+  onClearSessionForPortal(): void;
 }
 
-export function Header({ onOpenFiles, onOpenSettings, onOpenHelp, onOpenInfo, onShare, onNewSession, settingsExpanded, settingsControls, settingsButtonRef }: HeaderProps) {
+export function Header({ onOpenFiles, onOpenSettings, onOpenHelp, onOpenInfo, onShare, onNewSession, settingsExpanded, settingsControls, settingsButtonRef, hasSessionWork, onClearSessionForPortal }: HeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -37,7 +40,10 @@ export function Header({ onOpenFiles, onOpenSettings, onOpenHelp, onOpenInfo, on
     };
   }, [menuOpen]);
   return <header className="workbench-header">
-    <h1 className="brand">reword_nerd/</h1>
+    <div className="brand-portal">
+      <h1 className="brand">reword_nerd/</h1>
+      <PortalSwitcher currentPortal="text" hasSessionWork={hasSessionWork} onClearSession={onClearSessionForPortal} />
+    </div>
     <div className="session-copy"><strong>LOCAL SESSION</strong><span>Files stay in this browser</span></div>
     <div className="header-actions" aria-label="Workspace utilities">
       <button type="button" className="icon-button folder-button" aria-label="Open files" onClick={onOpenFiles}><FolderIcon /></button>
