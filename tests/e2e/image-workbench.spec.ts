@@ -84,7 +84,7 @@ test("real PNG workflow stays local, keeps package actions truthful, and release
   await expect(page.getByRole("img", { name: `Focused source ${PRIVATE_FILENAME}` })).toBeVisible();
 
   await page.getByRole("checkbox", { name: `Select ${PRIVATE_FILENAME}` }).check();
-  await page.getByRole("tab", { name: "SELECTED [1]" }).click();
+  await page.getByRole("button", { name: "SELECTED [1]" }).click();
   await page.getByRole("checkbox", { name: "Apply Model family" }).check();
   await page.getByLabel("Selected model family").selectOption("google-nano-banana");
   await page.getByRole("button", { name: "APPLY TO 1 IMAGES" }).click();

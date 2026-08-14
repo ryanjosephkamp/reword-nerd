@@ -58,6 +58,7 @@ const ZIP_MIME_TYPES = new Set(["application/zip", "application/x-zip-compressed
 const REMOTE_DOCUMENT_EXTENSIONS = new Set(["html", "htm", "md", "markdown"]);
 const SUPPORTED_IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp", "avif"]);
 const UNSUPPORTED_IMAGE_EXTENSIONS = new Set(["svg", "gif", "bmp", "tif", "tiff", "heic", "heif"]);
+const FOLDER_SYMLINK_WARNING = "Browser folder selection cannot independently verify original filesystem symlink identity.";
 
 export interface FolderImageCandidate {
   readonly inputName: string;
@@ -338,13 +339,20 @@ export async function intakeImageFolder(
       rejections.push(rejection(item, error));
     }
   }
+  const reviewedCandidates = candidates.map((entry) => Object.freeze({
+    ...entry,
+    candidate: Object.freeze({
+      ...entry.candidate,
+      warnings: Object.freeze(entry.candidate.warnings.includes(FOLDER_SYMLINK_WARNING)
+        ? [...entry.candidate.warnings]
+        : [...entry.candidate.warnings, FOLDER_SYMLINK_WARNING]),
+    }),
+  }));
   return Object.freeze({
     folderName: audited[0].folderName,
-    candidates: Object.freeze(candidates),
+    candidates: Object.freeze(reviewedCandidates),
     rejections: Object.freeze(rejections),
-    warnings: Object.freeze([
-      "Browser folder selection cannot independently verify original filesystem symlink identity.",
-    ]),
+    warnings: Object.freeze([FOLDER_SYMLINK_WARNING]),
   });
 }
 

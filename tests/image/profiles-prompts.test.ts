@@ -60,7 +60,7 @@ describe("Image prompt profiles", () => {
   });
 
   it("builds one faithful-rendition prompt from one item and quotes only accepted reviewed OCR", () => {
-    // Catches prompt drift toward identity promises, source-byte return requests, or unreviewed OCR.
+    // Catches prompt drift toward identity promises, missing no-copy guidance, or unreviewed OCR.
     const item = imageWithOcr({
       status: "accepted",
       detectedText: "machine draft must not be used",
@@ -75,6 +75,7 @@ describe("Image prompt profiles", () => {
       "Goal: Faithful rendition",
       "",
       "Use exactly one attached source image. Generate a new rendition of that source image.",
+      "Generate the result from scratch as a new image; do not copy, duplicate, or merely return the unchanged source file.",
       "Preserve the visible subject, composition, crop, framing, geometry, perspective, palette, lighting, texture, style, and typography as closely as the selected model supports.",
       "Apply only the explicit requested changes. Do not introduce unrelated changes.",
       "Requested changes: Change only the outer border to orange.",
@@ -85,7 +86,7 @@ describe("Image prompt profiles", () => {
       "Usage guidance: Confirm you own or may use the source and generated result, and review the selected provider's current policies. This is informational, not legal advice.",
     ].join("\n"));
     expect(prompt).not.toContain("machine draft must not be used");
-    expect(prompt).not.toMatch(/pixel[- ]identical|guarantee(?:s|d)? identical|return (?:the )?unchanged/iu);
+    expect(prompt).not.toMatch(/pixel[- ]identical|guarantee(?:s|d)? identical/iu);
   });
 
   it("omits unaccepted OCR and keeps provider controls out of prompt prose", () => {
@@ -189,6 +190,7 @@ describe("Image prompt profiles", () => {
       "Goal: Faithful rendition",
       "",
       "Use exactly one attached source image as an Image Prompt influence for one new creation.",
+      "Generate the result from scratch as a new image; do not copy, duplicate, or merely return the unchanged source file.",
       "Describe and create the desired final image as a best-effort variation guided by the source, rather than issuing a precise edit instruction.",
       "Preserve the visible subject, composition, crop, framing, geometry, perspective, palette, lighting, texture, style, and typography as closely as the selected model supports.",
       "Apply only the explicit requested changes. Do not introduce unrelated changes.",

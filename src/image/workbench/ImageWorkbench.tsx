@@ -2,7 +2,7 @@ import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { ModalShell } from "../../app/workbench/components/ModalShell";
 import type { ImageInputFile } from "../intake";
 import { CURRENT_IMAGE_TUTORIAL_VERSION } from "../preferences";
-import { CANONICAL_IMAGE_URL, shareImageCanonicalUrl } from "../share";
+import { shareImageCanonicalUrl } from "../share";
 import { ImageDialogs } from "./ImageDialogs";
 import { ImageBuildDock } from "./ImageBuildDock";
 import { ImageHeader } from "./ImageHeader";
@@ -28,10 +28,14 @@ export function ImageWorkbench({
   const [newSessionOpen, setNewSessionOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [shareFallbackOpen, setShareFallbackOpen] = useState(false);
   const [shareMessage, setShareMessage] = useState("");
   const [removeItemIds, setRemoveItemIds] = useState<readonly string[]>([]);
   const helpReturnFocusRef = useRef<HTMLButtonElement>(null);
   const infoReturnFocusRef = useRef<HTMLButtonElement>(null);
+  const shareReturnFocusRef = useRef<HTMLButtonElement>(null);
+  const pdfCaptureReturnFocusRef = useRef<HTMLElement>(null);
+  const previousPdfCaptureOpenRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
@@ -57,15 +61,30 @@ export function ImageWorkbench({
     else document.getElementById(`image-focus-${target}`)?.focus();
   }, [session.state.items]);
 
+  useLayoutEffect(() => {
+    const open = session.pdfCapture !== null;
+    if (open && !previousPdfCaptureOpenRef.current) {
+      const active = document.activeElement;
+      pdfCaptureReturnFocusRef.current = active instanceof HTMLElement && active !== document.body
+        ? active
+        : queueHeadingRef.current;
+    }
+    previousPdfCaptureOpenRef.current = open;
+  }, [session.pdfCapture]);
+
   const completeTutorial = () => {
     session.dispatch({ type: "tutorial/seen", version: CURRENT_IMAGE_TUTORIAL_VERSION });
   };
   const share = () => {
+    const active = document.activeElement;
+    shareReturnFocusRef.current = active instanceof HTMLButtonElement
+      ? active
+      : document.querySelector<HTMLButtonElement>('.image-header-actions button[aria-label="Share"]');
     setShareMessage("");
     void shareImageCanonicalUrl().then((result) => {
       if (result === "shared") setShareMessage("Link shared.");
       else if (result === "copied") setShareMessage("Link copied.");
-      else setShareMessage(`Copy ${CANONICAL_IMAGE_URL}`);
+      else if (result === "manual") setShareFallbackOpen(true);
     });
   };
   const focusedItem = session.state.items.find((item) => item.id === session.state.focusedItemId) ?? null;
@@ -252,15 +271,18 @@ export function ImageWorkbench({
       quickStartOpen={session.state.tutorialSeenVersion !== CURRENT_IMAGE_TUTORIAL_VERSION}
       helpOpen={helpOpen}
       infoOpen={infoOpen}
+      shareFallbackOpen={shareFallbackOpen}
       newSessionOpen={newSessionOpen}
       removeItems={removeItems}
       helpReturnFocusRef={helpReturnFocusRef}
       infoReturnFocusRef={infoReturnFocusRef}
+      shareReturnFocusRef={shareReturnFocusRef}
       newSessionReturnFocusRef={newSessionReturnFocusRef}
       removeReturnFocusRef={removeReturnFocusRef}
       onDismissQuickStart={completeTutorial}
       onDismissHelp={() => setHelpOpen(false)}
       onDismissInfo={() => setInfoOpen(false)}
+      onDismissShare={() => setShareFallbackOpen(false)}
       onDismissNewSession={() => setNewSessionOpen(false)}
       onConfirmNewSession={() => {
         setNewSessionOpen(false);
@@ -287,6 +309,7 @@ export function ImageWorkbench({
         : "no-pdf-capture"}
       open={session.pdfCapture !== null}
       request={session.pdfCapture}
+      returnFocusRef={pdfCaptureReturnFocusRef}
       onChoose={session.choosePdfCapture}
     />
     {shareMessage ? <p className="visually-hidden" role="status" aria-live="polite">{shareMessage}</p> : null}

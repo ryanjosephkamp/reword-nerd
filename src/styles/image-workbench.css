@@ -210,7 +210,8 @@
   gap: 6px;
   margin-bottom: 16px;
 }
-.image-workbench [role="tab"][aria-selected="true"] {
+.image-workbench [role="tab"][aria-selected="true"],
+.image-workbench .image-settings-tabs button[aria-pressed="true"] {
   border-color: var(--image-action);
   background-color: var(--image-action);
   color: #19130a;

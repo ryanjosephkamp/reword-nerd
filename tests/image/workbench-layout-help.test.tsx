@@ -42,7 +42,8 @@ describe("Image workbench layout and local-only guidance", () => {
       "/image/orange-pyramid.webp",
     );
     expect(dialog).toHaveTextContent("Processing stays local in this browser");
-    expect(dialog).toHaveTextContent("exact source bytes may retain EXIF or location metadata");
+    expect(dialog).toHaveTextContent("Direct image and recoverable DOCX media bytes may retain EXIF or location metadata");
+    expect(dialog).toHaveTextContent("PDF visuals are locally rasterized PNG recovery output");
     expect(dialog).toHaveTextContent("one source image and one prompt");
     expect(dialog).toHaveTextContent("No model runs and nothing uploads");
     expect(dialog).toHaveTextContent("Build creates one ZIP for the current confirmed image set in memory");
@@ -86,6 +87,8 @@ describe("Image workbench layout and local-only guidance", () => {
     expect(help).toHaveTextContent("DOWNLOAD ZIP is enabled only for the current Ready package");
     expect(help).toHaveTextContent("Changes invalidate confirmation and cancel or clear stale package work");
     expect(help).toHaveTextContent("Building does not download automatically");
+    expect(help).toHaveTextContent("Direct image and recoverable DOCX media bytes may retain EXIF or location metadata");
+    expect(help).toHaveTextContent("PDF visuals are locally rasterized PNG recovery output");
     expect(help).toHaveTextContent("No model runs, no credentials are used, and nothing uploads");
   });
 });

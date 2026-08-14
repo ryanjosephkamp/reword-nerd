@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type RefObject } from "react";
 import { ModalShell } from "../../app/workbench/components/ModalShell";
 import type { ImagePdfCaptureChoice } from "../intake";
 import type { ImagePdfCaptureRequestView } from "./contracts";
@@ -7,10 +7,12 @@ import { parseImagePdfPages } from "./pdfPages";
 export function ImagePdfCaptureDialog({
   open,
   request,
+  returnFocusRef,
   onChoose,
 }: {
   open: boolean;
   request: ImagePdfCaptureRequestView | null;
+  returnFocusRef?: RefObject<HTMLElement | null>;
   onChoose(choice: ImagePdfCaptureChoice): void;
 }) {
   const [mode, setMode] = useState<ImagePdfCaptureChoice["mode"]>("embedded-only");
@@ -19,9 +21,15 @@ export function ImagePdfCaptureDialog({
   const [error, setError] = useState("");
   if (!request) return null;
 
+  const choose = (choice: ImagePdfCaptureChoice) => {
+    onChoose(choice);
+    returnFocusRef?.current?.focus();
+    queueMicrotask(() => returnFocusRef?.current?.focus());
+  };
+
   const submit = () => {
     if (mode === "embedded-only") {
-      onChoose({ mode: "embedded-only" });
+      choose({ mode: "embedded-only" });
       return;
     }
     const parsed = parseImagePdfPages(pages, request.pageCount);
@@ -29,7 +37,7 @@ export function ImagePdfCaptureDialog({
       setError(`Enter pages from 1 to ${request.pageCount} as comma-separated numbers or ranges.`);
       return;
     }
-    onChoose({ mode: "embedded-and-pages", pages: parsed, quality });
+    choose({ mode: "embedded-and-pages", pages: parsed, quality });
   };
 
   return <ModalShell
@@ -37,6 +45,7 @@ export function ImagePdfCaptureDialog({
     title="Capture PDF pages"
     closeLabel="Use embedded PDF images only"
     onDismiss={() => onChoose({ mode: "embedded-only" })}
+    returnFocusRef={returnFocusRef}
     className="image-pdf-capture-dialog"
   >
     <p><strong>{request.inputName}</strong>{request.path ? ` — ${request.path}` : ""}</p>

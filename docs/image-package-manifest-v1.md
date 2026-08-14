@@ -80,9 +80,9 @@ cannot contain a stable hash of itself, so `manifestSelfRecord` is exactly
 Before export, the builder deep-snapshots the confirmed revision and
 independently revalidates source signatures, MIME/extension coherence,
 dimensions, byte and session limits, exact source SHA-256 values, provenance
-shapes and paths, settings, accepted OCR, and profile versions. Original PDF
-containers, original DOCX containers, and original ZIP containers are never included or exported; only the recovered
-exact image bytes and bounded provenance remain.
+shapes and paths, settings, accepted OCR, and profile versions. Original PDF, DOCX, and ZIP containers are never included or exported. Direct-image and
+recoverable DOCX-media bytes remain exact; PDF visuals and page captures are
+locally rasterized and encoded as PNG recovery output.
 
 For identical validated input and profile versions, the archive has
 deterministic bytes:
@@ -116,8 +116,9 @@ request, or model call. It remains usable under `file://`:
 
 ## Source custody
 
-Direct and extracted source bytes are preserved exactly, so they may retain
-EXIF or location metadata. Users should inspect source custody before sharing a
-package. The package does not retain the original PDF/DOCX/ZIP container, make a
-provider request, or guarantee that any external generator will reproduce an
-image identically.
+Direct-image and recoverable DOCX-media bytes are preserved exactly, so they
+may retain EXIF or location metadata. PDF visuals and page captures are locally
+rasterized and encoded as PNG rather than preserving original PDF image-stream
+bytes. Users should inspect source custody before sharing a package. The package
+does not retain the original PDF/DOCX/ZIP container, make a provider request,
+or guarantee that any external generator will reproduce an image identically.

@@ -1,7 +1,8 @@
-import type { RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import { ModalShell } from "../../app/workbench/components/ModalShell";
 import { COMMUNITY_LINKS, EXTERNAL_LINK_ATTRIBUTES } from "../../app/workbench/community";
 import { CURRENT_RELEASE_POST_PATH } from "../../updates/currentRelease";
+import { CANONICAL_IMAGE_URL } from "../share";
 
 const artworkPath = `${import.meta.env.BASE_URL}image/orange-pyramid.webp`;
 
@@ -9,15 +10,18 @@ interface ImageDialogsProps {
   readonly quickStartOpen: boolean;
   readonly helpOpen: boolean;
   readonly infoOpen: boolean;
+  readonly shareFallbackOpen: boolean;
   readonly newSessionOpen: boolean;
   readonly removeItems?: readonly Readonly<{ id: string; name: string }>[];
   readonly helpReturnFocusRef: RefObject<HTMLButtonElement | null>;
   readonly infoReturnFocusRef: RefObject<HTMLButtonElement | null>;
+  readonly shareReturnFocusRef: RefObject<HTMLButtonElement | null>;
   readonly newSessionReturnFocusRef: RefObject<HTMLButtonElement | null>;
   readonly removeReturnFocusRef: RefObject<HTMLElement | null>;
   readonly onDismissQuickStart: () => void;
   readonly onDismissHelp: () => void;
   readonly onDismissInfo: () => void;
+  readonly onDismissShare: () => void;
   readonly onDismissNewSession: () => void;
   readonly onConfirmNewSession: () => void;
   readonly onDismissRemove?: () => void;
@@ -30,6 +34,13 @@ function restoreFocus(ref: RefObject<HTMLElement | null>): void {
 }
 
 export function ImageDialogs(props: ImageDialogsProps) {
+  const shareUrlRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (!props.shareFallbackOpen) return;
+    shareUrlRef.current?.focus();
+    shareUrlRef.current?.select();
+  }, [props.shareFallbackOpen]);
+
   return <>
     <ModalShell
       open={props.quickStartOpen}
@@ -41,7 +52,7 @@ export function ImageDialogs(props: ImageDialogsProps) {
       <div className="image-dialog-artwork">
         <img src={artworkPath} width="112" height="112" alt="Orange pyramid artwork" />
         <div>
-          <p><strong>Processing stays local in this browser; exact source bytes may retain EXIF or location metadata.</strong></p>
+          <p><strong>Processing stays local in this browser. Direct image and recoverable DOCX media bytes may retain EXIF or location metadata. PDF visuals are locally rasterized PNG recovery output.</strong></p>
           <p>Each included image produces one source image and one prompt. Bulk masks require Apply, and OCR must be reviewed.</p>
           <p>Build creates one ZIP for the current confirmed image set in memory. Download becomes available only for that current Ready package.</p>
           <p>Changes cancel or clear stale package work. Building does not download automatically.</p>
@@ -78,7 +89,7 @@ export function ImageDialogs(props: ImageDialogsProps) {
       returnFocusRef={props.helpReturnFocusRef}
       className="image-help-dialog"
     >
-      <p>Processing stays local. Exact source bytes may retain EXIF or location metadata.</p>
+      <p>Processing stays local. Direct image and recoverable DOCX media bytes may retain EXIF or location metadata. PDF visuals are locally rasterized PNG recovery output.</p>
       <p>Use one source image and one prompt for each included image.</p>
       <p>Bulk masks change only checked fields after Apply.</p>
       <p>OCR text must be reviewed and accepted or rejected.</p>
@@ -100,10 +111,51 @@ export function ImageDialogs(props: ImageDialogsProps) {
         <img src={artworkPath} width="96" height="96" alt="Orange pyramid artwork" />
         <p>Image is a local, browser-only workbench for preparing faithful-rendition prompts and provider run cards.</p>
       </div>
-      <nav className="info-group-links" aria-label="Image portal links">
-        <a href={CURRENT_RELEASE_POST_PATH}>Updates</a>
-        <a href={COMMUNITY_LINKS.reportBug} {...EXTERNAL_LINK_ATTRIBUTES}>Community</a>
-      </nav>
+      <section className="info-group" aria-labelledby="image-info-product-heading">
+        <h3 id="image-info-product-heading">Product</h3>
+        <nav className="info-group-links" aria-label="Product links">
+          <a href={CURRENT_RELEASE_POST_PATH}>Updates</a>
+          <a href={COMMUNITY_LINKS.repository} {...EXTERNAL_LINK_ATTRIBUTES}>Repository</a>
+        </nav>
+      </section>
+      <section className="info-group" aria-labelledby="image-info-community-heading">
+        <h3 id="image-info-community-heading">Community</h3>
+        <p>Issues are public. Use synthetic descriptions only; never attach images, packages, prompts, credentials, or confidential material.</p>
+        <nav className="info-group-links" aria-label="Community links">
+          <a href={COMMUNITY_LINKS.reportBug} {...EXTERNAL_LINK_ATTRIBUTES}>Report a bug</a>
+          <a href={COMMUNITY_LINKS.suggestFeature} {...EXTERNAL_LINK_ATTRIBUTES}>Suggest a feature</a>
+          <a href={COMMUNITY_LINKS.securityReporting} {...EXTERNAL_LINK_ATTRIBUTES}>Security reporting</a>
+        </nav>
+      </section>
+      <section className="info-group info-creator" aria-labelledby="image-info-creator-heading">
+        <h3 id="image-info-creator-heading">Creator</h3>
+        <p>Built by Ryan Kamp. More projects, contact details, and ways to support independent work.</p>
+        <nav className="info-group-links" aria-label="Creator links">
+          <a href={COMMUNITY_LINKS.githubProfile} {...EXTERNAL_LINK_ATTRIBUTES}>GitHub profile</a>
+          <a href={COMMUNITY_LINKS.website} {...EXTERNAL_LINK_ATTRIBUTES}>Website</a>
+          <a href={COMMUNITY_LINKS.sponsor} {...EXTERNAL_LINK_ATTRIBUTES}>Sponsor</a>
+        </nav>
+      </section>
+    </ModalShell>
+
+    <ModalShell
+      open={props.shareFallbackOpen}
+      title="Share link"
+      closeLabel="Close share link"
+      onDismiss={props.onDismissShare}
+      returnFocusRef={props.shareReturnFocusRef}
+      initialFocusSelector="[data-image-share-url-input]"
+      className="share-fallback-dialog"
+    >
+      <p>Your browser could not copy this link automatically. Select it and copy it manually.</p>
+      <label htmlFor="image-share-url">Share URL</label>
+      <textarea
+        id="image-share-url"
+        ref={shareUrlRef}
+        data-image-share-url-input
+        readOnly
+        value={CANONICAL_IMAGE_URL}
+      />
     </ModalShell>
 
     <ModalShell

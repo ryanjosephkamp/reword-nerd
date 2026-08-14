@@ -10,7 +10,7 @@ test("Image keeps its local links and keyboard focus orange without recoloring T
   const imagePortal = page.getByRole("link", { name: "IMAGE" });
   await page.getByRole("button", { name: "Info" }).click();
   const updates = page.getByRole("link", { name: "Updates" });
-  const community = page.getByRole("link", { name: "Community" });
+  const community = page.getByRole("link", { name: "Report a bug" });
   await expect.poll(() => textPortal.evaluate((element) => getComputedStyle(element).color)).toBe("rgb(66, 232, 180)");
   await expect.poll(() => imagePortal.evaluate((element) => getComputedStyle(element).color)).toBe("rgb(255, 159, 28)");
   await expect.poll(() => updates.evaluate((element) => getComputedStyle(element).color)).toBe("rgb(255, 159, 28)");

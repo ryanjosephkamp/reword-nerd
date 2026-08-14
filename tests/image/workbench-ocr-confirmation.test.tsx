@@ -167,7 +167,7 @@ describe("Image OCR review and confirmation", () => {
     expect(screen.getByRole("button", { name: "DOWNLOAD ZIP" })).toBeDisabled();
     expect(screen.getByText("No package has been built.")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("tab", { name: "SELECTED [0]" }));
+    fireEvent.click(screen.getByRole("button", { name: "SELECTED [0]" }));
     fireEvent.change(screen.getByLabelText("Focused requested changes"), { target: { value: "One safe change" } });
     expect(screen.getByText("Ready to confirm the current image set.")).toBeInTheDocument();
     expect(screen.queryByText("Image set confirmed for the current review generation.")).not.toBeInTheDocument();

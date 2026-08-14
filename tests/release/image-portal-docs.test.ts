@@ -71,6 +71,11 @@ describe("completed Image companion documentation contract", () => {
     expect(extraction).toMatch(/EXIF[^\n]*location|location[^\n]*EXIF/iu);
     expect(extraction).toMatch(/folder[^\n]*(?:cannot|does not)[^\n]*(?:verify|detect)[^\n]*(?:symlink|link)/iu);
     expect(extraction).toMatch(/ZIP[^\n]*(?:link|encryption|nested|bomb)/iu);
+    expect(extraction).toMatch(/128 MiB[^\n]*DecodeStream/iu);
+    expect(extraction).toMatch(/160,000,000-byte[\s\S]{0,180}(?:base images|stream masks)/iu);
+    expect(extraction).toMatch(/not a claim that every internal PDF\.js allocation/iu);
+    expect(extraction).toMatch(/Embedded PDF candidates[\s\S]{0,160}(?:queue|package) order/iu);
+    expect(extraction).toMatch(/capture page pixels[\s\S]{0,300}before embedded recovery/iu);
 
     const privacy = read("docs/privacy.md");
     expect(privacy).toContain("reword-nerd:preferences:v1");
@@ -83,6 +88,8 @@ describe("completed Image companion documentation contract", () => {
     expect(privacy).toMatch(/occurrence[^\n]*object URL[^\n]*remov/iu);
     expect(privacy).toMatch(/(?:built|package)[- ]card[^\n]*object URL[^\n]*(?:invalidat|replac)/iu);
     expect(privacy).toMatch(/all[^\n]*object URL[^\n]*(?:reset|navigation|unmount)/iu);
+    expect(privacy).toMatch(/image-byte object URL[^\n]*(?:reset|navigation|unmount)/iu);
+    expect(privacy).toMatch(/PDF parser[^\n]*Blob URL[^\n]*worker code[^\n]*no user image or document bytes/iu);
 
     const architecture = read("docs/architecture.md");
     expect(architecture).toMatch(/occurrence[\s\S]{0,120}object URL[\s\S]{0,120}remov/iu);
@@ -165,6 +172,8 @@ describe("completed Image companion documentation contract", () => {
     expect(manifest).toMatch(/Copy Image[^\n]*(?:Open Image|Download Image|drag)|(?:Open Image|Download Image|drag)[^\n]*Copy Image/iu);
     expect(manifest).toMatch(/no network request/iu);
     expect(manifest).toMatch(/original (?:PDF|DOCX|ZIP)[^\n]*(?:not|never)[^\n]*(?:include|export)|(?:not|never)[^\n]*(?:include|export)[^\n]*original (?:PDF|DOCX|ZIP)/iu);
+    expect(manifest).toMatch(/direct[\s\S]{0,120}DOCX[\s\S]{0,120}(?:preserv|exact)/iu);
+    expect(manifest).toMatch(/PDF[\s\S]{0,160}(?:rasteriz|encoded)[\s\S]{0,80}PNG/iu);
 
     const directory = read("docs/directory-structure.md");
     expect(directory).toContain("reword-nerd-image-prompt-package.zip");

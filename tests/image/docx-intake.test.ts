@@ -170,6 +170,35 @@ describe("Image DOCX intake", () => {
     expect(result.issues.map(({ code }) => code)).toEqual(["UNSUPPORTED_FORMAT"]);
   });
 
+  it("attaches non-fatal converter and decorative-asset warnings to each recovered image", async () => {
+    // Catches diagnostics being stranded on the container result or small DOCX chrome being admitted without review guidance.
+    const converter: DocxConverterAdapter = {
+      convertToHtml: async (_input, options) => {
+        await options.convertImage({ contentType: "image/png", read: async () => base64(PNG) });
+        return {
+          value: "<img>",
+          messages: [{ type: "warning", message: "synthetic non-fatal diagnostic" }],
+        };
+      },
+    };
+    const result = await extractDocxImages(await docxBlob(), {
+      containerName: "decorative.docx",
+      containerHash: "b".repeat(64),
+      converter,
+      decoder,
+      hash: async () => "hash",
+    });
+
+    expect(result.warnings).toEqual([
+      "The DOCX converter reported a non-fatal diagnostic; review extracted images.",
+    ]);
+    expect(result.images[0].warnings).toEqual([
+      "Exact source bytes are preserved and may retain EXIF or location metadata.",
+      "This small DOCX visual may be decorative; review its inclusion.",
+      "The DOCX converter reported a non-fatal diagnostic; review extracted images.",
+    ]);
+  });
+
   it("rejects structural OOXML ambiguity before Mammoth and sanitizes converter failures", async () => {
     // Catches arbitrary ZIPs reaching Mammoth or converter diagnostics exposing source text and local paths.
     let converterCalls = 0;

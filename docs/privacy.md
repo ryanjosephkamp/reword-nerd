@@ -106,15 +106,16 @@ and network environments may have their own policies.
 ## Image source and lifetime boundary
 
 Direct PNG/JPEG/WebP/AVIF and locally recovered PDF/DOCX/folder/ZIP visuals are
-owned as in-memory Blobs after bounded validation. Exact image bytes may retain
-EXIF or location metadata; the UI and package README warn about that custody.
-Original PDF, DOCX, and ZIP containers are never included or exported in an
-Image package. Only exact recovered image bytes, bounded provenance, settings,
-hashes, prompts, and run cards enter the explicit schema-1 output.
+owned as in-memory Blobs after bounded validation. Exact direct-image and DOCX
+media bytes may retain EXIF or location metadata; the UI and package README
+warn about that custody. PDF visuals and page captures are locally rasterized
+to PNG and therefore are not byte-identical to embedded PDF streams. Original PDF and DOCX containers are never included or exported in an Image package;
+original ZIP containers are also excluded. Only retained image bytes, bounded provenance, settings, hashes,
+prompts, and run cards enter the explicit schema-1 output.
 
 Image OCR is off by default, local, and review-gated. Detected text remains in
 memory; only accepted OCR is quoted into a prompt. Purpose-scoped URLs back
-bounded thumbnails, one focused preview, and lazy built cards. An occurrence object URL is revoked when that occurrence is removed or leaves its bounded lease window. A built-card object URL is revoked when package output is invalidated or replaced. All remaining object URLs are revoked on reset, portal navigation, or unmount.
+bounded thumbnails, one focused preview, and lazy built cards. An occurrence object URL is revoked when that occurrence is removed or leaves its bounded lease window. A built-card object URL is revoked when package output is invalidated or replaced. All remaining image-byte object URLs are revoked on reset, portal navigation, or unmount. The pinned local PDF parser uses one page-lifetime Blob URL for its application worker code; it contains no user image or document bytes and is not a storage record.
 
 Confirmation snapshots source bytes and configuration before asynchronous work.
 Any later source, OCR, inclusion, or setting mutation invalidates both the built

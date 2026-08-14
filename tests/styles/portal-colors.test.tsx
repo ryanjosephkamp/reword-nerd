@@ -36,7 +36,7 @@ describe("portal navigation colors", () => {
     const imagePortal = screen.getByRole("link", { name: "IMAGE" });
     fireEvent.click(screen.getByRole("button", { name: "Info" }));
     const updates = screen.getByRole("link", { name: "Updates" });
-    const community = screen.getByRole("link", { name: "Community" });
+    const community = screen.getByRole("link", { name: "Report a bug" });
 
     expect(getComputedStyle(textPortal).color).toBe("var(--color-ready)");
     expect(getComputedStyle(imagePortal).color).toBe("rgb(255, 159, 28)");

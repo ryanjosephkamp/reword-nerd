@@ -74,9 +74,9 @@ export function ImageSettingsPanel({
   };
 
   return <div className="image-settings-content">
-    <div role="tablist" aria-label="Image settings scope" className="image-settings-tabs">
-      <button type="button" role="tab" aria-selected={scope === "defaults"} onClick={() => setScope("defaults")}>DEFAULTS</button>
-      <button type="button" role="tab" aria-selected={scope === "selected"} onClick={() => setScope("selected")}>SELECTED [{selected.length}]</button>
+    <div role="group" aria-label="Image settings scope" className="image-settings-tabs">
+      <button type="button" aria-pressed={scope === "defaults"} onClick={() => setScope("defaults")}>DEFAULTS</button>
+      <button type="button" aria-pressed={scope === "selected"} onClick={() => setScope("selected")}>SELECTED [{selected.length}]</button>
     </div>
     {scope === "defaults" ? <section aria-label="Future image defaults">
       <p>These defaults are snapshotted only for images admitted later.</p>

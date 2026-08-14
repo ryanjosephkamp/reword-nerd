@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ownImageBytes } from "../../src/image/contracts";
 import type {
@@ -94,17 +94,25 @@ describe("Image intake UI", () => {
     expect(parseImagePdfPages("1.5", 3)).toBeNull();
   });
 
-  it("returns an explicit PDF capture choice and defaults Escape to embedded-only", () => {
+  it("returns an explicit PDF capture choice and restores its invoking control after choose, close, and Escape", async () => {
     const choices: ImagePdfCaptureChoice[] = [];
     const Harness = () => {
-      const [open, setOpen] = useState(true);
-      return <ImagePdfCaptureDialog
-        open={open}
-        request={{ inputName: "portfolio.pdf", path: "docs/portfolio.pdf", pageCount: 4 }}
-        onChoose={(choice) => { choices.push(choice); setOpen(false); }}
-      />;
+      const [open, setOpen] = useState(false);
+      const triggerRef = useRef<HTMLButtonElement>(null);
+      return <>
+        <button ref={triggerRef} type="button" onClick={() => setOpen(true)}>OPEN PDF CAPTURE</button>
+        {open ? <ImagePdfCaptureDialog
+          open
+          request={{ inputName: "portfolio.pdf", path: "docs/portfolio.pdf", pageCount: 4 }}
+          returnFocusRef={triggerRef}
+          onChoose={(choice) => { choices.push(choice); setOpen(false); }}
+        /> : null}
+      </>;
     };
-    const first = render(<Harness />);
+    render(<Harness />);
+    const trigger = screen.getByRole("button", { name: "OPEN PDF CAPTURE" });
+    trigger.focus();
+    fireEvent.click(trigger);
     expect(screen.getByRole("dialog", { name: "Capture PDF pages" })).toHaveTextContent("portfolio.pdf");
     expect(screen.getByRole("dialog", { name: "Capture PDF pages" })).toHaveTextContent("4 pages");
     fireEvent.click(screen.getByRole("radio", { name: "EMBEDDED + SELECTED PAGES" }));
@@ -112,11 +120,20 @@ describe("Image intake UI", () => {
     fireEvent.click(screen.getByRole("radio", { name: "HIGH" }));
     fireEvent.click(screen.getByRole("button", { name: "USE PDF CHOICE" }));
     expect(choices).toEqual([{ mode: "embedded-and-pages", pages: [1, 2, 4], quality: "high" }]);
-    first.unmount();
+    await act(async () => undefined);
+    expect(trigger).toHaveFocus();
 
-    render(<Harness />);
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: "Use embedded PDF images only" }));
+    expect(choices.at(-1)).toEqual({ mode: "embedded-only" });
+    await act(async () => undefined);
+    expect(trigger).toHaveFocus();
+
+    fireEvent.click(trigger);
     act(() => { fireEvent.keyDown(screen.getByRole("dialog", { name: "Capture PDF pages" }), { key: "Escape" }); });
     expect(choices.at(-1)).toEqual({ mode: "embedded-only" });
+    await act(async () => undefined);
+    expect(trigger).toHaveFocus();
   });
 
   it("keeps an invalid page choice open with an accessible error", () => {

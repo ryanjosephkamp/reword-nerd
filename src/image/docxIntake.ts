@@ -70,6 +70,8 @@ const CONTENT_TYPE_EXTENSIONS: Readonly<Record<string, "png" | "jpg" | "webp" | 
   "image/webp": "webp",
   "image/avif": "avif",
 });
+const DOCX_DIAGNOSTIC_WARNING = "The DOCX converter reported a non-fatal diagnostic; review extracted images.";
+const DOCX_DECORATIVE_WARNING = "This small DOCX visual may be decorative; review its inclusion.";
 
 function decodeBase64(value: string): Uint8Array {
   try {
@@ -232,11 +234,24 @@ export async function extractDocxImages(source: Blob, options: ExtractDocxOption
   }
   if (result.messages.some(({ type }) => type === "error")) failImageIntake("MALFORMED_DOCX");
   if (images.length === 0 && issues.length === 0) failImageIntake("MALFORMED_DOCX");
+  const warnings = result.messages.length > 0 ? [DOCX_DIAGNOSTIC_WARNING] : [];
+  const reviewedImages = images.map((candidate) => {
+    const candidateWarnings = [...candidate.warnings];
+    if ((candidate.width < 64 || candidate.height < 64)
+      && !candidateWarnings.includes(DOCX_DECORATIVE_WARNING)) {
+      candidateWarnings.push(DOCX_DECORATIVE_WARNING);
+    }
+    for (const warning of warnings) {
+      if (!candidateWarnings.includes(warning)) candidateWarnings.push(warning);
+    }
+    return Object.freeze({
+      ...candidate,
+      warnings: Object.freeze(candidateWarnings),
+    });
+  });
   return Object.freeze({
-    images: Object.freeze(images),
+    images: Object.freeze(reviewedImages),
     issues: Object.freeze(issues),
-    warnings: Object.freeze(result.messages.length > 0
-      ? ["The DOCX converter reported a non-fatal diagnostic; review extracted images."]
-      : []),
+    warnings: Object.freeze(warnings),
   });
 }

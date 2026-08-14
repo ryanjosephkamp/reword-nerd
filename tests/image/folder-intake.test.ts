@@ -34,12 +34,14 @@ function file(
 
 function pdfAdapter(options: { malformed?: boolean } = {}): ImagePdfAdapter {
   const page: ImagePdfPage = {
-    enumerateEmbeddedRasters: async () => [{
-      width: 32,
-      height: 24,
-      readPng: async () => PNG.slice(),
-      close: () => undefined,
-    }],
+    async *enumerateEmbeddedRasters() {
+      yield {
+        width: 32,
+        height: 24,
+        readPng: async () => PNG.slice(),
+        close: () => undefined,
+      };
+    },
     renderCapturePng: async () => ({ bytes: PNG.slice(), width: 32, height: 24 }),
     cleanup: () => undefined,
   };

@@ -52,7 +52,7 @@ test("real local Image package is deterministic, portable, stale-safe, and side-
   await expect(page.getByRole("button", { name: "Focus two.png" })).toBeVisible();
   await page.getByRole("checkbox", { name: "Select one.png" }).check();
   await page.getByRole("checkbox", { name: "Select two.png" }).check();
-  await page.getByRole("tab", { name: "SELECTED [2]" }).click();
+  await page.getByRole("button", { name: "SELECTED [2]" }).click();
   await page.getByRole("checkbox", { name: "Apply Model family" }).check();
   await page.getByLabel("Selected model family").selectOption("ideogram");
   await page.getByRole("button", { name: "APPLY TO 2 IMAGES" }).click();

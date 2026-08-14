@@ -421,8 +421,8 @@ describe("Image package public revalidation", () => {
       packageByteCount: result.output.packageByteCount,
       packageSha256: result.output.packageSha256,
     }).toEqual({
-      packageByteCount: 14_327,
-      packageSha256: "02b7e0a92b4a93638e5e0053a2f02507aca8d9783dc45051f2054f3cc140d6d7",
+      packageByteCount: 14_599,
+      packageSha256: "4bb6074719a34b93bfc25e66d5338774d7272aa17998026fcd1f8826da5e2069",
     });
     expect(result.output.previewPairs).toHaveLength(1);
 
@@ -467,7 +467,10 @@ describe("Image package public revalidation", () => {
     expect(metadata).not.toMatch(/occurrenceId|incarnation|reviewRevision|sessionGeneration|buildGeneration|metadataSha256|openMeSha256/u);
     expect(new TextDecoder().decode(files.get("pairs/001-source/prompt.txt"))).toMatch(/Goal: Faithful rendition[\s\S]*\n$/u);
     expect(new TextDecoder().decode(files.get("pairs/001-source/run-card.md"))).toMatch(/^# Provider run card[\s\S]*\n$/u);
-    expect(new TextDecoder().decode(files.get("README.md"))).toMatch(/EXIF|location|one source image|one prompt|stochastic|ownership|provider/u);
+    const packageReadme = new TextDecoder().decode(files.get("README.md"));
+    expect(packageReadme).toMatch(/EXIF|location|one source image|one prompt|stochastic|ownership|provider/u);
+    expect(packageReadme).toMatch(/Direct-image[\s\S]{0,100}DOCX[\s\S]{0,100}preserved exactly/iu);
+    expect(packageReadme).toMatch(/PDF[\s\S]{0,100}rasterized PNG[\s\S]{0,120}not original PDF image-stream bytes/iu);
   });
 
   it("retains duplicate pairs, queue order semantics, and deterministic bytes", async () => {

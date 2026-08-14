@@ -485,7 +485,8 @@ function readmeText(full: ImageFullHtmlRecord): string {
     "Image generation is stochastic. Review faces, text, logos, fine geometry, and structured layouts before use.",
     "Confirm ownership or permission for each source and review the selected provider's current policies; this is informational, not legal advice.",
     "No model is executed, no image is uploaded, and no network request is made by these HTML files.",
-    "Exact source bytes are preserved and may retain EXIF or location metadata.",
+    "Direct-image and recoverable DOCX-media bytes are preserved exactly and may retain EXIF or location metadata.",
+    "PDF visuals are locally rasterized PNG recovery output, not original PDF image-stream bytes.",
     "Original PDF, DOCX, and ZIP containers are not included.",
     fullStatus,
   ].join("\n"));

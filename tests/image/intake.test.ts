@@ -20,10 +20,14 @@ import type { DocxConverterAdapter } from "../../src/image/docxIntake";
 
 const browserPdf = vi.hoisted(() => ({
   GlobalWorkerOptions: { workerSrc: "" },
+  AnnotationMode: { DISABLE: 0, ENABLE: 1 },
+  PagesMapper: { instance: { getPageId: (pageNumber: number) => pageNumber } },
   OPS: {
     paintImageXObject: 91,
     paintInlineImageXObject: 92,
   },
+  version: "5.4.624",
+  build: "384c6208b",
   getDocument: vi.fn(),
 }));
 
@@ -239,6 +243,47 @@ describe("Image intake integration", () => {
     ]);
   });
 
+  it("publishes DOCX diagnostics, decorative review flags, and folder symlink limits through every facade", async () => {
+    // Catches container-level warnings disappearing before top-level, folder, or ZIP admissions reach the workbench.
+    const docx = await compactDocxBytes();
+    const converter: DocxConverterAdapter = {
+      convertToHtml: async (_input, converterOptions) => {
+        await converterOptions.convertImage({ contentType: "image/png", read: async () => base64(PNG) });
+        return {
+          value: "<img>",
+          messages: [{ type: "warning", message: "synthetic non-fatal diagnostic" }],
+        };
+      },
+    };
+    const diagnostic = "The DOCX converter reported a non-fatal diagnostic; review extracted images.";
+    const decorative = "This small DOCX visual may be decorative; review its inclusion.";
+    const symlink = "Browser folder selection cannot independently verify original filesystem symlink identity.";
+    const exactBytes = "Exact source bytes are preserved and may retain EXIF or location metadata.";
+
+    const topLevel = harness({ docxConverter: converter });
+    const topLevelResult = await topLevel.service.intake([file(
+      "image-only.docx",
+      docx,
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )]);
+
+    const folder = harness({ docxConverter: converter });
+    const folderResult = await folder.service.intakeFolder([folderFile(
+      "image-only.docx",
+      "Album/image-only.docx",
+      docx,
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )]);
+
+    const outerZip = await zipWith("docs/image-only.docx", docx);
+    const zipped = harness({ docxConverter: converter });
+    const zipResult = await zipped.service.intake([file("bundle.zip", outerZip, "application/zip")]);
+
+    expect(topLevelResult.admissions[0].warnings).toEqual([exactBytes, decorative, diagnostic]);
+    expect(folderResult.admissions[0].warnings).toEqual([exactBytes, decorative, diagnostic, symlink]);
+    expect(zipResult.admissions[0].warnings).toEqual([exactBytes, decorative, diagnostic]);
+  });
+
   it("enforces authoritative cumulative count and bytes without phantom IDs or ordinals", async () => {
     // Catches admission code that ignores already-retained source custody.
     const { service } = harness();
@@ -256,12 +301,14 @@ describe("Image intake integration", () => {
     // Catches PDF/DOCX candidates doing expensive decode work before the authoritative session cap check.
     let decodes = 0;
     const rasterPage: ImagePdfPage = {
-      enumerateEmbeddedRasters: async () => [{
-        width: 40,
-        height: 30,
-        readPng: async () => PNG.slice(),
-        close: () => undefined,
-      }],
+      async *enumerateEmbeddedRasters() {
+        yield {
+          width: 40,
+          height: 30,
+          readPng: async () => PNG.slice(),
+          close: () => undefined,
+        };
+      },
       renderCapturePng: async () => ({ bytes: PNG.slice(), width: 40, height: 30 }),
       cleanup: () => undefined,
     };
@@ -350,7 +397,7 @@ describe("Image intake integration", () => {
         promise: Promise.resolve({
           numPages: 3,
           getPage: async (pageNumber): Promise<ImagePdfPage> => ({
-            enumerateEmbeddedRasters: async () => [],
+            async *enumerateEmbeddedRasters() { /* no embedded raster */ },
             renderCapturePng: async (scale) => {
               renders.push([pageNumber, scale]);
               return { bytes: PNG.slice(), width: 40, height: 30 };
@@ -384,7 +431,7 @@ describe("Image intake integration", () => {
     expect(result.admissions.map(({ provenance }) => provenance.pageNumber)).toEqual([1, 2, 3]);
   });
 
-  it.each(["operator-list", "image-object"] as const)(
+  it.each(["operator-stream", "image-object"] as const)(
     "reset aborts a browser PDF %s wait so fresh serialized intake proceeds before stale parser work settles",
     async (waitKind) => {
       // Catches detached PDF.js parser waits continuing to own the intake coordinator queue after reset.
@@ -394,18 +441,51 @@ describe("Image intake integration", () => {
       const destroyDocument = vi.fn(async () => undefined);
       const destroyTask = vi.fn(async () => undefined);
       const getObject = vi.fn(() => null);
-      const getOperatorList = vi.fn(() => waitKind === "operator-list"
-        ? staleWait
-        : Promise.resolve({ fnArray: [browserPdf.OPS.paintImageXObject], argsArray: [["img-1"]] }));
+      let readCount = 0;
+      const read = vi.fn(() => {
+        if (waitKind === "operator-stream") return staleWait;
+        readCount += 1;
+        if (readCount === 1) {
+          return Promise.resolve({
+            value: {
+              fnArray: [browserPdf.OPS.paintImageXObject],
+              argsArray: [["img-1"]],
+              length: 1,
+              lastChunk: true,
+              separateAnnots: null,
+            },
+            done: false,
+          });
+        }
+        return Promise.resolve({ value: undefined, done: true });
+      });
+      const cancel = vi.fn(async () => undefined);
+      const sendWithStream = vi.fn(() => ({
+        getReader: () => ({ read, cancel, releaseLock: vi.fn() }),
+      }));
       browserPdf.getDocument.mockReturnValue({
         promise: Promise.resolve({
           numPages: 1,
           getPage: async () => ({
-            getOperatorList,
+            _pageIndex: 0,
+            _transport: {
+              getRenderingIntent: () => ({
+                renderingIntent: 1,
+                cacheKey: "display_",
+                annotationStorageSerializable: { map: null, transfer: undefined },
+                modifiedIds: null,
+              }),
+              messageHandler: { sendWithStream },
+            },
             objs: {
               get: waitKind === "image-object"
                 ? getObject
                 : () => null,
+              *[Symbol.iterator]() { /* empty object store */ },
+            },
+            commonObjs: {
+              get: () => null,
+              *[Symbol.iterator]() { /* empty object store */ },
             },
             cleanup: () => undefined,
           }),
@@ -419,8 +499,8 @@ describe("Image intake integration", () => {
         file("stale.pdf", new TextEncoder().encode("%PDF-1.7\nfixture"), "application/pdf"),
       ]);
       void stale.catch(() => undefined);
-      await vi.waitFor(() => waitKind === "operator-list"
-        ? expect(getOperatorList).toHaveBeenCalledOnce()
+      await vi.waitFor(() => waitKind === "operator-stream"
+        ? expect(read).toHaveBeenCalledOnce()
         : expect(getObject).toHaveBeenCalledOnce());
 
       service.reset();
@@ -429,6 +509,7 @@ describe("Image intake integration", () => {
       await expect(fresh).resolves.toMatchObject({ admissions: [expect.objectContaining({ id: "occ-1" })] });
       await expect(stale).rejects.toMatchObject({ name: "AbortError" });
       expect(staleWorkSettled).toBe(false);
+      expect(cancel).toHaveBeenCalledOnce();
       expect(destroyDocument).toHaveBeenCalledOnce();
       expect(destroyTask).toHaveBeenCalledOnce();
     },
@@ -445,12 +526,38 @@ describe("Image intake integration", () => {
     const render = vi.fn(() => ({ promise: renderWait, cancel: cancelRender }));
     const destroyDocument = vi.fn(async () => undefined);
     const destroyTask = vi.fn(async () => undefined);
+    const sendWithStream = vi.fn(() => ({
+      getReader: () => ({
+        read: vi.fn(() => new Promise<never>(() => undefined)),
+        cancel: vi.fn(async () => undefined),
+        releaseLock: vi.fn(),
+      }),
+    }));
     browserPdf.getDocument.mockReturnValue({
       promise: Promise.resolve({
         numPages: 1,
         getPage: async () => ({
-          getOperatorList: async () => ({ fnArray: [], argsArray: [] }),
-          objs: { get: () => null },
+          _pageIndex: 0,
+          _transport: {
+            getRenderingIntent: () => ({
+              renderingIntent: 1,
+              cacheKey: "display_",
+              annotationStorageSerializable: { map: null, transfer: undefined },
+              modifiedIds: null,
+            }),
+            messageHandler: { sendWithStream },
+          },
+          _intentStates: new Map(),
+          _pumpOperatorList: vi.fn(),
+          _renderPageChunk: vi.fn(),
+          objs: {
+            get: () => null,
+            *[Symbol.iterator]() { /* empty object store */ },
+          },
+          commonObjs: {
+            get: () => null,
+            *[Symbol.iterator]() { /* empty object store */ },
+          },
           getViewport: () => ({ width: 20, height: 10 }),
           render,
           cleanup: () => undefined,

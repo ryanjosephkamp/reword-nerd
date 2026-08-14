@@ -191,7 +191,7 @@ describe("Image queue interaction domains", () => {
     fireEvent.change(screen.getByLabelText("Add image files"), { target: { files: [futureFile] } });
     await screen.findByRole("group", { name: "future.png image controls" });
 
-    fireEvent.click(screen.getByRole("tab", { name: "SELECTED [0]" }));
+    fireEvent.click(screen.getByRole("button", { name: "SELECTED [0]" }));
     fireEvent.click(within(screen.getByRole("group", { name: "first.png image controls" })).getByRole("button", { name: "Focus first.png" }));
     expect(screen.getByLabelText("Focused model family")).toHaveValue("openai-gpt-image");
     fireEvent.click(within(screen.getByRole("group", { name: "future.png image controls" })).getByRole("button", { name: "Focus future.png" }));
@@ -211,7 +211,7 @@ describe("Image queue interaction domains", () => {
     fireEvent.click(within(first).getByRole("checkbox", { name: "Select first.png" }));
     fireEvent.click(within(second).getByRole("checkbox", { name: "Select second.png" }));
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    fireEvent.click(screen.getByRole("tab", { name: "SELECTED [2]" }));
+    fireEvent.click(screen.getByRole("button", { name: "SELECTED [2]" }));
 
     fireEvent.change(screen.getByLabelText("Focused aspect ratio"), { target: { value: "1:1" } });
     const mixed = screen.getByLabelText("Selected aspect ratio");
@@ -237,11 +237,24 @@ describe("Image queue interaction domains", () => {
   it("shows stable family labels separately from dated Midjourney metadata", async () => {
     await renderWithImages();
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-    fireEvent.click(screen.getByRole("tab", { name: "SELECTED [0]" }));
+    fireEvent.click(screen.getByRole("button", { name: "SELECTED [0]" }));
     fireEvent.change(screen.getByLabelText("Focused model family"), { target: { value: "midjourney" } });
 
     expect(screen.getByLabelText("Focused model family")).toHaveDisplayValue("Midjourney");
     expect(screen.getByText("Midjourney V8.2")).toBeInTheDocument();
     expect(screen.getByText(/best-effort influence rather than exact reconstruction/iu)).toBeInTheDocument();
+  });
+
+  it("exposes configuration scopes as ordinary pressed toggle buttons", async () => {
+    // Reintroducing role=tab without a complete tab contract must make this fail.
+    await renderWithImages();
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    const defaults = screen.getByRole("button", { name: "DEFAULTS" });
+    const selected = screen.getByRole("button", { name: "SELECTED [0]" });
+    expect(defaults).toHaveAttribute("aria-pressed", "true");
+    expect(selected).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(selected);
+    expect(defaults).toHaveAttribute("aria-pressed", "false");
+    expect(selected).toHaveAttribute("aria-pressed", "true");
   });
 });

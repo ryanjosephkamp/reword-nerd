@@ -135,5 +135,6 @@ reword-nerd-image-prompt-package.zip
 ```
 
 There is one `pairs/<pair-key>/` directory for each confirmed included image in
-queue order. Direct or extracted image bytes are exact. Original PDF, DOCX, and
-ZIP containers are not entries. See [Image manifest v1](image-package-manifest-v1.md).
+queue order. Direct-image and recoverable DOCX-media bytes remain exact; PDF
+visuals and page captures are locally rasterized to PNG. Original PDF, DOCX,
+and ZIP containers are not entries. See [Image manifest v1](image-package-manifest-v1.md).

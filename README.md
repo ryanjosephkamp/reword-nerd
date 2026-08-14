@@ -75,8 +75,19 @@ exists, the portal switch offers a new tab or an explicit in-tab session clear.
 
 The Image portal accepts direct PNG, JPEG, WebP, and AVIF files. It can also
 recover supported visuals from PDF and DOCX containers, folders, and safe ZIPs.
-PDF page capture is an explicit opt-in. Local English Image OCR is off by
-default, and only reviewed, accepted OCR text enters a prompt. Each retained
+PDF page capture is an explicit opt-in. For bounded local processing, PDF
+annotation appearances are not rendered. Asynchronously expanded PDF content,
+tiling patterns, Type3 glyph programs, and form groups (including transparency
+groups) are rejected before their nested visual programs are evaluated. PDF
+JPEG 2000 (JPX) and JBIG2 visuals are unsupported; ordinary PDF JPEG, Flate,
+and bounded CCITT decoding remain available. The pinned PDF worker applies a
+worker-lifetime, monotonic 128 MiB cap to `DecodeStream` buffer allocations and
+a separate 160,000,000-byte cumulative allowance to expanded PDF image samples,
+including base images and stream masks before sample-array work begins. These
+targeted guards do not claim to cap every internal PDF.js allocation.
+Filter-heavy or near-limit PDFs can therefore fail closed even when their final
+visible page would otherwise fit the normal image limits.
+Local English Image OCR is off by default, and only reviewed, accepted OCR text enters a prompt. Each retained
 image has independent Include/Omit, selection, settings, warnings, and review
 state; bulk settings replace only fields explicitly chosen for the selected
 images.
@@ -315,9 +326,11 @@ at most 32 MiB. Copy Prompt falls back to selecting the exact prompt; Copy Image
 falls back to Open Image, Download Image, and dragging, including under
 `file://`. The HTML makes no network request and uses no tracking or storage.
 
-Exact direct/extracted image bytes are preserved and may retain EXIF or location
-metadata. Original PDF, DOCX, and ZIP containers are provenance only and are
-not exported. See [Image manifest schema v1](docs/image-package-manifest-v1.md).
+Direct-image and recoverable DOCX-media bytes are preserved exactly and may
+retain EXIF or location metadata. PDF visuals and opt-in page captures are
+locally rasterized to PNG, so those bytes are recovery output rather than the
+original PDF image streams. Original PDF, DOCX, and ZIP containers are
+provenance only and are not exported. See [Image manifest schema v1](docs/image-package-manifest-v1.md).
 
 ## Privacy and browser support
 
