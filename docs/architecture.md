@@ -246,7 +246,7 @@ with posters and transcripts. Remotion remains authoring-only under
 `video/remotion/`; no Remotion runtime ships with the app. Videos and the brand
 logo are site assets only and never enter user ZIPs. The unchanged v0.5 clips
 predate project-workspace support; current written Help covers that workflow.
-Image Quick Start media remains a separate later gate and is not embedded yet.
+The Image Quick Start uses a dedicated orange same-origin video, poster, and transcript from the same authoring-only Remotion tree. The Text Quick Start media and behavior remain unchanged.
 
 Desktop Parameters visibility is session-only view state. The gear collapses
 the third column and allows Preview to fill the freed width; it does not alter

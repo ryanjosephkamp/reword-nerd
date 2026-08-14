@@ -41,6 +41,8 @@ describe("scoped Image workbench visual contract", () => {
     expect(cssRuleProperty(css, ".image-workbench .dialog-close", "width")).toBe("42px");
     expect(cssRuleProperty(css, ".image-workbench .dialog-close", "height")).toBe("42px");
     expect(cssRuleProperty(css, ".image-workbench .dialog-close svg", "display")).toBe("block");
+    expect(cssRuleProperty(css, ".image-workbench .demo-video-frame, .image-workbench .demo-transcript", "border-color"))
+      .toBe("var(--image-action)");
   });
 
   it("uses visible orange focus and a yellow review border plus textual state", () => {

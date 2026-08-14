@@ -389,6 +389,10 @@
 .image-workbench .info-group-links a {
   border-color: var(--image-action);
 }
+.image-workbench .demo-video-frame,
+.image-workbench .demo-transcript {
+  border-color: var(--image-action);
+}
 .image-workbench .info-group-links a:hover,
 .image-workbench .info-group-links a:focus-visible {
   color: var(--color-canvas);

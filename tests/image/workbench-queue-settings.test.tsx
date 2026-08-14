@@ -81,7 +81,7 @@ function harness() {
 async function renderWithImages() {
   window.localStorage.setItem(
     IMAGE_PREFERENCES_STORAGE_KEY,
-    JSON.stringify({ version: 1, data: { tutorialVersion: "0.8" } }),
+    JSON.stringify({ version: 1, data: { tutorialVersion: "0.8-image-quick-start" } }),
   );
   const value = harness();
   render(<ImageWorkbench services={value.services} />);

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ImageApp } from "../../src/image/ImageApp";
 import { CANONICAL_IMAGE_URL, shareImageCanonicalUrl } from "../../src/image/share";
 
-const imagePreferences = JSON.stringify({ version: 1, data: { tutorialVersion: "0.8" } });
+const imagePreferences = JSON.stringify({ version: 1, data: { tutorialVersion: "0.8-image-quick-start" } });
 
 afterEach(() => vi.unstubAllGlobals());
 

@@ -268,6 +268,8 @@ position while preserving the same hierarchy and session-only meaning.
 - Existing Text demo video bytes and tutorial version remain unchanged. Text Quick Start
   and Text Help label those clips as document-workflow demonstrations that predate
   project-workspace support.
+- Image Quick Start uses its own silent, same-origin orange video walkthrough,
+  poster, and transcript. It does not reuse or recolor the Text tutorial.
 
 ## v0.5.1 polish
 

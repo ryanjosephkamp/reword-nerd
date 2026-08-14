@@ -71,7 +71,7 @@ describe("Image intake UI", () => {
   it("routes the real file and folder controls through the top-level facade and reports its ledger", async () => {
     window.localStorage.setItem(
       IMAGE_PREFERENCES_STORAGE_KEY,
-      JSON.stringify({ version: 1, data: { tutorialVersion: "0.8" } }),
+      JSON.stringify({ version: 1, data: { tutorialVersion: "0.8-image-quick-start" } }),
     );
     const harness = componentHarness();
     render(<ImageWorkbench services={harness.services} />);

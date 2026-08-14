@@ -1,5 +1,6 @@
 import { Composition, Folder } from "remotion";
 import { Overview } from "./compositions/Overview";
+import { ImageQuickStart } from "./image/ImageQuickStart";
 import { ReleaseUpdate } from "./release/ReleaseUpdate";
 import { RELEASE_UPDATE_DURATION_IN_FRAMES, ReleaseUpdateSchema } from "./release/ReleaseUpdate.contract";
 import { PackageScene } from "./scenes/PackageScene";
@@ -11,6 +12,7 @@ const format = { fps: 30, width: 1280, height: 720 } as const;
 export function RemotionRoot() {
   return <>
     <Composition id="Overview" component={Overview} durationInFrames={1200} {...format} />
+    <Composition id="ImageQuickStart" component={ImageQuickStart} durationInFrames={1200} {...format} />
     <Composition
       id="ReleaseUpdate"
       component={ReleaseUpdate}

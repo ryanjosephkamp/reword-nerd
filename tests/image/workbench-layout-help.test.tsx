@@ -49,6 +49,10 @@ describe("Image workbench layout and local-only guidance", () => {
     expect(dialog).toHaveTextContent("Build creates one ZIP for the current confirmed image set in memory");
     expect(dialog).toHaveTextContent("Download becomes available only for that current Ready package");
     expect(dialog).toHaveTextContent("Changes cancel or clear stale package work");
+    expect(within(dialog).getByLabelText("reword_nerd Image Quick Start demonstration")).toHaveAttribute(
+      "poster",
+      "/media/demo/image-overview-poster.webp",
+    );
 
     fireEvent.click(within(dialog).getByRole("button", { name: "START LOCAL SESSION" }));
     expect(screen.queryByRole("dialog", { name: "Image Quick Start" })).not.toBeInTheDocument();
@@ -68,14 +72,14 @@ describe("Image workbench layout and local-only guidance", () => {
         requestedChanges: "",
         mustPreserve: "",
       },
-      tutorialVersion: "0.8",
+      tutorialVersion: "0.8-image-quick-start",
     });
   });
 
   it("explains review, invalidation, and the completed local package workflow in Help", () => {
     window.localStorage.setItem(
       IMAGE_PREFERENCES_STORAGE_KEY,
-      JSON.stringify({ version: 1, data: { tutorialVersion: "0.8" } }),
+      JSON.stringify({ version: 1, data: { tutorialVersion: "0.8-image-quick-start" } }),
     );
     render(<ImageApp />);
 
@@ -90,5 +94,6 @@ describe("Image workbench layout and local-only guidance", () => {
     expect(help).toHaveTextContent("Direct image and recoverable DOCX media bytes may retain EXIF or location metadata");
     expect(help).toHaveTextContent("PDF visuals are locally rasterized PNG recovery output");
     expect(help).toHaveTextContent("No model runs, no credentials are used, and nothing uploads");
+    expect(within(help).getByLabelText("reword_nerd Image Quick Start demonstration")).toBeInTheDocument();
   });
 });

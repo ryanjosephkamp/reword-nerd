@@ -175,7 +175,7 @@ The Text first-visit Quick start includes a short, locally hosted overview video
 Text Help provides Settings, Review, and Package chapter videos with transcripts;
 the controls never autoplay and reduced-motion users receive static posters.
 These unchanged clips demonstrate the document workflow and predate the v0.6
-project-workspace flow; current written guidance covers both. The Image Quick Start remains a separate later video task and release gate; its current artwork and written guidance do not imply that media is embedded.
+project-workspace flow; current written guidance covers both. The Image Quick Start now includes a distinct orange, same-origin video walkthrough with a poster and transcript; it remains silent, synthetic, and local to the deployed site.
 
 ## Text accepted sources and v0.6 safety defaults
 

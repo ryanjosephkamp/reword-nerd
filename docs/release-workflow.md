@@ -7,9 +7,8 @@ request, change a GitHub setting, or deploy.
 
 The current application has a physical default Text page and a physical Image
 companion at `/reword-nerd/image/`. Image publication remains a separate owner-authorization gate; documenting or locally validating the page does not
-release it. The Image Quick Start remains a later task and separate gate, as do
-an Image Updates entry, release-update media, version change, merge, and Pages
-deployment.
+release it. The Image Quick Start now embeds a silent video hosted locally as same-origin media, with a poster and transcript; the Image Updates entry, separate release-update media,
+version change, merge, and Pages deployment remain separately gated.
 
 ## Scope and custody
 

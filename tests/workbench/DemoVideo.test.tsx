@@ -42,8 +42,11 @@ describe("DemoVideo", () => {
       expect(bytes(`${chapter}.webm`)).toBeLessThanOrEqual(650 * 1024);
       expect(bytes(`${chapter}.mp4`)).toBeLessThanOrEqual(900 * 1024);
     }
+    expect(bytes("image-overview.webm")).toBeLessThanOrEqual(1.8 * 1024 * 1024);
+    expect(bytes("image-overview.mp4")).toBeLessThanOrEqual(2.5 * 1024 * 1024);
+    expect(bytes("image-overview-poster.webp")).toBeLessThanOrEqual(100 * 1024);
     const aggregate = readdirSync(directory).reduce((total, filename) => total + bytes(filename), 0);
-    expect(aggregate).toBeLessThanOrEqual(8 * 1024 * 1024);
+    expect(aggregate).toBeLessThanOrEqual(12 * 1024 * 1024);
   });
 
   it("resolves local demo media under the configured deployment base", () => {
@@ -76,6 +79,35 @@ describe("DemoVideo", () => {
       "href",
       "/media/demo/overview-poster.webp",
     );
+  });
+
+  it("uses a distinct orange Image Quick Start walkthrough with local fallbacks and a complete transcript", () => {
+    // Removing the dedicated Image tutorial or accidentally reusing the Text overview must make this fail.
+    installMotionPreference(false);
+    const { container } = render(<DemoVideo demo={"image-overview" as never} />);
+
+    const video = screen.getByLabelText("reword_nerd Image Quick Start demonstration") as HTMLVideoElement;
+    expect(video).toHaveAttribute("controls");
+    expect(video).toHaveAttribute("playsinline");
+    expect(video).toHaveAttribute("preload", "none");
+    expect(video.muted).toBe(true);
+    expect(video.poster).toMatch(/\/media\/demo\/image-overview-poster\.webp$/u);
+    expect(Array.from(container.querySelectorAll("source")).map((source) => ({
+      src: source.getAttribute("src"),
+      type: source.getAttribute("type"),
+    }))).toEqual([
+      { src: "/media/demo/image-overview.webm", type: "video/webm" },
+      { src: "/media/demo/image-overview.mp4", type: "video/mp4" },
+    ]);
+    for (const guidance of [
+      "Add images or a folder",
+      "Focus an image by selecting its card",
+      "Apply shared settings to selected images",
+      "Review warnings and optional local OCR",
+      "Build the confirmed package in memory",
+      "Download the timestamped ZIP",
+      "No model runs and nothing uploads",
+    ]) expect(screen.getByText(new RegExp(guidance, "iu"))).toBeInTheDocument();
   });
 
   it("shows the poster and complete transcript instead of motion when reduced motion is requested", () => {

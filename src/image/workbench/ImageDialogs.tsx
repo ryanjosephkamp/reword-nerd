@@ -1,5 +1,6 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { ModalShell } from "../../app/workbench/components/ModalShell";
+import { DemoVideo } from "../../app/workbench/components/DemoVideo";
 import { COMMUNITY_LINKS, EXTERNAL_LINK_ATTRIBUTES } from "../../app/workbench/community";
 import { CURRENT_RELEASE_POST_PATH } from "../../updates/currentRelease";
 import { CANONICAL_IMAGE_URL } from "../share";
@@ -59,6 +60,7 @@ export function ImageDialogs(props: ImageDialogsProps) {
           <p>No model runs and nothing uploads.</p>
         </div>
       </div>
+      <DemoVideo demo="image-overview" className="image-quick-start-video" />
       <div className="dialog-actions"><button type="button" data-image-start onClick={props.onDismissQuickStart}>START LOCAL SESSION</button></div>
     </ModalShell>
 
@@ -97,6 +99,7 @@ export function ImageDialogs(props: ImageDialogsProps) {
       <p>DOWNLOAD ZIP is enabled only for the current Ready package.</p>
       <p>Changes invalidate confirmation and cancel or clear stale package work.</p>
       <p>No model runs, no credentials are used, and nothing uploads.</p>
+      <DemoVideo demo="image-overview" className="image-quick-start-video" />
     </ModalShell>
 
     <ModalShell

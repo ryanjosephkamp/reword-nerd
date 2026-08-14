@@ -6,6 +6,7 @@ export const colors = {
   text: "#d7dde8",
   muted: "#7f8a9d",
   mint: "#42e8b4",
+  orange: "#ff9f1c",
   amber: "#f2b84b",
 } as const;
 

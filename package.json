@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "preview": "vite preview",
-    "build": "npm run updates:check && npm run updates:video:check && tsc -b && vite build && npm run updates:render",
+    "build": "npm run updates:check && npm run updates:video:check && npm run image:video:check && tsc -b && vite build && npm run updates:render",
     "lint": "eslint .",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
@@ -20,6 +20,8 @@
     "updates:render": "node scripts/updates/render.mjs",
     "updates:video": "node scripts/updates/video.mjs",
     "updates:video:check": "node scripts/updates/video-check.mjs",
+    "image:video": "node scripts/media/image-quick-start.mjs",
+    "image:video:check": "node scripts/media/image-quick-start-check.mjs",
     "validate": "npm run lint && npm run typecheck && npm test -- --run && npm run build"
   },
   "dependencies": {

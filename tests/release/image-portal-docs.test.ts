@@ -184,7 +184,7 @@ describe("completed Image companion documentation contract", () => {
     const release = read("docs/release-workflow.md");
     expect(release).toContain("/reword-nerd/image/");
     expect(release).toMatch(/Image[^\n]*(?:release|publication)[^\n]*(?:separate|owner)[^\n]*(?:gate|authorization)/iu);
-    expect(release).toMatch(/Quick Start[^\n]*(?:separate|later)[^\n]*(?:gate|task)/iu);
+    expect(release).toMatch(/Image Quick Start[^\n]*(?:embedded|video)[^\n]*(?:local|same-origin)/iu);
     expect(release).not.toMatch(/v0\.8[^\n]*(?:published|deployed|released)/iu);
 
     const qa = read("docs/design-qa.md");
@@ -198,10 +198,10 @@ describe("completed Image companion documentation contract", () => {
 
     const readme = read("README.md");
     expect(readme).toMatch(/Text[^\n]*first-visit Quick start[^\n]*video/iu);
-    expect(readme).toMatch(/Image Quick Start[^\n]*(?:later|separate)[^\n]*(?:gate|task)/iu);
+    expect(readme).toMatch(/Image Quick Start[^\n]*(?:video|walkthrough)[^\n]*(?:local|same-origin)/iu);
 
     for (const path of ["README.md", "docs/architecture.md", "docs/design-system.md"]) {
-      expect(read(path)).not.toMatch(/(?<!Text )first-visit Quick start[^\n]*video/iu);
+      expect(read(path)).toMatch(/Image Quick Start[^\n]*(?:video|walkthrough)/iu);
     }
   });
 });

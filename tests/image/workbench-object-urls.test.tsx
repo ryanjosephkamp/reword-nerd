@@ -85,7 +85,7 @@ function installResponsiveViewport(initialWidth: number) {
 function rememberTutorial(): void {
   window.localStorage.setItem(
     IMAGE_PREFERENCES_STORAGE_KEY,
-    JSON.stringify({ version: 1, data: { tutorialVersion: "0.8" } }),
+    JSON.stringify({ version: 1, data: { tutorialVersion: "0.8-image-quick-start" } }),
   );
 }
 
