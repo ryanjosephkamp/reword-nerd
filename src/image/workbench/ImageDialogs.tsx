@@ -43,7 +43,8 @@ export function ImageDialogs(props: ImageDialogsProps) {
         <div>
           <p><strong>Processing stays local in this browser; exact source bytes may retain EXIF or location metadata.</strong></p>
           <p>Each included image produces one source image and one prompt. Bulk masks require Apply, and OCR must be reviewed.</p>
-          <p>Changes invalidate confirmation. Build and Download are unavailable in this preview.</p>
+          <p>Build creates one ZIP for the current confirmed image set in memory. Download becomes available only for that current Ready package.</p>
+          <p>Changes cancel or clear stale package work. Building does not download automatically.</p>
           <p>No model runs and nothing uploads.</p>
         </div>
       </div>
@@ -81,8 +82,9 @@ export function ImageDialogs(props: ImageDialogsProps) {
       <p>Use one source image and one prompt for each included image.</p>
       <p>Bulk masks change only checked fields after Apply.</p>
       <p>OCR text must be reviewed and accepted or rejected.</p>
-      <p>Changes invalidate image-set confirmation.</p>
-      <p>BUILD PACKAGE and DOWNLOAD ZIP remain unavailable in this preview.</p>
+      <p>BUILD PACKAGE creates the current confirmed set as one ZIP in memory. Building does not download automatically.</p>
+      <p>DOWNLOAD ZIP is enabled only for the current Ready package.</p>
+      <p>Changes invalidate confirmation and cancel or clear stale package work.</p>
       <p>No model runs, no credentials are used, and nothing uploads.</p>
     </ModalShell>
 

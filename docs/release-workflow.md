@@ -5,6 +5,12 @@ journal. It separates authoring evidence from remote publication authority.
 Running a local command does not publish, commit, push, merge, open a pull
 request, change a GitHub setting, or deploy.
 
+The current application has a physical default Text page and a physical Image
+companion at `/reword-nerd/image/`. Image publication remains a separate owner-authorization gate; documenting or locally validating the page does not
+release it. The Image Quick Start remains a later task and separate gate, as do
+an Image Updates entry, release-update media, version change, merge, and Pages
+deployment.
+
 ## Scope and custody
 
 Public authored Updates posts and release media are site material, distinct from
@@ -102,6 +108,7 @@ lint, typecheck, the unit suite, and the Pages-base build; that build already
 enforces Updates/video validation. It does not grant a local author permission
 to perform a remote action.
 
-After an authorized merge and Pages deployment, the owner should verify the
-live workbench, archive, post, feed, media, Issue forms, community links, Share
-controls, canonical deep links, and the absence of unexpected external requests.
+After an authorized merge and Pages deployment, the owner should verify both
+physical workbench pages, direct `/reword-nerd/image/` reloads, the archive,
+post, feed, media, Issue forms, community links, each clean canonical Share URL,
+and the absence of unexpected external requests.

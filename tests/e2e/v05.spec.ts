@@ -76,9 +76,8 @@ test("Quick Start and Help use lazy local demo media with transcripts and reduce
   expect(overviewWebm).toBeTruthy();
   expect(overviewMp4).toBeTruthy();
 
-  const applicationScript = await page.locator('script[type="module"][src]').evaluateAll((scripts) => (
-    scripts.map((script) => script.getAttribute("src")).find((src) => /(?:src\/main\.tsx|assets\/index-[^/]+\.js)$/u.test(src ?? ""))
-  ));
+  const applicationScript = await page.locator('script[type="module"][src]').first().getAttribute("src");
+  expect(applicationScript).toBeTruthy();
   const basePath = new URL(applicationScript!, page.url()).pathname.replace(/(?:assets\/[^/]+|src\/main\.tsx)$/u, "");
   for (const source of [overviewPoster!, overviewWebm!, overviewMp4!]) {
     expect(new URL(source, page.url()).origin).toBe(new URL(page.url()).origin);

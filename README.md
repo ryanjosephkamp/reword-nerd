@@ -4,15 +4,17 @@
   <img src="public/brand/reword-nerd-logo.webp" width="192" height="192" alt="reword-nerd logo">
 </p>
 
-`reword-nerd` is a local-first browser workbench for turning reviewed documents
-and safe text projects into portable rewriting workbooks. It extracts supported
-files in the browser, keeps source and prompts reviewable, and always generates
-both a One-shot workflow and a four-stage Manual workflow for the model you
-choose.
+`reword-nerd` is a local-first browser workbench with two isolated companion
+portals. The root `/reword-nerd/` Text portal remains the default for turning
+reviewed documents and safe text projects into portable rewriting workbooks.
+The physical `/reword-nerd/image/` Image companion page prepares one ZIP for a
+confirmed image set, with one source-image/prompt pair per included image. Both
+portals keep source and prompts reviewable in the browser.
 
-The application does not rewrite documents or contact model providers. Build
-creates a revision-bound ZIP and immutable workbook preview in memory; download
-remains a separate, explicit action.
+The application does not rewrite documents or contact model providers. Text
+Build creates a schema-6 Text workbook ZIP and immutable workbook preview in
+memory. Image Build creates a schema-1 Image package ZIP and built pair cards in
+memory. Download remains a separate, explicit action in either portal.
 
 ## Workflows
 
@@ -34,9 +36,9 @@ intermediate response needs review. Response fields hydrate downstream prompts.
 If an upstream response changes after a downstream prompt was edited, the edit
 is preserved and marked stale until **Reapply** or **Reset** is chosen.
 
-## Use the workbench
+## Use the Text workbench
 
-On first visit, Quick start offers **REVIEW SETTINGS** as the primary action and
+On the Text portal's first visit, Quick start offers **REVIEW SETTINGS** as the primary action and
 **ADD FILES** as the secondary action. Help can replay the guide. In an empty
 Review panel, **ADD FILES** opens the same multi-file picker directly.
 
@@ -63,6 +65,41 @@ Switching Source/Assets/Package, workflows, or package documents does not.
 the current prompt edits and model responses, including optional One-shot and
 Stage 4 responses. Treat it as sensitive document material. Progress is held in
 memory only until deliberately downloaded and is discarded with its build.
+
+## Use the Image companion
+
+Choose **IMAGE** in the shared header, or open `/reword-nerd/image/` directly.
+It is a genuinely separate Vite page and sibling state domain; entering it does
+not convert a Text session or broaden the Text package schema. If current work
+exists, the portal switch offers a new tab or an explicit in-tab session clear.
+
+The Image portal accepts direct PNG, JPEG, WebP, and AVIF files. It can also
+recover supported visuals from PDF and DOCX containers, folders, and safe ZIPs.
+PDF page capture is an explicit opt-in. Local English Image OCR is off by
+default, and only reviewed, accepted OCR text enters a prompt. Each retained
+image has independent Include/Omit, selection, settings, warnings, and review
+state; bulk settings replace only fields explicitly chosen for the selected
+images.
+
+After **CONFIRM IMAGE SET**, **BUILD PACKAGE** creates one ZIP for the confirmed image set with one pair per included image.
+The deterministic schema-1 Image ZIP keeps exactly one source image and one prompt in every pair, plus one provider run card; the generated prompt text is preserved exactly.
+The default goal is **Faithful rendition**:
+request a newly generated rendition that stays as close to the attached source
+as the selected model permits, applying only explicit requested changes. It
+does not claim pixel identity, return the unchanged file, or call/contact a
+model or provider. **DOWNLOAD ZIP** remains a separate deliberate action.
+
+The initial Image prompt profiles are OpenAI GPT Image (the first-time default),
+Google Nano Banana, xAI Grok Imagine, Black Forest Labs FLUX, Adobe Firefly,
+Ideogram, Midjourney, Stability AI, and Other/Custom. These are dated prompting
+strategies and run-card metadata, not API integrations. Midjourney is labelled
+as a best-effort variation for faithful-rendition work; Other/Custom stays
+provider-neutral rather than inventing controls.
+
+See [Image extraction limits](docs/extraction-limitations.md), the
+[Image schema-1 manifest](docs/image-package-manifest-v1.md), and
+[privacy boundary](docs/privacy.md) before using source material that may
+contain metadata or confidential content.
 
 ## Run locally
 
@@ -123,13 +160,13 @@ See the [release workflow](docs/release-workflow.md) for the required local
 authoring/review/video checks and the separately authorized owner publication
 steps.
 
-The first-visit Quick start includes a short, locally hosted overview video.
-Help provides Settings, Review, and Package chapter videos with transcripts;
+The Text first-visit Quick start includes a short, locally hosted overview video.
+Text Help provides Settings, Review, and Package chapter videos with transcripts;
 the controls never autoplay and reduced-motion users receive static posters.
 These unchanged clips demonstrate the document workflow and predate the v0.6
-project-workspace flow; current written guidance covers both.
+project-workspace flow; current written guidance covers both. The Image Quick Start remains a separate later video task and release gate; its current artwork and written guidance do not imply that media is embedded.
 
-## Accepted sources and v0.6 safety defaults
+## Text accepted sources and v0.6 safety defaults
 
 The workbench accepts `.txt`, Markdown, DOCX, PDF, LaTeX, HTML/XML, CSV/TSV,
 JSON/JSONL/NDJSON, YAML/TOML/INI/config, CSS/SQL, and common programming and
@@ -185,12 +222,20 @@ oversize is advisory; a Manual estimate over the selected limit requires an
 explicit source acknowledgement. Projects also show an amber risk at 25
 included files or when One-shot reaches at least half the selected context.
 
-Every Settings label has contextual help available by hover, focus, click, or
+Every Text Settings label has contextual help available by hover, focus, click, or
 tap. On desktop, the gear collapses or expands Parameters without changing
 settings or invalidating a package. One namespaced localStorage key saves only
 validated global model/context, rewrite, processing, and tutorial preferences.
 Files, extracted text, assets, OCR, reviews, per-file overrides, prompts,
 responses, progress, and packages remain session-only.
+
+Image uses a separate validated `reword-nerd:image-preferences:v1` key for
+Image defaults and its tutorial marker. It has no dedicated source-byte,
+filename, or path field and does not serialize selected Image files, selections,
+OCR, prompts, previews, or packages. Requested-changes and must-preserve defaults
+are saved free-form text exactly as entered within their bounds, so do not put
+sensitive names, paths, or instructions in saved defaults. The Text preference
+key and Text behavior remain isolated from Image defaults.
 
 **NEW SESSION** clears the current documents, review and workbook progress, and
 built package after confirmation while retaining those saved global settings.
@@ -256,18 +301,36 @@ remain available as [v5](docs/manifest-v5.md), [v4](docs/manifest-v4.md),
 [v3](docs/manifest-v3.md), [v2](docs/manifest-v2.md), and
 [v1](docs/manifest-v1.md).
 
+## Image schema-1 ZIP layout
+
+`reword-nerd-image-prompt-package.zip` uses the independent
+`image-reference-prompt-package` schema `1`. It contains root README/HTML and
+manifest files plus one ordered `pairs/<pair-key>/` directory per confirmed,
+included image. Each pair holds exact `source.<ext>` bytes, `prompt.txt`,
+`run-card.md`, `metadata.json`, and `OPEN-ME.html`.
+
+Root and per-pair HTML use responsive image cards and sibling paths after ZIP
+extraction. `OPEN-ME-FULL.html` is generated only when its final encoded size is
+at most 32 MiB. Copy Prompt falls back to selecting the exact prompt; Copy Image
+falls back to Open Image, Download Image, and dragging, including under
+`file://`. The HTML makes no network request and uses no tracking or storage.
+
+Exact direct/extracted image bytes are preserved and may retain EXIF or location
+metadata. Original PDF, DOCX, and ZIP containers are provenance only and are
+not exported. See [Image manifest schema v1](docs/image-package-manifest-v1.md).
+
 ## Privacy and browser support
 
-Validation, project classification, extraction, hashing, review, inert ORIGINAL
-rendering, prompt rendering, preview, clipboard handling, ZIP creation, and
-progress-copy creation occur locally. There is no
+Validation, project classification, Text and Image extraction, hashing, review,
+local OCR, inert ORIGINAL rendering, prompt rendering, preview, clipboard
+handling, ZIP creation, and progress-copy creation occur locally. There is no
 application backend, account system, provider call, telemetry, analytics, or
 runtime request that sends source data off-device. Uploaded code is never
-executed, compiled, or tested. The bundled logo, posters,
-and demo videos are same-origin site assets and are never placed in a user
-package. Info offers
-four deliberate navigation links—to the repository, creator GitHub, creator
-website, and sponsorship page—but opening one requires the user to activate it.
+executed, compiled, or tested. The bundled logos, Text tutorial posters,
+and Text demo videos are same-origin site assets and are never placed in a user
+package. Info offers deliberate same-origin and external navigation destinations
+for Updates, community reporting, repository, creator, and sponsorship; opening
+one requires the user to activate it.
 Deliberately downloaded ZIP and progress files are then governed by the browser,
 operating system, and storage destination.
 
@@ -283,6 +346,7 @@ but do not have equivalent automated release coverage.
 - [Privacy](docs/privacy.md)
 - [Extraction limitations](docs/extraction-limitations.md)
 - [Manifest v6](docs/manifest-v6.md)
+- [Image manifest v1](docs/image-package-manifest-v1.md)
 - [Directory structure](docs/directory-structure.md)
 - [Design system](docs/design-system.md)
 - [Model guidance](docs/model-guidance/README.md)

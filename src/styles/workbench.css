@@ -3085,3 +3085,10 @@ button:disabled {
     transition-duration: 0.01ms !important;
   }
 }
+
+@media (max-width: 379px) {
+  .workbench-header {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+}

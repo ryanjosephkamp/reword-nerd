@@ -54,6 +54,48 @@ DOCX and LaTeX images are deduplicated and assigned stable asset IDs where
 supported. Decorative classification is conservative and remains reviewable.
 Review tables, equations, footnotes, tracked changes, captions, and placement.
 
+## Image companion intake and limits
+
+The separate Image portal accepts direct PNG, JPEG (`.jpg`/`.jpeg`), WebP, and
+AVIF. It also accepts PDF and DOCX containers for local visual extraction, plus
+a selected folder or safe ZIP containing those supported sources. An image-only
+or textless PDF/DOCX is valid here when recoverable visuals exist; this does not
+change the Text portal's text-extraction rules.
+
+Every direct image is checked for supported extension, magic signature, MIME
+coherence, successful decode, dimensions, and exact byte count before admission.
+PDF embedded images are attempted first. Page capture remains explicit opt-in
+with selected pages and quality; it is not an automatic substitute for missing
+figures. DOCX reads only safe OOXML media relationships. Folder intake
+normalizes relative paths and rejects traversal and portability collisions, but a browser-selected folder cannot independently verify original filesystem symlink identity.
+Safe ZIP intake additionally rejects link entries, encryption, collisions, nested archives, and archive-bomb conditions before publishing admissions. Duplicate images remain separate queue items; users may Include/Omit or Remove them explicitly.
+
+Image v1 rejects SVG, GIF, BMP, TIFF, HEIC, nested archives, encrypted or
+malformed containers, and remote HTML/Markdown images with a specific local
+error. Likely decorative assets remain available but carry a review warning.
+
+Image-specific safety bounds are:
+
+- maximum 100 retained images per session;
+- maximum 20 MiB for each direct image, PDF/DOCX container, or ZIP input;
+- maximum 100 MiB of retained encoded image bytes across the session;
+- maximum 40 megapixels and 16,384 pixels on either decoded axis;
+- safe ZIP metadata is capped at 500 entries, 100 MiB expanded bytes, and a
+  100:1 compression ratio; paths are capped at 1,024 UTF-8 bytes and 255 bytes
+  per segment;
+- PDF containers are capped at 500 pages before extraction/capture.
+
+Image OCR is local English recognition and off by default. It may be requested
+per image or for an explicit bulk selection. Results always enter a needs-review
+state; only reviewed, accepted OCR enters an Image prompt or package. Rejected,
+failed, processing, and unreviewed OCR never enters output.
+
+Exact direct and extracted image bytes are retained rather than transcoded.
+That fidelity also means source bytes may retain EXIF or location metadata;
+review/sanitize sources before use when that matters. Original PDF, DOCX, and
+ZIP containers are not exported in the Image package—only exact recovered image
+bytes plus bounded provenance and hashes are retained.
+
 ## ORIGINAL preview limits
 
 ORIGINAL is view-only and cannot change review/package revision. PDF renders
