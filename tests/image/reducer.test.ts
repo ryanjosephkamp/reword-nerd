@@ -35,10 +35,11 @@ function dispatch(state: ImagePortalState, ...actions: ImagePortalAction[]): Ima
 }
 
 function admit(state: ImagePortalState, generation: number, ...items: ImageAdmission[]): ImagePortalState {
+  const expectedSessionGeneration = state.sessionGeneration;
   return dispatch(
     state,
-    { type: "operation/started", generation },
-    { type: "items/admitted", generation, items },
+    { type: "operation/started", generation, expectedSessionGeneration },
+    { type: "items/admitted", generation, expectedSessionGeneration, items },
   );
 }
 
@@ -195,6 +196,7 @@ describe("Image portal reducer", () => {
       type: "ocr/started",
       itemId: "first",
       generation: state.operationGeneration + 1,
+      expectedSessionGeneration: state.sessionGeneration,
     });
     expect([state.confirmedReviewGeneration, state.builtOutput]).toEqual([null, null]);
     const ocrGeneration = state.items[0].ocr.operationGeneration;
@@ -202,6 +204,7 @@ describe("Image portal reducer", () => {
       type: "ocr/completed",
       itemId: "first",
       generation: ocrGeneration,
+      expectedSessionGeneration: state.sessionGeneration,
       detectedText: "DRAFT",
     });
     const ocrRevision = state.items[0].reviewRevision;
@@ -219,12 +222,17 @@ describe("Image portal reducer", () => {
     const replacementGeneration = state.operationGeneration + 1;
     state = dispatch(
       state,
-      { type: "operation/started", generation: replacementGeneration },
+      {
+        type: "operation/started",
+        generation: replacementGeneration,
+        expectedSessionGeneration: state.sessionGeneration,
+      },
       {
         type: "source/replaced",
         itemId: "first",
         expectedSourceHash: "hash-first",
         generation: replacementGeneration,
+        expectedSessionGeneration: state.sessionGeneration,
         source: admission("first", "replacement-hash"),
       },
     );
@@ -237,19 +245,401 @@ describe("Image portal reducer", () => {
     expect([state.confirmedReviewGeneration, state.builtOutput]).toEqual([null, null]);
   });
 
+  it("keeps a pending admission epoch current while OCR starts and completes", () => {
+    // Catches an item-local OCR generation rejecting itself against, or consuming, the admission epoch.
+    let state = admit(createInitialImagePortalState(), 1, admission("first"));
+    state = imagePortalReducer(state, {
+      type: "operation/started",
+      generation: 10,
+      expectedSessionGeneration: state.sessionGeneration,
+    });
+    state = imagePortalReducer(state, {
+      type: "ocr/started",
+      itemId: "first",
+      generation: 1,
+      expectedSessionGeneration: state.sessionGeneration,
+    });
+
+    expect(state.operationGeneration).toBe(10);
+    expect(state.items[0].ocr).toMatchObject({ status: "processing", operationGeneration: 1 });
+
+    state = imagePortalReducer(state, {
+      type: "items/admitted",
+      generation: 10,
+      expectedSessionGeneration: state.sessionGeneration,
+      items: [admission("second")],
+    });
+    state = imagePortalReducer(state, {
+      type: "ocr/completed",
+      itemId: "first",
+      generation: 1,
+      expectedSessionGeneration: state.sessionGeneration,
+      detectedText: "FIRST",
+    });
+
+    expect(state.items.map((item) => item.id)).toEqual(["first", "second"]);
+    expect(state.items[0].ocr).toMatchObject({ status: "needs-review", detectedText: "FIRST" });
+  });
+
+  it("keeps a pending source replacement current when a higher OCR generation starts", () => {
+    // Catches OCR advancing the state epoch and making the matching source replacement look stale.
+    let state = admit(createInitialImagePortalState(), 1, admission("first"), admission("second"));
+    state = imagePortalReducer(state, {
+      type: "operation/started",
+      generation: 20,
+      expectedSessionGeneration: state.sessionGeneration,
+    });
+    state = imagePortalReducer(state, {
+      type: "ocr/started",
+      itemId: "second",
+      generation: 21,
+      expectedSessionGeneration: state.sessionGeneration,
+    });
+
+    expect(state.operationGeneration).toBe(20);
+
+    state = imagePortalReducer(state, {
+      type: "source/replaced",
+      itemId: "first",
+      expectedSourceHash: "hash-first",
+      generation: 20,
+      expectedSessionGeneration: state.sessionGeneration,
+      source: admission("first", "replacement-hash"),
+    });
+    state = imagePortalReducer(state, {
+      type: "ocr/completed",
+      itemId: "second",
+      generation: 21,
+      expectedSessionGeneration: state.sessionGeneration,
+      detectedText: "SECOND",
+    });
+
+    expect(state.items[0].sourceHash).toBe("replacement-hash");
+    expect(state.items[1].ocr).toMatchObject({ status: "needs-review", detectedText: "SECOND" });
+  });
+
+  it("preserves item-local OCR monotonicity when source replacement follows OCR", () => {
+    // Catches source replacement resetting the OCR counter and allowing an old-source completion to collide.
+    let state = admit(createInitialImagePortalState(), 1, admission("first"));
+    state = imagePortalReducer(state, {
+      type: "ocr/started",
+      itemId: "first",
+      generation: 1,
+      expectedSessionGeneration: state.sessionGeneration,
+    });
+    const oldCompletion = {
+      type: "ocr/completed",
+      itemId: "first",
+      generation: 1,
+      expectedSessionGeneration: state.sessionGeneration,
+      detectedText: "OLD SOURCE",
+    } as const;
+
+    state = imagePortalReducer(state, {
+      type: "operation/started",
+      generation: 10,
+      expectedSessionGeneration: state.sessionGeneration,
+    });
+    state = imagePortalReducer(state, {
+      type: "source/replaced",
+      itemId: "first",
+      expectedSourceHash: "hash-first",
+      generation: 10,
+      expectedSessionGeneration: state.sessionGeneration,
+      source: admission("first", "replacement-hash"),
+    });
+    expect(state.items[0].ocr).toMatchObject({ status: "off", operationGeneration: 1 });
+
+    state = imagePortalReducer(state, oldCompletion);
+    state = imagePortalReducer(state, {
+      type: "ocr/started",
+      itemId: "first",
+      generation: 1,
+      expectedSessionGeneration: state.sessionGeneration,
+    });
+    expect(state.items[0].ocr.status).toBe("off");
+
+    state = imagePortalReducer(state, {
+      type: "ocr/started",
+      itemId: "first",
+      generation: 2,
+      expectedSessionGeneration: state.sessionGeneration,
+    });
+    state = imagePortalReducer(state, {
+      type: "ocr/completed",
+      itemId: "first",
+      generation: 2,
+      expectedSessionGeneration: state.sessionGeneration,
+      detectedText: "NEW SOURCE",
+    });
+    expect(state.items[0].ocr).toMatchObject({ status: "needs-review", detectedText: "NEW SOURCE" });
+  });
+
+  it("allows concurrent item-local OCR and rejects stale, removed, or reset completions", () => {
+    // Catches one image's OCR generation superseding another image or late OCR restoring cleared state.
+    let state = admit(createInitialImagePortalState(), 7, admission("first"), admission("second"));
+    state = dispatch(
+      state,
+      {
+        type: "ocr/started",
+        itemId: "first",
+        generation: 1,
+        expectedSessionGeneration: state.sessionGeneration,
+      },
+      {
+        type: "ocr/started",
+        itemId: "second",
+        generation: 1,
+        expectedSessionGeneration: state.sessionGeneration,
+      },
+      {
+        type: "ocr/started",
+        itemId: "first",
+        generation: 2,
+        expectedSessionGeneration: state.sessionGeneration,
+      },
+    );
+
+    state = imagePortalReducer(state, {
+      type: "ocr/completed",
+      itemId: "first",
+      generation: 1,
+      expectedSessionGeneration: state.sessionGeneration,
+      detectedText: "STALE FIRST",
+    });
+    state = imagePortalReducer(state, {
+      type: "ocr/completed",
+      itemId: "second",
+      generation: 1,
+      expectedSessionGeneration: state.sessionGeneration,
+      detectedText: "CURRENT SECOND",
+    });
+    expect(state.items[0].ocr).toMatchObject({ status: "processing", detectedText: null, operationGeneration: 2 });
+    expect(state.items[1].ocr).toMatchObject({ status: "needs-review", detectedText: "CURRENT SECOND" });
+
+    state = imagePortalReducer(state, { type: "item/removed", itemId: "first" });
+    const afterRemoval = state;
+    state = imagePortalReducer(state, {
+      type: "ocr/completed",
+      itemId: "first",
+      generation: 2,
+      expectedSessionGeneration: state.sessionGeneration,
+      detectedText: "LATE REMOVED",
+    });
+    expect(state).toBe(afterRemoval);
+
+    state = imagePortalReducer(state, {
+      type: "ocr/started",
+      itemId: "second",
+      generation: 2,
+      expectedSessionGeneration: state.sessionGeneration,
+    });
+    const resetSessionGeneration = state.sessionGeneration;
+    state = imagePortalReducer(state, { type: "session/reset" });
+    state = imagePortalReducer(state, {
+      type: "ocr/completed",
+      itemId: "second",
+      generation: 2,
+      expectedSessionGeneration: resetSessionGeneration,
+      detectedText: "LATE RESET",
+    });
+    expect(state.items).toEqual([]);
+  });
+
+  it("rejects an old-session OCR completion after the same ID and generation are reused", () => {
+    // Catches deterministic item IDs making an old OCR completion indistinguishable after reset.
+    let state = admit(createInitialImagePortalState(), 7, admission("same-id"));
+    state = imagePortalReducer(state, {
+      type: "ocr/started",
+      itemId: "same-id",
+      generation: 1,
+      expectedSessionGeneration: state.sessionGeneration,
+    });
+    const oldSessionGeneration = state.sessionGeneration;
+    const oldCompletion = {
+      type: "ocr/completed",
+      itemId: "same-id",
+      generation: 1,
+      expectedSessionGeneration: oldSessionGeneration,
+      detectedText: "OLD SESSION",
+    } as const;
+
+    state = imagePortalReducer(state, { type: "session/reset" });
+    state = admit(state, 9, admission("same-id"));
+    state = imagePortalReducer(state, {
+      type: "ocr/started",
+      itemId: "same-id",
+      generation: 1,
+      expectedSessionGeneration: state.sessionGeneration,
+    });
+    state = imagePortalReducer(state, oldCompletion);
+
+    expect(state.items[0].ocr).toMatchObject({ status: "processing", detectedText: null });
+
+    state = imagePortalReducer(state, {
+      type: "ocr/completed",
+      itemId: "same-id",
+      generation: 1,
+      expectedSessionGeneration: state.sessionGeneration,
+      detectedText: "NEW SESSION",
+    });
+    expect(state.items[0].ocr).toMatchObject({ status: "needs-review", detectedText: "NEW SESSION" });
+  });
+
+  it("counts OCR Unicode code points and fails over-limit detection without retaining text", () => {
+    // Catches UTF-16 length checks or detected OCR crossing the bounded in-memory custody boundary.
+    const exactlyAtLimit = "😀".repeat(20_000);
+    const sensitiveMarker = "PRIVATE-OCR-CONTENT";
+    const overLimit = `${"x".repeat(20_001)}${sensitiveMarker}`;
+    const safeWarning = "OCR text exceeded the 20,000 Unicode code-point limit and was not retained.";
+    let state = admit(createInitialImagePortalState(), 1, admission("one"));
+
+    state = dispatch(
+      state,
+      {
+        type: "ocr/started",
+        itemId: "one",
+        generation: 1,
+        expectedSessionGeneration: state.sessionGeneration,
+      },
+      {
+        type: "ocr/completed",
+        itemId: "one",
+        generation: 1,
+        expectedSessionGeneration: state.sessionGeneration,
+        detectedText: exactlyAtLimit,
+      },
+    );
+    expect(state.items[0].ocr).toMatchObject({ status: "needs-review", detectedText: exactlyAtLimit });
+
+    state = dispatch(
+      state,
+      {
+        type: "ocr/started",
+        itemId: "one",
+        generation: 2,
+        expectedSessionGeneration: state.sessionGeneration,
+      },
+      {
+        type: "ocr/completed",
+        itemId: "one",
+        generation: 2,
+        expectedSessionGeneration: state.sessionGeneration,
+        detectedText: overLimit,
+      },
+    );
+    expect(state.items[0].ocr).toMatchObject({
+      status: "failed",
+      detectedText: null,
+      reviewedText: null,
+    });
+    expect(state.items[0].warnings).toEqual([safeWarning]);
+    expect(state.items[0].warnings.join(" ")).not.toContain(sensitiveMarker);
+    expect(state.items[0].warnings[0].length).toBeLessThan(120);
+
+    state = dispatch(
+      state,
+      {
+        type: "ocr/started",
+        itemId: "one",
+        generation: 3,
+        expectedSessionGeneration: state.sessionGeneration,
+      },
+      {
+        type: "ocr/completed",
+        itemId: "one",
+        generation: 3,
+        expectedSessionGeneration: state.sessionGeneration,
+        detectedText: overLimit,
+      },
+    );
+    expect(state.items[0].warnings).toEqual([safeWarning]);
+  });
+
+  it("keeps over-limit reviewed OCR pending and accepts exactly 20,000 code points", () => {
+    // Catches review bypassing the OCR custody limit or confirmation accepting unresolved oversized text.
+    const exactlyAtLimit = "🧠".repeat(20_000);
+    const sensitiveMarker = "PRIVATE-REVIEWED-OCR";
+    const overLimit = `${"y".repeat(20_001)}${sensitiveMarker}`;
+    const safeWarning = "OCR text exceeded the 20,000 Unicode code-point limit and was not retained.";
+    let state = admit(createInitialImagePortalState(), 1, admission("one"));
+    state = dispatch(
+      state,
+      {
+        type: "ocr/started",
+        itemId: "one",
+        generation: 1,
+        expectedSessionGeneration: state.sessionGeneration,
+      },
+      {
+        type: "ocr/completed",
+        itemId: "one",
+        generation: 1,
+        expectedSessionGeneration: state.sessionGeneration,
+        detectedText: "DRAFT",
+      },
+    );
+
+    state = imagePortalReducer(state, {
+      type: "ocr/reviewed",
+      itemId: "one",
+      expectedOperationGeneration: 1,
+      expectedReviewRevision: state.items[0].reviewRevision,
+      status: "accepted",
+      reviewedText: overLimit,
+    });
+    expect(state.items[0].ocr).toMatchObject({
+      status: "needs-review",
+      detectedText: "DRAFT",
+      reviewedText: null,
+    });
+    expect(state.items[0].warnings).toEqual([safeWarning]);
+    expect(state.items[0].warnings.join(" ")).not.toContain(sensitiveMarker);
+
+    state = imagePortalReducer(state, {
+      type: "review/confirmed",
+      expectedReviewGeneration: state.reviewGeneration,
+    });
+    expect(state.confirmedReviewGeneration).toBeNull();
+
+    state = imagePortalReducer(state, {
+      type: "ocr/reviewed",
+      itemId: "one",
+      expectedOperationGeneration: 1,
+      expectedReviewRevision: state.items[0].reviewRevision,
+      status: "accepted",
+      reviewedText: exactlyAtLimit,
+    });
+    expect(state.items[0].ocr).toMatchObject({ status: "accepted", reviewedText: exactlyAtLimit });
+  });
+
   it("rejects stale admission, OCR review, build completion, and post-reset completions", () => {
     // Catches a slow earlier async operation overwriting a newer review or resurrecting reset session data.
     let state = createInitialImagePortalState();
-    state = imagePortalReducer(state, { type: "operation/started", generation: 3 });
-    state = imagePortalReducer(state, { type: "items/admitted", generation: 2, items: [admission("stale")] });
+    state = imagePortalReducer(state, {
+      type: "operation/started",
+      generation: 3,
+      expectedSessionGeneration: state.sessionGeneration,
+    });
+    state = imagePortalReducer(state, {
+      type: "items/admitted",
+      generation: 2,
+      expectedSessionGeneration: state.sessionGeneration,
+      items: [admission("stale")],
+    });
     expect(state.items).toHaveLength(0);
-    state = imagePortalReducer(state, { type: "items/admitted", generation: 3, items: [admission("current")] });
+    state = imagePortalReducer(state, {
+      type: "items/admitted",
+      generation: 3,
+      expectedSessionGeneration: state.sessionGeneration,
+      items: [admission("current")],
+    });
 
-    state = imagePortalReducer(state, { type: "ocr/started", itemId: "current", generation: 4 });
-    state = imagePortalReducer(state, { type: "ocr/started", itemId: "current", generation: 5 });
-    state = imagePortalReducer(state, { type: "ocr/completed", itemId: "current", generation: 4, detectedText: "STALE" });
+    state = imagePortalReducer(state, { type: "ocr/started", itemId: "current", generation: 4, expectedSessionGeneration: state.sessionGeneration });
+    state = imagePortalReducer(state, { type: "ocr/started", itemId: "current", generation: 5, expectedSessionGeneration: state.sessionGeneration });
+    state = imagePortalReducer(state, { type: "ocr/completed", itemId: "current", generation: 4, expectedSessionGeneration: state.sessionGeneration, detectedText: "STALE" });
     expect(state.items[0].ocr).toMatchObject({ status: "processing", detectedText: null, operationGeneration: 5 });
-    state = imagePortalReducer(state, { type: "ocr/completed", itemId: "current", generation: 5, detectedText: "CURRENT" });
+    state = imagePortalReducer(state, { type: "ocr/completed", itemId: "current", generation: 5, expectedSessionGeneration: state.sessionGeneration, detectedText: "CURRENT" });
     const currentReviewRevision = state.items[0].reviewRevision;
     state = imagePortalReducer(state, {
       type: "ocr/reviewed",
@@ -283,23 +673,24 @@ describe("Image portal reducer", () => {
     const beforeReset = state;
     state = imagePortalReducer(state, { type: "session/reset" });
     expect(state.items).toEqual([]);
+    expect(state.sessionGeneration).toBe(beforeReset.sessionGeneration + 1);
     expect(state.operationGeneration).toBe(beforeReset.operationGeneration + 1);
     expect(state.reviewGeneration).toBe(beforeReset.reviewGeneration + 1);
     expect(state.buildGeneration).toBe(beforeReset.buildGeneration + 1);
-    state = imagePortalReducer(state, { type: "ocr/completed", itemId: "current", generation: 5, detectedText: "LATE" });
-    state = imagePortalReducer(state, { type: "items/admitted", generation: 3, items: [admission("resurrected")] });
+    state = imagePortalReducer(state, { type: "ocr/completed", itemId: "current", generation: 5, expectedSessionGeneration: beforeReset.sessionGeneration, detectedText: "LATE" });
+    state = imagePortalReducer(state, { type: "items/admitted", generation: 3, expectedSessionGeneration: beforeReset.sessionGeneration, items: [admission("resurrected")] });
     expect(state.items).toEqual([]);
   });
 
   it("ignores mismatched or duplicate generations instead of moving counters backward", () => {
     // Catches generation reuse allowing stale operations to become current again.
     let state = createInitialImagePortalState();
-    state = imagePortalReducer(state, { type: "operation/started", generation: 8 });
-    state = imagePortalReducer(state, { type: "operation/started", generation: 8 });
-    state = imagePortalReducer(state, { type: "operation/started", generation: 7 });
+    state = imagePortalReducer(state, { type: "operation/started", generation: 8, expectedSessionGeneration: state.sessionGeneration });
+    state = imagePortalReducer(state, { type: "operation/started", generation: 8, expectedSessionGeneration: state.sessionGeneration });
+    state = imagePortalReducer(state, { type: "operation/started", generation: 7, expectedSessionGeneration: state.sessionGeneration });
     expect(state.operationGeneration).toBe(8);
 
-    state = imagePortalReducer(state, { type: "items/admitted", generation: 8, items: [admission("one")] });
+    state = imagePortalReducer(state, { type: "items/admitted", generation: 8, expectedSessionGeneration: state.sessionGeneration, items: [admission("one")] });
     state = imagePortalReducer(state, { type: "review/confirmed", expectedReviewGeneration: state.reviewGeneration - 1 });
     expect(state.confirmedReviewGeneration).toBeNull();
     state = imagePortalReducer(state, { type: "review/confirmed", expectedReviewGeneration: state.reviewGeneration });

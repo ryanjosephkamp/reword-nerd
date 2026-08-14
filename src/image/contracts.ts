@@ -35,6 +35,18 @@ export interface ImagePromptSettings {
 }
 
 export const MAX_IMAGE_PROMPT_TEXT_LENGTH = 2_000;
+export const MAX_IMAGE_OCR_TEXT_LENGTH = 20_000;
+
+export function isImageOcrTextWithinLimit(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const iterator = value[Symbol.iterator]();
+  let codePoints = 0;
+  while (!iterator.next().done) {
+    codePoints += 1;
+    if (codePoints > MAX_IMAGE_OCR_TEXT_LENGTH) return false;
+  }
+  return true;
+}
 
 const IMAGE_MODEL_FAMILY_IDS: readonly ImageModelFamilyId[] = Object.freeze([
   "openai-gpt-image",

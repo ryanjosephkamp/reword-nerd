@@ -103,6 +103,25 @@ describe("Image prompt profiles", () => {
     expect(prompt).not.toContain("Aspect ratio intent:");
   });
 
+  it("defensively omits forged accepted OCR beyond 20,000 Unicode code points", () => {
+    // Catches an imported or forged item bypassing reducer custody and leaking oversized OCR into a prompt.
+    const sensitiveMarker = "PRIVATE-OCR-CONTENT";
+    const item = imageWithOcr({
+      status: "accepted",
+      detectedText: null,
+      reviewedText: sensitiveMarker.repeat(1_100),
+      operationGeneration: 1,
+      reviewRevision: 1,
+    });
+
+    const prompt = imagePromptProfile("openai-gpt-image").promptBuilder(item);
+
+    expect(prompt).toContain(
+      "No accepted reviewed OCR is supplied; preserve visible text by inspecting the source image.",
+    );
+    expect(prompt).not.toContain(sensitiveMarker);
+  });
+
   it("keeps provider instructions in a separate dated run card", () => {
     // Catches current model metadata being baked into the family label or appended to prompt prose.
     const item = imageWithOcr({

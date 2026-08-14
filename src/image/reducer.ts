@@ -4,6 +4,7 @@ import {
   createImagePortalItem,
   isImagePromptSettings,
   isImagePromptSettingValue,
+  isImageOcrTextWithinLimit,
   type CreateImagePortalItemInput,
   type ImagePortalItem,
   type ImagePromptSettings,
@@ -37,6 +38,7 @@ export interface ImagePortalState {
   readonly focusedItemId: string | null;
   readonly defaults: Readonly<ImagePromptSettings>;
   readonly tutorialSeenVersion: string | null;
+  readonly sessionGeneration: number;
   readonly operationGeneration: number;
   readonly reviewGeneration: number;
   readonly buildGeneration: number;
@@ -47,8 +49,13 @@ export interface ImagePortalState {
 }
 
 export type ImagePortalAction =
-  | { type: "operation/started"; generation: number }
-  | { type: "items/admitted"; generation: number; items: readonly ImageAdmission[] }
+  | { type: "operation/started"; generation: number; expectedSessionGeneration: number }
+  | {
+      type: "items/admitted";
+      generation: number;
+      expectedSessionGeneration: number;
+      items: readonly ImageAdmission[];
+    }
   | { type: "focus/changed"; itemId: string }
   | { type: "bulk/selection-changed"; itemId: string; selected: boolean }
   | { type: "item/inclusion-changed"; itemId: string; included: boolean }
@@ -61,9 +68,15 @@ export type ImagePortalAction =
       fields: readonly ImageSettingField[];
       patch: Partial<ImagePromptSettings>;
     }
-  | { type: "ocr/started"; itemId: string; generation: number }
-  | { type: "ocr/completed"; itemId: string; generation: number; detectedText: string }
-  | { type: "ocr/failed"; itemId: string; generation: number }
+  | { type: "ocr/started"; itemId: string; generation: number; expectedSessionGeneration: number }
+  | {
+      type: "ocr/completed";
+      itemId: string;
+      generation: number;
+      expectedSessionGeneration: number;
+      detectedText: string;
+    }
+  | { type: "ocr/failed"; itemId: string; generation: number; expectedSessionGeneration: number }
   | {
       type: "ocr/reviewed";
       itemId: string;
@@ -77,6 +90,7 @@ export type ImagePortalAction =
       itemId: string;
       expectedSourceHash: string;
       generation: number;
+      expectedSessionGeneration: number;
       source: ImageAdmission;
     }
   | { type: "review/confirmed"; expectedReviewGeneration: number }
@@ -101,6 +115,9 @@ const IMAGE_SETTING_FIELDS: readonly ImageSettingField[] = Object.freeze([
   "mustPreserve",
 ]);
 
+const IMAGE_OCR_TEXT_LIMIT_WARNING =
+  "OCR text exceeded the 20,000 Unicode code-point limit and was not retained.";
+
 export function createInitialImagePortalState(
   preferences: SavedImagePreferences | null = null,
 ): ImagePortalState {
@@ -112,6 +129,7 @@ export function createInitialImagePortalState(
       ...preferences?.defaults,
     },
     tutorialSeenVersion: preferences?.tutorialVersion ?? null,
+    sessionGeneration: 0,
     operationGeneration: 0,
     reviewGeneration: 0,
     buildGeneration: 0,
@@ -164,15 +182,22 @@ function canConfirm(items: readonly ImagePortalItem[]): boolean {
     && included.every((item) => item.ocr.status !== "processing" && item.ocr.status !== "needs-review");
 }
 
+function withWarning(warnings: readonly string[], warning: string): readonly string[] {
+  return warnings.includes(warning) ? warnings : [...warnings, warning];
+}
+
 export function imagePortalReducer(state: ImagePortalState, action: ImagePortalAction): ImagePortalState {
   switch (action.type) {
     case "operation/started":
-      return Number.isSafeInteger(action.generation) && action.generation > state.operationGeneration
+      return action.expectedSessionGeneration === state.sessionGeneration
+        && Number.isSafeInteger(action.generation)
+        && action.generation > state.operationGeneration
         ? { ...state, operationGeneration: action.generation }
         : state;
 
     case "items/admitted": {
-      if (action.generation !== state.operationGeneration) return state;
+      if (action.expectedSessionGeneration !== state.sessionGeneration
+        || action.generation !== state.operationGeneration) return state;
       const knownIds = new Set(state.items.map((item) => item.id));
       const admitted = action.items.flatMap((candidate) => {
         if (knownIds.has(candidate.id)) return [];
@@ -270,8 +295,9 @@ export function imagePortalReducer(state: ImagePortalState, action: ImagePortalA
     case "ocr/started": {
       const current = state.items.find((item) => item.id === action.itemId);
       if (!current
+        || action.expectedSessionGeneration !== state.sessionGeneration
         || !Number.isSafeInteger(action.generation)
-        || action.generation <= state.operationGeneration) return state;
+        || action.generation <= current.ocr.operationGeneration) return state;
       const items = replaceItem(state.items, action.itemId, (item) => ({
         ...item,
         ocr: {
@@ -283,23 +309,28 @@ export function imagePortalReducer(state: ImagePortalState, action: ImagePortalA
         },
         reviewRevision: item.reviewRevision + 1,
       }));
-      return { ...invalidated(state, items), operationGeneration: action.generation };
+      return invalidated(state, items);
     }
 
     case "ocr/completed": {
       const current = state.items.find((item) => item.id === action.itemId);
       if (!current
+        || action.expectedSessionGeneration !== state.sessionGeneration
         || current.ocr.status !== "processing"
         || current.ocr.operationGeneration !== action.generation) return state;
+      const withinLimit = isImageOcrTextWithinLimit(action.detectedText);
       return invalidated(state, replaceItem(state.items, action.itemId, (item) => ({
         ...item,
         ocr: {
           ...item.ocr,
-          status: "needs-review",
-          detectedText: action.detectedText,
+          status: withinLimit ? "needs-review" : "failed",
+          detectedText: withinLimit ? action.detectedText : null,
           reviewedText: null,
           reviewRevision: item.ocr.reviewRevision + 1,
         },
+        warnings: withinLimit
+          ? item.warnings
+          : withWarning(item.warnings, IMAGE_OCR_TEXT_LIMIT_WARNING),
         reviewRevision: item.reviewRevision + 1,
       })));
     }
@@ -307,6 +338,7 @@ export function imagePortalReducer(state: ImagePortalState, action: ImagePortalA
     case "ocr/failed": {
       const current = state.items.find((item) => item.id === action.itemId);
       if (!current
+        || action.expectedSessionGeneration !== state.sessionGeneration
         || current.ocr.status !== "processing"
         || current.ocr.operationGeneration !== action.generation) return state;
       return invalidated(state, replaceItem(state.items, action.itemId, (item) => ({
@@ -329,6 +361,19 @@ export function imagePortalReducer(state: ImagePortalState, action: ImagePortalA
         || current.ocr.operationGeneration !== action.expectedOperationGeneration
         || current.ocr.status !== "needs-review"
         || (action.status === "accepted" && action.reviewedText === null)) return state;
+      if (action.reviewedText !== null && !isImageOcrTextWithinLimit(action.reviewedText)) {
+        return invalidated(state, replaceItem(state.items, action.itemId, (item) => ({
+          ...item,
+          ocr: {
+            ...item.ocr,
+            status: "needs-review",
+            reviewedText: null,
+            reviewRevision: item.ocr.reviewRevision + 1,
+          },
+          warnings: withWarning(item.warnings, IMAGE_OCR_TEXT_LIMIT_WARNING),
+          reviewRevision: item.reviewRevision + 1,
+        })));
+      }
       return invalidated(state, replaceItem(state.items, action.itemId, (item) => ({
         ...item,
         ocr: {
@@ -344,6 +389,7 @@ export function imagePortalReducer(state: ImagePortalState, action: ImagePortalA
     case "source/replaced": {
       const current = state.items.find((item) => item.id === action.itemId);
       if (!current
+        || action.expectedSessionGeneration !== state.sessionGeneration
         || action.generation !== state.operationGeneration
         || action.source.id !== action.itemId
         || current.sourceHash !== action.expectedSourceHash) return state;
@@ -355,6 +401,10 @@ export function imagePortalReducer(state: ImagePortalState, action: ImagePortalA
         ...replacement,
         included: current.included,
         bulkSelected: current.bulkSelected,
+        ocr: {
+          ...replacement.ocr,
+          operationGeneration: current.ocr.operationGeneration,
+        },
         reviewRevision: current.reviewRevision + 1,
       };
       return invalidated(state, replaceItem(state.items, action.itemId, () => item));
@@ -405,6 +455,7 @@ export function imagePortalReducer(state: ImagePortalState, action: ImagePortalA
         ...state,
         items: [],
         focusedItemId: null,
+        sessionGeneration: state.sessionGeneration + 1,
         operationGeneration: state.operationGeneration + 1,
         reviewGeneration: state.reviewGeneration + 1,
         buildGeneration: state.buildGeneration + 1,

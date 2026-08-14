@@ -1,11 +1,11 @@
-import type { ImagePortalItem } from "./contracts";
+import { isImageOcrTextWithinLimit, type ImagePortalItem } from "./contracts";
 
 export const IMAGE_PROMPT_GOAL = "Faithful rendition" as const;
 
 function reviewedOcrInstruction(item: Readonly<ImagePortalItem>): string {
   if (item.settings.preserveVisibleText
     && item.ocr.status === "accepted"
-    && item.ocr.reviewedText !== null) {
+    && isImageOcrTextWithinLimit(item.ocr.reviewedText)) {
     return `Preserve visible text. Treat this accepted, reviewed OCR as quoted literal text: ${JSON.stringify(item.ocr.reviewedText)}.`;
   }
   if (item.settings.preserveVisibleText) {
