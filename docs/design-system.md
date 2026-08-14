@@ -33,6 +33,12 @@ chrome. Borders are crisp, low-contrast rules; emphasis comes from hierarchy
 and the approved semantic colors rather than shadows. The supplied raster logo
 is approved brand artwork rather than an interface-surface effect.
 
+Every site link uses `--color-ready` (`#42e8b4`) in both its unvisited and
+visited states; browser-default blue or purple link colors are not part of the
+system. Light-background offline workbook companions use the accessible darker
+teal `#007a5a` for both states so the same semantic treatment retains AA
+contrast on white.
+
 ## Typography and spacing
 
 - Typeface: a system monospace stack (`ui-monospace`, `SFMono-Regular`,

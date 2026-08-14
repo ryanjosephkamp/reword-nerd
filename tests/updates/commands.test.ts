@@ -81,6 +81,21 @@ describe("Updates authoring commands", () => {
     expect(await readFile(postPath, "utf8")).toContain("Human-reviewed sentence.");
   });
 
+  it("scaffolds articles and releases in terse changelog voice without first-person singular prose", async () => {
+    // Reintroducing "I added"-style scaffold copy must make generated public prose violate the editorial contract.
+    const root = await releaseRoot();
+    expect(await createUpdate(root, { slug: "tone-check", title: "Tone check", date: "2026-08-13" })).toBe("created");
+    expect(await prepareRelease(root, { version: "0.7.0", title: "reword-nerd v0.7", date: "2026-08-13" })).toBe("created");
+
+    for (const path of ["content/updates/tone-check.md", "content/updates/v0-7-0.md"]) {
+      const markdown = await readFile(join(root, path), "utf8");
+      expect(markdown).not.toMatch(/\b(?:i|me|my|mine|myself)\b/iu);
+      expect(markdown).toContain("- Record additions here.");
+      expect(markdown).toContain("- Record changes here.");
+      expect(markdown).toContain("- Record fixes here.");
+    }
+  });
+
   it("rolls back a mid-publication article failure with no orphan post, then recovers deterministically on rerun", async () => {
     const root = await releaseRoot();
     const ledgerPath = join(root, "content/updates/releases.json");

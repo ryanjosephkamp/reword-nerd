@@ -3,6 +3,7 @@ import { JSDOM } from "jsdom";
 import { describe, expect, it, vi } from "vitest";
 import { CURATED_MODEL_PROFILES, type PromptBundle } from "../../src/domain";
 import type { ExportDocumentInput } from "../../src/export";
+import { contrastRatio, inlineCssRuleProperty } from "../styles/css-contract";
 
 const encoder = new TextEncoder();
 const markerValues = {
@@ -78,6 +79,29 @@ async function sha256(bytes: Uint8Array): Promise<string> {
 }
 
 describe("v6 workbook package", () => {
+  it("styles standalone workbook and OPEN-ME links with the same readable teal after navigation", async () => {
+    // This catches packaged runbook/workbook links rendering browser blue or purple, or low-contrast mint on light paper.
+    const { buildPromptPackage } = await import("../../src/export");
+    const result = await buildPromptPackage([documentInput()]);
+    if (!result.ok) throw new Error("fixture should export");
+    const archive = await JSZip.loadAsync(result.blob, { checkCRC32: true });
+    const openMe = await archive.file("OPEN-ME.html")?.async("string");
+    if (!openMe) throw new Error("fixture should include OPEN-ME.html");
+
+    for (const html of [
+      result.workbooks[0].oneShot.html,
+      result.workbooks[0].manual.html,
+      result.workbooks[0].combined.html,
+      openMe,
+    ]) {
+      expect(inlineCssRuleProperty(html, "a:link, a:visited", "color")).toBe("var(--link)");
+      const teal = inlineCssRuleProperty(html, ":root", "--link");
+      expect(teal).toBe("#007a5a");
+      expect(contrastRatio(teal!, "#ffffff")).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(teal!, "#f7f7f7")).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
   it("emits the full dual-mode suite with exact prompt parity and hashes every generated artifact", async () => {
     // This catches a v5 package that drops a workflow companion, alters canonical prompt bytes, or records stale hashes.
     const { buildPromptPackage } = await import("../../src/export");

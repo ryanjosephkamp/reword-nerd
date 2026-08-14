@@ -12,6 +12,7 @@ const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/u;
 const RAW_HTML_OR_MDX = /<!--|<![^>]*>|<\/?[A-Za-z][^>]*>|<\/?>|^\s*(?:import|export)(?:\s|\{)/mu;
 const MDX_EXPRESSION = /(?<!\\)\{\s*(?:\/\*[\s\S]*?\*\/|[A-Za-z_$][\w$]*(?:\s*(?:\}|[.\x5B(+*/%?:=!<>-]))|[\d'"\x5B({])/u;
+const FIRST_PERSON_SINGULAR = /\b(?:i|me|my|mine|myself)\b/iu;
 
 function isValidIsoDate(value) {
   if (typeof value !== "string" || !ISO_DATE.test(value)) return false;
@@ -150,6 +151,8 @@ function markdownProblem(markdown, entry) {
   const proseWithoutInlineCode = markdown.replace(/`[^`\n]*`/gu, "");
   if (RAW_HTML_OR_MDX.test(proseWithoutInlineCode) || MDX_EXPRESSION.test(proseWithoutInlineCode)) return "raw HTML or MDX is not allowed";
   if (/\b(?:TODO|TBD|FIXME|PLACEHOLDER)\b|\[insert\b|lorem ipsum/iu.test(markdown)) return "placeholder prose is not allowed";
+  const proseWithoutLinkDestinations = proseWithoutInlineCode.replace(/\]\([^)]+\)/gu, "]");
+  if (FIRST_PERSON_SINGULAR.test(proseWithoutLinkDestinations)) return "first-person singular prose is not allowed; use terse changelog voice";
   if (!markdown.startsWith(`# ${entry.title}\n`)) return `first heading must exactly match ${entry.title}`;
   let prior = -1;
   for (const heading of REQUIRED_SECTIONS) {
@@ -458,7 +461,7 @@ function pageShell({ site, title, description, canonicalPath, type, body, jsonLd
   return validateRenderedPageScripts(html);
 }
 
-const UPDATES_CSS = `:root{color-scheme:dark;--bg:#070b0d;--panel:#0d1417;--line:#233238;--text:#e4eee9;--muted:#94aaa1;--mint:#83f0bd;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);line-height:1.65}a{color:var(--mint);text-underline-offset:.2em}.site-header,main,footer{width:min(100% - 2rem,72rem);margin-inline:auto}.site-header{display:flex;gap:.65rem;padding:1.25rem 0;border-bottom:1px solid var(--line)}main{padding:2.5rem 0 4rem}.eyebrow,.meta{color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-size:.78rem}h1{font-size:clamp(2rem,8vw,4.6rem);line-height:1.04;letter-spacing:-.05em;margin:.35rem 0 1rem}h2{margin-top:2.5rem;font-size:clamp(1.25rem,4vw,1.8rem)}p,li{max-width:72ch}.release-list{list-style:none;padding:0;display:grid;gap:1rem}.release-card{display:block;border:1px solid var(--line);background:var(--panel);padding:1.25rem;border-radius:.4rem}.release-card h2{margin:.35rem 0}.tags{display:flex;flex-wrap:wrap;gap:.5rem;padding:0;list-style:none}.tags li{border:1px solid var(--line);padding:.15rem .45rem}article{max-width:52rem}footer{border-top:1px solid var(--line);padding:1.25rem 0;color:var(--muted)}@media(max-width:420px){.site-header,main,footer{width:min(100% - 1.25rem,72rem)}main{padding-top:1.5rem}.release-card{padding:1rem}}
+const UPDATES_CSS = `:root{color-scheme:dark;--bg:#070b0d;--panel:#0d1417;--line:#233238;--text:#e4eee9;--muted:#94aaa1;--mint:#42e8b4;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);line-height:1.65}a:link,a:visited{color:var(--mint);text-underline-offset:.2em}.site-header,main,footer{width:min(100% - 2rem,72rem);margin-inline:auto}.site-header{display:flex;gap:.65rem;padding:1.25rem 0;border-bottom:1px solid var(--line)}main{padding:2.5rem 0 4rem}.eyebrow,.meta{color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-size:.78rem}h1{font-size:clamp(2rem,8vw,4.6rem);line-height:1.04;letter-spacing:-.05em;margin:.35rem 0 1rem}h2{margin-top:2.5rem;font-size:clamp(1.25rem,4vw,1.8rem)}p,li{max-width:72ch}.release-list{list-style:none;padding:0;display:grid;gap:1rem}.release-card{display:block;border:1px solid var(--line);background:var(--panel);padding:1.25rem;border-radius:.4rem}.release-card h2{margin:.35rem 0}.tags{display:flex;flex-wrap:wrap;gap:.5rem;padding:0;list-style:none}.tags li{border:1px solid var(--line);padding:.15rem .45rem}article{max-width:52rem}footer{border-top:1px solid var(--line);padding:1.25rem 0;color:var(--muted)}@media(max-width:420px){.site-header,main,footer{width:min(100% - 1.25rem,72rem)}main{padding-top:1.5rem}.release-card{padding:1rem}}
 `;
 
 const UPDATES_SHARE_CSS = ".share-control{margin:1rem 0 0;padding:.6rem .9rem;border:1px solid var(--mint);border-radius:.3rem;color:var(--mint);background:transparent;font:inherit;cursor:pointer}.share-control:hover,.share-control:focus-visible{color:var(--bg);background:var(--mint)}.share-status{min-height:1.65em;color:var(--mint)}.share-fallback-backdrop{position:fixed;inset:0;z-index:10;display:grid;place-items:center;padding:1rem;background:rgb(0 0 0 / .7)}.share-fallback{width:min(100%,36rem);padding:1.25rem;border:1px solid var(--mint);background:var(--panel)}.share-fallback textarea{width:100%;min-height:5.5rem;margin:.75rem 0;padding:.6rem;color:var(--text);background:var(--bg);border:1px solid var(--line);font:inherit}.share-fallback button{padding:.55rem .8rem;color:var(--mint);background:transparent;border:1px solid var(--mint);font:inherit;cursor:pointer}";
@@ -507,35 +510,35 @@ function journalScaffold(title, subject) {
 
 ## At a glance
 
-I prepared this ${subject} for a human editorial review before publication.
+Prepared this ${subject} for human editorial review before publication.
 
 ## Added
 
-- I recorded the release additions here.
+- Record additions here.
 
 ## Changed
 
-- I recorded the release changes here.
+- Record changes here.
 
 ## Fixed
 
-- I recorded the release fixes here.
+- Record fixes here.
 
 ## Why this matters
 
-I will explain the practical effect for people using reword-nerd.
+Explain the practical effect for people using reword-nerd.
 
 ## See it in action
 
-I will point to same-origin, synthetic release media when the release needs it.
+Point to same-origin, synthetic release media when the release needs it.
 
 ## How to use it
 
-I will document the shortest path through the new behavior.
+Document the shortest path through the new behavior.
 
 ## Compatibility and limitations
 
-I will state supported behavior and known limits directly.
+State supported behavior and known limits directly.
 
 ## Privacy
 
@@ -543,11 +546,11 @@ The workbench remains local and browser-only, with no analytics or provider call
 
 ## Verification
 
-I will replace this inventory note with the exact reviewed test and build evidence.
+Replace this inventory note with exact reviewed test and build evidence.
 
 ## What comes next
 
-I will describe the next bounded product step.
+Describe the next bounded product step.
 
 ## Feedback and contribution links
 
