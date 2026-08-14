@@ -170,6 +170,7 @@ export interface ImageOcrState {
 
 export interface ImagePortalItem {
   readonly id: string;
+  readonly incarnation: number;
   readonly sourceBytes: ImmutableImageBytes;
   readonly sourceHash: string;
   readonly mimeType: ImageMimeType;
@@ -186,6 +187,7 @@ export interface ImagePortalItem {
 
 export interface CreateImagePortalItemInput {
   readonly id: string;
+  readonly incarnation: number;
   readonly bytes: Uint8Array;
   readonly sourceHash: string;
   readonly mimeType: ImageMimeType;
@@ -198,8 +200,12 @@ export interface CreateImagePortalItemInput {
 }
 
 export function createImagePortalItem(input: CreateImagePortalItemInput): ImagePortalItem {
+  if (!Number.isSafeInteger(input.incarnation) || input.incarnation < 1) {
+    throw new Error("IMAGE_ITEM_INCARNATION_INVALID");
+  }
   return {
     id: input.id,
+    incarnation: input.incarnation,
     sourceBytes: ownImageBytes(input.bytes, input.mimeType),
     sourceHash: input.sourceHash,
     mimeType: input.mimeType,

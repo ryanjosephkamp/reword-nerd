@@ -8,6 +8,7 @@ import {
 function imageWithOcr(ocr: Readonly<ImageOcrState>) {
   const item = createImagePortalItem({
     id: "poster",
+    incarnation: 1,
     bytes: new Uint8Array([1, 2, 3]),
     sourceHash: "source-hash",
     mimeType: "image/png",

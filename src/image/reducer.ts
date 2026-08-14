@@ -12,7 +12,7 @@ import {
 } from "./contracts";
 import type { SavedImagePreferences } from "./preferences";
 
-export type ImageAdmission = Omit<CreateImagePortalItemInput, "settings">;
+export type ImageAdmission = Omit<CreateImagePortalItemInput, "settings" | "incarnation">;
 export type ImageSettingField = keyof ImagePromptSettings;
 
 export type ImageSettingChangeAction = {
@@ -38,6 +38,7 @@ export interface ImagePortalState {
   readonly focusedItemId: string | null;
   readonly defaults: Readonly<ImagePromptSettings>;
   readonly tutorialSeenVersion: string | null;
+  readonly nextItemIncarnation: number;
   readonly sessionGeneration: number;
   readonly operationGeneration: number;
   readonly reviewGeneration: number;
@@ -68,18 +69,37 @@ export type ImagePortalAction =
       fields: readonly ImageSettingField[];
       patch: Partial<ImagePromptSettings>;
     }
-  | { type: "ocr/started"; itemId: string; generation: number; expectedSessionGeneration: number }
+  | {
+      type: "ocr/started";
+      itemId: string;
+      generation: number;
+      expectedSessionGeneration: number;
+      expectedItemIncarnation: number;
+      expectedSourceHash: string;
+    }
   | {
       type: "ocr/completed";
       itemId: string;
       generation: number;
       expectedSessionGeneration: number;
+      expectedItemIncarnation: number;
+      expectedSourceHash: string;
       detectedText: string;
     }
-  | { type: "ocr/failed"; itemId: string; generation: number; expectedSessionGeneration: number }
+  | {
+      type: "ocr/failed";
+      itemId: string;
+      generation: number;
+      expectedSessionGeneration: number;
+      expectedItemIncarnation: number;
+      expectedSourceHash: string;
+    }
   | {
       type: "ocr/reviewed";
       itemId: string;
+      expectedSessionGeneration: number;
+      expectedItemIncarnation: number;
+      expectedSourceHash: string;
       expectedOperationGeneration: number;
       expectedReviewRevision: number;
       status: "accepted" | "rejected";
@@ -129,6 +149,7 @@ export function createInitialImagePortalState(
       ...preferences?.defaults,
     },
     tutorialSeenVersion: preferences?.tutorialVersion ?? null,
+    nextItemIncarnation: 1,
     sessionGeneration: 0,
     operationGeneration: 0,
     reviewGeneration: 0,
@@ -199,11 +220,13 @@ export function imagePortalReducer(state: ImagePortalState, action: ImagePortalA
       if (action.expectedSessionGeneration !== state.sessionGeneration
         || action.generation !== state.operationGeneration) return state;
       const knownIds = new Set(state.items.map((item) => item.id));
+      let nextItemIncarnation = state.nextItemIncarnation;
       const admitted = action.items.flatMap((candidate) => {
         if (knownIds.has(candidate.id)) return [];
         knownIds.add(candidate.id);
         return [createImagePortalItem({
           ...candidate,
+          incarnation: nextItemIncarnation++,
           settings: cloneImagePromptSettings(state.defaults),
         })];
       });
@@ -211,6 +234,7 @@ export function imagePortalReducer(state: ImagePortalState, action: ImagePortalA
       return {
         ...invalidated(state, [...state.items, ...admitted]),
         focusedItemId: state.focusedItemId ?? admitted[0].id,
+        nextItemIncarnation,
       };
     }
 
@@ -296,6 +320,8 @@ export function imagePortalReducer(state: ImagePortalState, action: ImagePortalA
       const current = state.items.find((item) => item.id === action.itemId);
       if (!current
         || action.expectedSessionGeneration !== state.sessionGeneration
+        || action.expectedItemIncarnation !== current.incarnation
+        || action.expectedSourceHash !== current.sourceHash
         || !Number.isSafeInteger(action.generation)
         || action.generation <= current.ocr.operationGeneration) return state;
       const items = replaceItem(state.items, action.itemId, (item) => ({
@@ -316,6 +342,8 @@ export function imagePortalReducer(state: ImagePortalState, action: ImagePortalA
       const current = state.items.find((item) => item.id === action.itemId);
       if (!current
         || action.expectedSessionGeneration !== state.sessionGeneration
+        || action.expectedItemIncarnation !== current.incarnation
+        || action.expectedSourceHash !== current.sourceHash
         || current.ocr.status !== "processing"
         || current.ocr.operationGeneration !== action.generation) return state;
       const withinLimit = isImageOcrTextWithinLimit(action.detectedText);
@@ -339,6 +367,8 @@ export function imagePortalReducer(state: ImagePortalState, action: ImagePortalA
       const current = state.items.find((item) => item.id === action.itemId);
       if (!current
         || action.expectedSessionGeneration !== state.sessionGeneration
+        || action.expectedItemIncarnation !== current.incarnation
+        || action.expectedSourceHash !== current.sourceHash
         || current.ocr.status !== "processing"
         || current.ocr.operationGeneration !== action.generation) return state;
       return invalidated(state, replaceItem(state.items, action.itemId, (item) => ({
@@ -357,6 +387,9 @@ export function imagePortalReducer(state: ImagePortalState, action: ImagePortalA
     case "ocr/reviewed": {
       const current = state.items.find((item) => item.id === action.itemId);
       if (!current
+        || action.expectedSessionGeneration !== state.sessionGeneration
+        || action.expectedItemIncarnation !== current.incarnation
+        || action.expectedSourceHash !== current.sourceHash
         || current.reviewRevision !== action.expectedReviewRevision
         || current.ocr.operationGeneration !== action.expectedOperationGeneration
         || current.ocr.status !== "needs-review"
@@ -395,6 +428,7 @@ export function imagePortalReducer(state: ImagePortalState, action: ImagePortalA
         || current.sourceHash !== action.expectedSourceHash) return state;
       const replacement = createImagePortalItem({
         ...action.source,
+        incarnation: state.nextItemIncarnation,
         settings: cloneImagePromptSettings(current.settings),
       });
       const item: ImagePortalItem = {
@@ -407,7 +441,10 @@ export function imagePortalReducer(state: ImagePortalState, action: ImagePortalA
         },
         reviewRevision: current.reviewRevision + 1,
       };
-      return invalidated(state, replaceItem(state.items, action.itemId, () => item));
+      return {
+        ...invalidated(state, replaceItem(state.items, action.itemId, () => item)),
+        nextItemIncarnation: state.nextItemIncarnation + 1,
+      };
     }
 
     case "review/confirmed":

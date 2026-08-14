@@ -11,6 +11,7 @@ describe("Image domain contracts", () => {
     const callerBytes = new Uint8Array([137, 80, 78, 71]);
     const item = createImagePortalItem({
       id: "image-1",
+      incarnation: 1,
       bytes: callerBytes,
       sourceHash: "sha256-source-1",
       mimeType: "image/png",
@@ -48,6 +49,7 @@ describe("Image domain contracts", () => {
     try {
       const item = createImagePortalItem({
         id: "cloneable-image",
+        incarnation: 2,
         bytes: new Uint8Array([0, 255, 17, 34]),
         sourceHash: "cloneable-hash",
         mimeType: "image/png",
@@ -98,6 +100,7 @@ describe("Image domain contracts", () => {
 
     const item = createImagePortalItem({
       id: "image-2",
+      incarnation: 3,
       bytes: new Uint8Array([1, 2, 3]),
       sourceHash: "sha256-source-2",
       mimeType: "image/webp",
