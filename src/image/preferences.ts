@@ -4,12 +4,14 @@ import {
   type ImageModelFamilyId,
   type ImagePromptSettings,
   type ImageSizeIntent,
+  MAX_IMAGE_PROMPT_TEXT_LENGTH,
 } from "./contracts";
 import { IMAGE_PROMPT_PROFILES } from "./profiles";
 
 export const IMAGE_PREFERENCES_STORAGE_KEY = "reword-nerd:image-preferences:v1";
 export const CURRENT_IMAGE_TUTORIAL_VERSION = "0.8";
-export const MAX_IMAGE_PREFERENCE_TEXT_LENGTH = 2_000;
+export const MAX_IMAGE_PREFERENCE_TEXT_LENGTH = MAX_IMAGE_PROMPT_TEXT_LENGTH;
+export const MAX_IMAGE_PREFERENCES_SERIALIZED_BYTES = 20_000;
 const IMAGE_PREFERENCES_SCHEMA_VERSION = 1 as const;
 
 export interface SavedImagePreferences {
@@ -27,9 +29,15 @@ interface PreferenceStorage {
 }
 
 function record(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null
     ? value as Record<string, unknown>
     : null;
+}
+
+function own(data: Record<string, unknown>, key: string): unknown {
+  return Object.hasOwn(data, key) ? data[key] : undefined;
 }
 
 function supported<T extends string>(value: unknown, choices: readonly T[]): T | undefined {
@@ -45,10 +53,10 @@ function decodeDefaults(value: unknown): Partial<ImagePromptSettings> | undefine
   if (!data) return undefined;
   const decoded: Partial<MutableImagePromptSettings> = {};
   const modelFamily = supported<ImageModelFamilyId>(
-    data.modelFamily,
+    own(data, "modelFamily"),
     IMAGE_PROMPT_PROFILES.map((profile) => profile.id),
   );
-  const aspectRatio = supported<ImageAspectRatio>(data.aspectRatio, [
+  const aspectRatio = supported<ImageAspectRatio>(own(data, "aspectRatio"), [
     "match-source",
     "provider-default",
     "1:1",
@@ -57,20 +65,21 @@ function decodeDefaults(value: unknown): Partial<ImagePromptSettings> | undefine
     "16:9",
     "9:16",
   ]);
-  const sizeIntent = supported<ImageSizeIntent>(data.sizeIntent, [
+  const sizeIntent = supported<ImageSizeIntent>(own(data, "sizeIntent"), [
     "match-source-where-supported",
     "highest-practical-quality",
   ]);
-  const backgroundBehavior = supported<ImageBackgroundBehavior>(data.backgroundBehavior, [
+  const backgroundBehavior = supported<ImageBackgroundBehavior>(own(data, "backgroundBehavior"), [
     "preserve-source",
     "provider-default",
   ]);
-  const requestedChanges = boundedText(data.requestedChanges, MAX_IMAGE_PREFERENCE_TEXT_LENGTH);
-  const mustPreserve = boundedText(data.mustPreserve, MAX_IMAGE_PREFERENCE_TEXT_LENGTH);
+  const requestedChanges = boundedText(own(data, "requestedChanges"), MAX_IMAGE_PREFERENCE_TEXT_LENGTH);
+  const mustPreserve = boundedText(own(data, "mustPreserve"), MAX_IMAGE_PREFERENCE_TEXT_LENGTH);
   if (modelFamily !== undefined) decoded.modelFamily = modelFamily;
   if (aspectRatio !== undefined) decoded.aspectRatio = aspectRatio;
   if (sizeIntent !== undefined) decoded.sizeIntent = sizeIntent;
-  if (typeof data.preserveVisibleText === "boolean") decoded.preserveVisibleText = data.preserveVisibleText;
+  const preserveVisibleText = own(data, "preserveVisibleText");
+  if (typeof preserveVisibleText === "boolean") decoded.preserveVisibleText = preserveVisibleText;
   if (backgroundBehavior !== undefined) decoded.backgroundBehavior = backgroundBehavior;
   if (requestedChanges !== undefined) decoded.requestedChanges = requestedChanges;
   if (mustPreserve !== undefined) decoded.mustPreserve = mustPreserve;
@@ -80,10 +89,11 @@ function decodeDefaults(value: unknown): Partial<ImagePromptSettings> | undefine
 function validatedPreferences(value: unknown): SavedImagePreferences {
   const data = record(value) ?? {};
   const decoded: { defaults?: Partial<ImagePromptSettings>; tutorialVersion?: string | null } = {};
-  const defaults = decodeDefaults(data.defaults);
-  const tutorialVersion = data.tutorialVersion === null
+  const defaults = decodeDefaults(own(data, "defaults"));
+  const rawTutorialVersion = own(data, "tutorialVersion");
+  const tutorialVersion = rawTutorialVersion === null
     ? null
-    : boundedText(data.tutorialVersion, 32);
+    : boundedText(rawTutorialVersion, 32);
   if (defaults !== undefined) decoded.defaults = defaults;
   if (tutorialVersion !== undefined) decoded.tutorialVersion = tutorialVersion;
   return decoded;
@@ -91,10 +101,13 @@ function validatedPreferences(value: unknown): SavedImagePreferences {
 
 export function decodeImagePreferences(serialized: string | null): SavedImagePreferences | null {
   if (serialized === null) return null;
+  if (new TextEncoder().encode(serialized).byteLength > MAX_IMAGE_PREFERENCES_SERIALIZED_BYTES) return null;
   try {
     const envelope = record(JSON.parse(serialized));
-    if (envelope?.version !== IMAGE_PREFERENCES_SCHEMA_VERSION || !record(envelope.data)) return null;
-    return validatedPreferences(envelope.data);
+    if (!envelope
+      || own(envelope, "version") !== IMAGE_PREFERENCES_SCHEMA_VERSION
+      || !record(own(envelope, "data"))) return null;
+    return validatedPreferences(own(envelope, "data"));
   } catch {
     return null;
   }

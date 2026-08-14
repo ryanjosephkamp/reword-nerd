@@ -49,8 +49,8 @@ describe("Image prompt profiles", () => {
       { id: "xai-grok-imagine", label: "xAI Grok Imagine", referenceModel: "grok-imagine-image-2.0", lastVerifiedAt: "2026-08-14", officialSourceUrls: ["https://docs.x.ai/developers/model-capabilities/images/editing"] },
       { id: "bfl-flux", label: "Black Forest Labs FLUX", referenceModel: "FLUX.2", lastVerifiedAt: "2026-08-14", officialSourceUrls: ["https://docs.bfl.ai/flux_2/flux2_image_editing"] },
       { id: "adobe-firefly", label: "Adobe Firefly", referenceModel: "Firefly Image 5", lastVerifiedAt: "2026-08-14", officialSourceUrls: ["https://developer.adobe.com/firefly-services/docs/firefly-api/guides/how-tos/cm-generate-image/feature-guide"] },
-      { id: "ideogram", label: "Ideogram", referenceModel: "Ideogram 3 Remix", lastVerifiedAt: "2026-08-14", officialSourceUrls: ["https://docs.ideogram.ai/using-ideogram/features-and-tools/remix"] },
-      { id: "midjourney", label: "Midjourney", referenceModel: "Current Midjourney Image Prompts", lastVerifiedAt: "2026-08-14", officialSourceUrls: ["https://docs.midjourney.com/hc/en-us/articles/32040250122381-Image-Prompts"] },
+      { id: "ideogram", label: "Ideogram", referenceModel: "Ideogram 3.0", lastVerifiedAt: "2026-08-14", officialSourceUrls: ["https://docs.ideogram.ai/using-ideogram/features-and-tools/remix"] },
+      { id: "midjourney", label: "Midjourney", referenceModel: "Midjourney V8.2", lastVerifiedAt: "2026-08-14", officialSourceUrls: ["https://docs.midjourney.com/hc/en-us/articles/32040250122381-Image-Prompts"] },
       { id: "stability-ai", label: "Stability AI", referenceModel: "Stable Image / SD3.5", lastVerifiedAt: "2026-08-14", officialSourceUrls: ["https://platform.stability.ai/docs/api-reference"] },
       { id: "other-custom", label: "Other/Custom", referenceModel: "User-selected image model", lastVerifiedAt: "2026-08-14", officialSourceUrls: [] },
     ]);
@@ -150,5 +150,40 @@ describe("Image prompt profiles", () => {
     expect(imagePromptProfile("other-custom").runCardBuilder(item)).toContain(
       "Provider-neutral: No provider-specific controls are assumed or invented.",
     );
+  });
+
+  it("describes a Midjourney final image through one Image Prompt influence rather than a generic edit", () => {
+    // Catches Midjourney receiving an edit-workflow instruction instead of truthful best-effort Image Prompt guidance.
+    const item = imageWithOcr({
+      status: "off",
+      detectedText: null,
+      reviewedText: null,
+      operationGeneration: 0,
+      reviewRevision: 0,
+    });
+    const profile = imagePromptProfile("midjourney");
+
+    expect(profile.promptBuilder(item)).toBe([
+      "Goal: Faithful rendition",
+      "",
+      "Use exactly one attached source image as an Image Prompt influence for one new creation.",
+      "Describe and create the desired final image as a best-effort variation guided by the source, rather than issuing a precise edit instruction.",
+      "Preserve the visible subject, composition, crop, framing, geometry, perspective, palette, lighting, texture, style, and typography as closely as the selected model supports.",
+      "Apply only the explicit requested changes. Do not introduce unrelated changes.",
+      "Requested changes: Change only the outer border to orange.",
+      "Must preserve: Keep the centered badge and all line breaks.",
+      "No accepted reviewed OCR is supplied; preserve visible text by inspecting the source image.",
+      "Preserve the source transparency and background behavior as closely as supported.",
+      "Review warning: Image generation is stochastic. Carefully compare faces, text, logos, geometry, and layout with the source before use.",
+      "Usage guidance: Confirm you own or may use the source and generated result, and review the selected provider's current policies. This is informational, not legal advice.",
+    ].join("\n"));
+
+    const runCard = profile.runCardBuilder(item);
+    expect(runCard).toContain("- Reference model: Midjourney V8.2");
+    expect(runCard).toContain("- Workflow: Image Prompt influence for a new creation");
+    expect(runCard).toContain("- Reference weight: Choose deliberately; it changes influence and does not guarantee fidelity");
+    expect(runCard).toContain("Best-effort variation: Image Prompts guide a new creation; they do not enforce an exact reconstruction.");
+    expect(runCard).not.toContain("image-edit/reference workflow");
+    expect(profile.promptBuilder(item)).not.toContain("Midjourney V8.2");
   });
 });

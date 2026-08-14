@@ -65,6 +65,19 @@ function confirmAndBuild(state: ImagePortalState, generation: number): ImagePort
 }
 
 describe("Image portal reducer", () => {
+  it("correlates individual setting fields with their value types", () => {
+    // Catches the action contract accepting a string for a boolean field before runtime.
+    type InvalidActionAssignable = {
+      type: "item/setting-changed";
+      itemId: string;
+      expectedReviewRevision: number;
+      field: "preserveVisibleText";
+      value: "false";
+    } extends ImagePortalAction ? true : false;
+
+    expectTypeOf<InvalidActionAssignable>().toEqualTypeOf<false>();
+  });
+
   it("snapshots defaults into future admissions without rewriting existing items", () => {
     // Catches global defaults being retained by reference or retroactively applied to admitted images.
     let state = createInitialImagePortalState({
@@ -307,5 +320,54 @@ describe("Image portal reducer", () => {
       patch: { requestedChanges: "Must stay unapplied." },
     });
     expect(state.items[0].settings).toBe(before);
+  });
+
+  it("rejects forged individual setting values without corrupting state", () => {
+    // Catches JavaScript callers bypassing TypeScript and storing a wrong runtime type or enum member.
+    const admitted = admit(createInitialImagePortalState(), 1, admission("one"));
+    const revision = admitted.items[0].reviewRevision;
+    const forgedBoolean = {
+      type: "item/setting-changed",
+      itemId: "one",
+      expectedReviewRevision: revision,
+      field: "preserveVisibleText",
+      value: "false",
+    } as unknown as ImagePortalAction;
+    const forgedEnum = {
+      type: "item/setting-changed",
+      itemId: "one",
+      expectedReviewRevision: revision,
+      field: "aspectRatio",
+      value: "panorama",
+    } as unknown as ImagePortalAction;
+    const forgedDefaults = {
+      type: "defaults/changed",
+      defaults: { ...admitted.defaults, preserveVisibleText: "false" },
+    } as unknown as ImagePortalAction;
+
+    expect(imagePortalReducer(admitted, forgedBoolean)).toBe(admitted);
+    expect(imagePortalReducer(admitted, forgedEnum)).toBe(admitted);
+    expect(imagePortalReducer(admitted, forgedDefaults)).toBe(admitted);
+  });
+
+  it("rejects an entire forged bulk patch when a masked value is missing or invalid", () => {
+    // Catches partial application leaving selected items with undefined or invalid Image settings.
+    let state = admit(createInitialImagePortalState(), 1, admission("one"));
+    state = imagePortalReducer(state, { type: "bulk/selection-changed", itemId: "one", selected: true });
+    const missingMaskedValue = {
+      type: "bulk/settings-applied",
+      expectedReviewGeneration: state.reviewGeneration,
+      fields: ["aspectRatio", "preserveVisibleText"],
+      patch: { aspectRatio: "16:9", preserveVisibleText: undefined },
+    } as unknown as ImagePortalAction;
+    const invalidMaskedValue = {
+      type: "bulk/settings-applied",
+      expectedReviewGeneration: state.reviewGeneration,
+      fields: ["modelFamily"],
+      patch: { modelFamily: "invented-provider" },
+    } as unknown as ImagePortalAction;
+
+    expect(imagePortalReducer(state, missingMaskedValue)).toBe(state);
+    expect(imagePortalReducer(state, invalidMaskedValue)).toBe(state);
   });
 });

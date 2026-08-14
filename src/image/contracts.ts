@@ -34,6 +34,65 @@ export interface ImagePromptSettings {
   readonly mustPreserve: string;
 }
 
+export const MAX_IMAGE_PROMPT_TEXT_LENGTH = 2_000;
+
+const IMAGE_MODEL_FAMILY_IDS: readonly ImageModelFamilyId[] = Object.freeze([
+  "openai-gpt-image",
+  "google-nano-banana",
+  "xai-grok-imagine",
+  "bfl-flux",
+  "adobe-firefly",
+  "ideogram",
+  "midjourney",
+  "stability-ai",
+  "other-custom",
+]);
+const IMAGE_ASPECT_RATIOS: readonly ImageAspectRatio[] = Object.freeze([
+  "match-source",
+  "provider-default",
+  "1:1",
+  "4:3",
+  "3:4",
+  "16:9",
+  "9:16",
+]);
+const IMAGE_SIZE_INTENTS: readonly ImageSizeIntent[] = Object.freeze([
+  "match-source-where-supported",
+  "highest-practical-quality",
+]);
+const IMAGE_BACKGROUND_BEHAVIORS: readonly ImageBackgroundBehavior[] = Object.freeze([
+  "preserve-source",
+  "provider-default",
+]);
+
+function supported<T extends string>(value: unknown, choices: readonly T[]): value is T {
+  return typeof value === "string" && choices.includes(value as T);
+}
+
+export function isImagePromptSettingValue<Field extends keyof ImagePromptSettings>(
+  field: Field,
+  value: unknown,
+): value is ImagePromptSettings[Field] {
+  switch (field) {
+    case "modelFamily": return supported(value, IMAGE_MODEL_FAMILY_IDS);
+    case "aspectRatio": return supported(value, IMAGE_ASPECT_RATIOS);
+    case "sizeIntent": return supported(value, IMAGE_SIZE_INTENTS);
+    case "preserveVisibleText": return typeof value === "boolean";
+    case "backgroundBehavior": return supported(value, IMAGE_BACKGROUND_BEHAVIORS);
+    case "requestedChanges":
+    case "mustPreserve":
+      return typeof value === "string" && Array.from(value).length <= MAX_IMAGE_PROMPT_TEXT_LENGTH;
+  }
+}
+
+export function isImagePromptSettings(value: unknown): value is ImagePromptSettings {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const settings = value as Record<string, unknown>;
+  return (Object.keys(DEFAULT_IMAGE_PROMPT_SETTINGS) as (keyof ImagePromptSettings)[]).every(
+    (field) => Object.hasOwn(settings, field) && isImagePromptSettingValue(field, settings[field]),
+  );
+}
+
 export const DEFAULT_IMAGE_PROMPT_SETTINGS: Readonly<ImagePromptSettings> = Object.freeze({
   modelFamily: "openai-gpt-image",
   aspectRatio: "match-source",
@@ -48,17 +107,22 @@ export function cloneImagePromptSettings(settings: Readonly<ImagePromptSettings>
   return { ...settings };
 }
 
-export interface ImmutableImageBytes {
-  readonly byteLength: number;
-  copy(): Uint8Array;
+export type ImmutableImageBytes = Blob;
+
+export function ownImageBytes(bytes: Uint8Array, mimeType = "application/octet-stream"): ImmutableImageBytes {
+  return new Blob([Uint8Array.from(bytes)], { type: mimeType });
 }
 
-export function ownImageBytes(bytes: Uint8Array): ImmutableImageBytes {
-  const owned = Uint8Array.from(bytes);
-  return Object.freeze({
-    byteLength: owned.byteLength,
-    copy: () => Uint8Array.from(owned),
-  });
+export async function copyImageBytes(
+  bytes: ImmutableImageBytes,
+  maximumByteLength: number,
+): Promise<Uint8Array> {
+  if (!Number.isSafeInteger(maximumByteLength)
+    || maximumByteLength < 0
+    || bytes.size > maximumByteLength) {
+    throw new Error("IMAGE_BYTES_LIMIT_EXCEEDED");
+  }
+  return new Uint8Array(await bytes.arrayBuffer());
 }
 
 export type ImageMimeType = "image/png" | "image/jpeg" | "image/webp" | "image/avif";
@@ -124,7 +188,7 @@ export interface CreateImagePortalItemInput {
 export function createImagePortalItem(input: CreateImagePortalItemInput): ImagePortalItem {
   return {
     id: input.id,
-    sourceBytes: ownImageBytes(input.bytes),
+    sourceBytes: ownImageBytes(input.bytes, input.mimeType),
     sourceHash: input.sourceHash,
     mimeType: input.mimeType,
     fileExtension: input.fileExtension,

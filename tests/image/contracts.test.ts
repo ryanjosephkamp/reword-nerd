@@ -1,10 +1,12 @@
+import { Blob as NativeBlob } from "node:buffer";
 import {
   DEFAULT_IMAGE_PROMPT_SETTINGS,
+  copyImageBytes,
   createImagePortalItem,
 } from "../../src/image/contracts";
 
 describe("Image domain contracts", () => {
-  it("owns exact source bytes instead of retaining mutable caller buffers", () => {
+  it("owns exact source bytes instead of retaining mutable caller or result buffers", async () => {
     // Catches an admission path retaining the caller's mutable Uint8Array by reference.
     const callerBytes = new Uint8Array([137, 80, 78, 71]);
     const item = createImagePortalItem({
@@ -30,13 +32,50 @@ describe("Image domain contracts", () => {
     });
 
     callerBytes[0] = 0;
-    const firstRead = item.sourceBytes.copy();
+    const firstRead = await copyImageBytes(item.sourceBytes, 4);
     firstRead[1] = 0;
 
-    expect(Array.from(item.sourceBytes.copy())).toEqual([137, 80, 78, 71]);
-    expect(item.sourceBytes.byteLength).toBe(4);
+    expect(Array.from(await copyImageBytes(item.sourceBytes, 4))).toEqual([137, 80, 78, 71]);
+    expect(item.sourceBytes.size).toBe(4);
     expect(item.sourceHash).toBe("sha256-source-1");
     expect(item.dimensions).toEqual({ width: 2, height: 1, megapixels: 0.000002 });
+  });
+
+  it("preserves exact source bytes through a browser-native structured clone", async () => {
+    // Catches retained byte custody using functions or class state that workers/deep snapshots cannot clone.
+    const jsdomBlob = globalThis.Blob;
+    Object.defineProperty(globalThis, "Blob", { configurable: true, value: NativeBlob });
+    try {
+      const item = createImagePortalItem({
+        id: "cloneable-image",
+        bytes: new Uint8Array([0, 255, 17, 34]),
+        sourceHash: "cloneable-hash",
+        mimeType: "image/png",
+        fileExtension: "png",
+        width: 1,
+        height: 1,
+        provenance: {
+          intakeKind: "direct",
+          sourceName: "cloneable.png",
+          sourcePath: null,
+          containerName: null,
+          containerHash: null,
+          containerPath: null,
+          pageNumber: null,
+          relationshipId: null,
+        },
+        settings: DEFAULT_IMAGE_PROMPT_SETTINGS,
+      });
+
+      const cloned = structuredClone(item);
+
+      expect(cloned.sourceBytes).toBeInstanceOf(NativeBlob);
+      expect(cloned.sourceBytes.type).toBe("image/png");
+      expect(Array.from(await copyImageBytes(cloned.sourceBytes, 4))).toEqual([0, 255, 17, 34]);
+      await expect(copyImageBytes(cloned.sourceBytes, 3)).rejects.toThrow("IMAGE_BYTES_LIMIT_EXCEEDED");
+    } finally {
+      Object.defineProperty(globalThis, "Blob", { configurable: true, value: jsdomBlob });
+    }
   });
 
   it("snapshots provenance, warnings, and settings for a newly admitted item", () => {

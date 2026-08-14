@@ -2,6 +2,8 @@ import {
   DEFAULT_IMAGE_PROMPT_SETTINGS,
   cloneImagePromptSettings,
   createImagePortalItem,
+  isImagePromptSettings,
+  isImagePromptSettingValue,
   type CreateImagePortalItemInput,
   type ImagePortalItem,
   type ImagePromptSettings,
@@ -11,6 +13,16 @@ import type { SavedImagePreferences } from "./preferences";
 
 export type ImageAdmission = Omit<CreateImagePortalItemInput, "settings">;
 export type ImageSettingField = keyof ImagePromptSettings;
+
+export type ImageSettingChangeAction = {
+  [Field in ImageSettingField]: {
+    type: "item/setting-changed";
+    itemId: string;
+    expectedReviewRevision: number;
+    field: Field;
+    value: ImagePromptSettings[Field];
+  }
+}[ImageSettingField];
 
 export interface ImageBuiltOutput {
   readonly packageName: string;
@@ -42,13 +54,7 @@ export type ImagePortalAction =
   | { type: "item/inclusion-changed"; itemId: string; included: boolean }
   | { type: "item/removed"; itemId: string }
   | { type: "defaults/changed"; defaults: ImagePromptSettings }
-  | {
-      type: "item/setting-changed";
-      itemId: string;
-      expectedReviewRevision: number;
-      field: ImageSettingField;
-      value: ImagePromptSettings[ImageSettingField];
-    }
+  | ImageSettingChangeAction
   | {
       type: "bulk/settings-applied";
       expectedReviewGeneration: number;
@@ -217,6 +223,7 @@ export function imagePortalReducer(state: ImagePortalState, action: ImagePortalA
     }
 
     case "defaults/changed": {
+      if (!isImagePromptSettings(action.defaults)) return state;
       const defaults = cloneImagePromptSettings(action.defaults);
       return IMAGE_SETTING_FIELDS.every((field) => Object.is(state.defaults[field], defaults[field]))
         ? state
@@ -227,6 +234,7 @@ export function imagePortalReducer(state: ImagePortalState, action: ImagePortalA
       const current = state.items.find((item) => item.id === action.itemId);
       if (!current
         || current.reviewRevision !== action.expectedReviewRevision
+        || !isImagePromptSettingValue(action.field, action.value)
         || Object.is(settingValue(current.settings, action.field), action.value)) return state;
       return invalidated(state, replaceItem(state.items, action.itemId, (item) => ({
         ...item,
@@ -237,8 +245,11 @@ export function imagePortalReducer(state: ImagePortalState, action: ImagePortalA
 
     case "bulk/settings-applied": {
       if (action.expectedReviewGeneration !== state.reviewGeneration) return state;
-      const fields = [...new Set(action.fields)].filter((field) => IMAGE_SETTING_FIELDS.includes(field));
+      if (action.fields.some((field) => !IMAGE_SETTING_FIELDS.includes(field))) return state;
+      const fields = [...new Set(action.fields)];
       if (fields.length === 0) return state;
+      if (fields.some((field) => !Object.hasOwn(action.patch, field)
+        || !isImagePromptSettingValue(field, action.patch[field]))) return state;
       let changed = false;
       const items = state.items.map((item) => {
         if (!item.bulkSelected) return item;

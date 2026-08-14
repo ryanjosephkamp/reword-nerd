@@ -101,6 +101,53 @@ describe("Image preferences", () => {
     expect(decodeImagePreferences(JSON.stringify({ version: 2, data: {} }))).toBeNull();
   });
 
+  it("accepts only own fields on plain or null-prototype preference records", () => {
+    // Catches prototype-polluted or class-backed records supplying allowlisted values through inheritance.
+    const inheritedDefaults = Object.create({
+      modelFamily: "ideogram",
+      aspectRatio: "16:9",
+      requestedChanges: "INHERITED PRIVATE DEFAULT",
+    }) as Record<string, unknown>;
+    inheritedDefaults.preserveVisibleText = false;
+    expect(JSON.parse(encodeImagePreferences({ defaults: inheritedDefaults } as Parameters<typeof encodeImagePreferences>[0]))).toEqual({
+      version: 1,
+      data: {},
+    });
+
+    const inheritedSnapshot = Object.create({ tutorialVersion: "0.8" }) as Record<string, unknown>;
+    inheritedSnapshot.defaults = { modelFamily: "ideogram" };
+    expect(JSON.parse(encodeImagePreferences(inheritedSnapshot as Parameters<typeof encodeImagePreferences>[0]))).toEqual({
+      version: 1,
+      data: {},
+    });
+
+    const nullPrototypeDefaults = Object.create(null) as Record<string, unknown>;
+    nullPrototypeDefaults.modelFamily = "stability-ai";
+    nullPrototypeDefaults.requestedChanges = "Keep this own field.";
+    expect(JSON.parse(encodeImagePreferences({ defaults: nullPrototypeDefaults } as Parameters<typeof encodeImagePreferences>[0]))).toEqual({
+      version: 1,
+      data: { defaults: { modelFamily: "stability-ai", requestedChanges: "Keep this own field." } },
+    });
+
+    class PreferenceEnvelope {
+      defaults = { modelFamily: "ideogram" };
+    }
+    expect(JSON.parse(encodeImagePreferences(new PreferenceEnvelope() as Parameters<typeof encodeImagePreferences>[0]))).toEqual({
+      version: 1,
+      data: {},
+    });
+  });
+
+  it("rejects an oversized serialized envelope before unknown fields can be decoded", () => {
+    // Catches unbounded JSON parsing of attacker-controlled localStorage content hidden in unknown fields.
+    const oversized = JSON.stringify({
+      version: 1,
+      data: { unknown: "x".repeat(25_000) },
+    });
+
+    expect(decodeImagePreferences(oversized)).toBeNull();
+  });
+
   it("reads, writes, and clears only the dedicated Image preference key", () => {
     // Catches Image reset or save operations touching Text or unrelated storage keys.
     const storage = new RecordingStorage();
