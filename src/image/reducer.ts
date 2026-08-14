@@ -1,0 +1,406 @@
+import {
+  DEFAULT_IMAGE_PROMPT_SETTINGS,
+  cloneImagePromptSettings,
+  createImagePortalItem,
+  type CreateImagePortalItemInput,
+  type ImagePortalItem,
+  type ImagePromptSettings,
+  type ImmutableImageBytes,
+} from "./contracts";
+import type { SavedImagePreferences } from "./preferences";
+
+export type ImageAdmission = Omit<CreateImagePortalItemInput, "settings">;
+export type ImageSettingField = keyof ImagePromptSettings;
+
+export interface ImageBuiltOutput {
+  readonly packageName: string;
+  readonly packageBytes: ImmutableImageBytes;
+  readonly itemCount: number;
+}
+
+export type ImageBuildStatus = "idle" | "building" | "ready" | "error";
+
+export interface ImagePortalState {
+  readonly items: readonly ImagePortalItem[];
+  readonly focusedItemId: string | null;
+  readonly defaults: Readonly<ImagePromptSettings>;
+  readonly tutorialSeenVersion: string | null;
+  readonly operationGeneration: number;
+  readonly reviewGeneration: number;
+  readonly buildGeneration: number;
+  readonly confirmedReviewGeneration: number | null;
+  readonly buildStatus: ImageBuildStatus;
+  readonly builtOutput: ImageBuiltOutput | null;
+  readonly safeBuildMessage: string;
+}
+
+export type ImagePortalAction =
+  | { type: "operation/started"; generation: number }
+  | { type: "items/admitted"; generation: number; items: readonly ImageAdmission[] }
+  | { type: "focus/changed"; itemId: string }
+  | { type: "bulk/selection-changed"; itemId: string; selected: boolean }
+  | { type: "item/inclusion-changed"; itemId: string; included: boolean }
+  | { type: "item/removed"; itemId: string }
+  | { type: "defaults/changed"; defaults: ImagePromptSettings }
+  | {
+      type: "item/setting-changed";
+      itemId: string;
+      expectedReviewRevision: number;
+      field: ImageSettingField;
+      value: ImagePromptSettings[ImageSettingField];
+    }
+  | {
+      type: "bulk/settings-applied";
+      expectedReviewGeneration: number;
+      fields: readonly ImageSettingField[];
+      patch: Partial<ImagePromptSettings>;
+    }
+  | { type: "ocr/started"; itemId: string; generation: number }
+  | { type: "ocr/completed"; itemId: string; generation: number; detectedText: string }
+  | { type: "ocr/failed"; itemId: string; generation: number }
+  | {
+      type: "ocr/reviewed";
+      itemId: string;
+      expectedOperationGeneration: number;
+      expectedReviewRevision: number;
+      status: "accepted" | "rejected";
+      reviewedText: string | null;
+    }
+  | {
+      type: "source/replaced";
+      itemId: string;
+      expectedSourceHash: string;
+      generation: number;
+      source: ImageAdmission;
+    }
+  | { type: "review/confirmed"; expectedReviewGeneration: number }
+  | { type: "build/started"; generation: number; expectedReviewGeneration: number }
+  | {
+      type: "build/completed";
+      generation: number;
+      expectedReviewGeneration: number;
+      output: ImageBuiltOutput;
+    }
+  | { type: "build/failed"; generation: number; expectedReviewGeneration: number; message: string }
+  | { type: "tutorial/seen"; version: string }
+  | { type: "session/reset" };
+
+const IMAGE_SETTING_FIELDS: readonly ImageSettingField[] = Object.freeze([
+  "modelFamily",
+  "aspectRatio",
+  "sizeIntent",
+  "preserveVisibleText",
+  "backgroundBehavior",
+  "requestedChanges",
+  "mustPreserve",
+]);
+
+export function createInitialImagePortalState(
+  preferences: SavedImagePreferences | null = null,
+): ImagePortalState {
+  return {
+    items: [],
+    focusedItemId: null,
+    defaults: {
+      ...DEFAULT_IMAGE_PROMPT_SETTINGS,
+      ...preferences?.defaults,
+    },
+    tutorialSeenVersion: preferences?.tutorialVersion ?? null,
+    operationGeneration: 0,
+    reviewGeneration: 0,
+    buildGeneration: 0,
+    confirmedReviewGeneration: null,
+    buildStatus: "idle",
+    builtOutput: null,
+    safeBuildMessage: "",
+  };
+}
+
+function invalidated(state: ImagePortalState, items: readonly ImagePortalItem[]): ImagePortalState {
+  return {
+    ...state,
+    items,
+    reviewGeneration: state.reviewGeneration + 1,
+    buildGeneration: state.buildGeneration + 1,
+    confirmedReviewGeneration: null,
+    buildStatus: "idle",
+    builtOutput: null,
+    safeBuildMessage: "",
+  };
+}
+
+function replaceItem(
+  items: readonly ImagePortalItem[],
+  itemId: string,
+  update: (item: ImagePortalItem) => ImagePortalItem,
+): readonly ImagePortalItem[] {
+  return items.map((item) => item.id === itemId ? update(item) : item);
+}
+
+function settingValue(
+  settings: Readonly<ImagePromptSettings>,
+  field: ImageSettingField,
+): ImagePromptSettings[ImageSettingField] {
+  return settings[field];
+}
+
+function withSetting(
+  settings: Readonly<ImagePromptSettings>,
+  field: ImageSettingField,
+  value: ImagePromptSettings[ImageSettingField],
+): ImagePromptSettings {
+  return { ...settings, [field]: value } as ImagePromptSettings;
+}
+
+function canConfirm(items: readonly ImagePortalItem[]): boolean {
+  const included = items.filter((item) => item.included);
+  return included.length > 0
+    && included.every((item) => item.ocr.status !== "processing" && item.ocr.status !== "needs-review");
+}
+
+export function imagePortalReducer(state: ImagePortalState, action: ImagePortalAction): ImagePortalState {
+  switch (action.type) {
+    case "operation/started":
+      return Number.isSafeInteger(action.generation) && action.generation > state.operationGeneration
+        ? { ...state, operationGeneration: action.generation }
+        : state;
+
+    case "items/admitted": {
+      if (action.generation !== state.operationGeneration) return state;
+      const knownIds = new Set(state.items.map((item) => item.id));
+      const admitted = action.items.flatMap((candidate) => {
+        if (knownIds.has(candidate.id)) return [];
+        knownIds.add(candidate.id);
+        return [createImagePortalItem({
+          ...candidate,
+          settings: cloneImagePromptSettings(state.defaults),
+        })];
+      });
+      if (admitted.length === 0) return state;
+      return {
+        ...invalidated(state, [...state.items, ...admitted]),
+        focusedItemId: state.focusedItemId ?? admitted[0].id,
+      };
+    }
+
+    case "focus/changed":
+      return state.items.some((item) => item.id === action.itemId) && state.focusedItemId !== action.itemId
+        ? { ...state, focusedItemId: action.itemId }
+        : state;
+
+    case "bulk/selection-changed": {
+      const current = state.items.find((item) => item.id === action.itemId);
+      if (!current || current.bulkSelected === action.selected) return state;
+      return {
+        ...state,
+        items: replaceItem(state.items, action.itemId, (item) => ({ ...item, bulkSelected: action.selected })),
+      };
+    }
+
+    case "item/inclusion-changed": {
+      const current = state.items.find((item) => item.id === action.itemId);
+      if (!current || current.included === action.included) return state;
+      return invalidated(state, replaceItem(state.items, action.itemId, (item) => ({
+        ...item,
+        included: action.included,
+        reviewRevision: item.reviewRevision + 1,
+      })));
+    }
+
+    case "item/removed": {
+      if (!state.items.some((item) => item.id === action.itemId)) return state;
+      const items = state.items.filter((item) => item.id !== action.itemId);
+      const focusedItemId = state.focusedItemId === action.itemId
+        ? items[0]?.id ?? null
+        : state.focusedItemId;
+      return { ...invalidated(state, items), focusedItemId };
+    }
+
+    case "defaults/changed": {
+      const defaults = cloneImagePromptSettings(action.defaults);
+      return IMAGE_SETTING_FIELDS.every((field) => Object.is(state.defaults[field], defaults[field]))
+        ? state
+        : { ...state, defaults };
+    }
+
+    case "item/setting-changed": {
+      const current = state.items.find((item) => item.id === action.itemId);
+      if (!current
+        || current.reviewRevision !== action.expectedReviewRevision
+        || Object.is(settingValue(current.settings, action.field), action.value)) return state;
+      return invalidated(state, replaceItem(state.items, action.itemId, (item) => ({
+        ...item,
+        settings: withSetting(item.settings, action.field, action.value),
+        reviewRevision: item.reviewRevision + 1,
+      })));
+    }
+
+    case "bulk/settings-applied": {
+      if (action.expectedReviewGeneration !== state.reviewGeneration) return state;
+      const fields = [...new Set(action.fields)].filter((field) => IMAGE_SETTING_FIELDS.includes(field));
+      if (fields.length === 0) return state;
+      let changed = false;
+      const items = state.items.map((item) => {
+        if (!item.bulkSelected) return item;
+        let settings = item.settings;
+        for (const field of fields) {
+          if (!Object.hasOwn(action.patch, field)) continue;
+          const value = action.patch[field] as ImagePromptSettings[ImageSettingField];
+          if (Object.is(settingValue(settings, field), value)) continue;
+          settings = withSetting(settings, field, value);
+        }
+        if (settings === item.settings) return item;
+        changed = true;
+        return { ...item, settings, reviewRevision: item.reviewRevision + 1 };
+      });
+      return changed ? invalidated(state, items) : state;
+    }
+
+    case "ocr/started": {
+      const current = state.items.find((item) => item.id === action.itemId);
+      if (!current
+        || !Number.isSafeInteger(action.generation)
+        || action.generation <= state.operationGeneration) return state;
+      const items = replaceItem(state.items, action.itemId, (item) => ({
+        ...item,
+        ocr: {
+          status: "processing",
+          detectedText: null,
+          reviewedText: null,
+          operationGeneration: action.generation,
+          reviewRevision: item.ocr.reviewRevision + 1,
+        },
+        reviewRevision: item.reviewRevision + 1,
+      }));
+      return { ...invalidated(state, items), operationGeneration: action.generation };
+    }
+
+    case "ocr/completed": {
+      const current = state.items.find((item) => item.id === action.itemId);
+      if (!current
+        || current.ocr.status !== "processing"
+        || current.ocr.operationGeneration !== action.generation) return state;
+      return invalidated(state, replaceItem(state.items, action.itemId, (item) => ({
+        ...item,
+        ocr: {
+          ...item.ocr,
+          status: "needs-review",
+          detectedText: action.detectedText,
+          reviewedText: null,
+          reviewRevision: item.ocr.reviewRevision + 1,
+        },
+        reviewRevision: item.reviewRevision + 1,
+      })));
+    }
+
+    case "ocr/failed": {
+      const current = state.items.find((item) => item.id === action.itemId);
+      if (!current
+        || current.ocr.status !== "processing"
+        || current.ocr.operationGeneration !== action.generation) return state;
+      return invalidated(state, replaceItem(state.items, action.itemId, (item) => ({
+        ...item,
+        ocr: {
+          ...item.ocr,
+          status: "failed",
+          detectedText: null,
+          reviewedText: null,
+          reviewRevision: item.ocr.reviewRevision + 1,
+        },
+        reviewRevision: item.reviewRevision + 1,
+      })));
+    }
+
+    case "ocr/reviewed": {
+      const current = state.items.find((item) => item.id === action.itemId);
+      if (!current
+        || current.reviewRevision !== action.expectedReviewRevision
+        || current.ocr.operationGeneration !== action.expectedOperationGeneration
+        || current.ocr.status !== "needs-review"
+        || (action.status === "accepted" && action.reviewedText === null)) return state;
+      return invalidated(state, replaceItem(state.items, action.itemId, (item) => ({
+        ...item,
+        ocr: {
+          ...item.ocr,
+          status: action.status,
+          reviewedText: action.status === "accepted" ? action.reviewedText : null,
+          reviewRevision: item.ocr.reviewRevision + 1,
+        },
+        reviewRevision: item.reviewRevision + 1,
+      })));
+    }
+
+    case "source/replaced": {
+      const current = state.items.find((item) => item.id === action.itemId);
+      if (!current
+        || action.generation !== state.operationGeneration
+        || action.source.id !== action.itemId
+        || current.sourceHash !== action.expectedSourceHash) return state;
+      const replacement = createImagePortalItem({
+        ...action.source,
+        settings: cloneImagePromptSettings(current.settings),
+      });
+      const item: ImagePortalItem = {
+        ...replacement,
+        included: current.included,
+        bulkSelected: current.bulkSelected,
+        reviewRevision: current.reviewRevision + 1,
+      };
+      return invalidated(state, replaceItem(state.items, action.itemId, () => item));
+    }
+
+    case "review/confirmed":
+      return action.expectedReviewGeneration === state.reviewGeneration && canConfirm(state.items)
+        ? { ...state, confirmedReviewGeneration: state.reviewGeneration }
+        : state;
+
+    case "build/started":
+      return action.expectedReviewGeneration === state.reviewGeneration
+        && state.confirmedReviewGeneration === state.reviewGeneration
+        && Number.isSafeInteger(action.generation)
+        && action.generation > state.buildGeneration
+        ? {
+            ...state,
+            buildGeneration: action.generation,
+            buildStatus: "building",
+            builtOutput: null,
+            safeBuildMessage: "",
+          }
+        : state;
+
+    case "build/completed":
+      return state.buildStatus === "building"
+        && action.generation === state.buildGeneration
+        && action.expectedReviewGeneration === state.reviewGeneration
+        && state.confirmedReviewGeneration === state.reviewGeneration
+        ? { ...state, buildStatus: "ready", builtOutput: action.output, safeBuildMessage: "" }
+        : state;
+
+    case "build/failed":
+      return state.buildStatus === "building"
+        && action.generation === state.buildGeneration
+        && action.expectedReviewGeneration === state.reviewGeneration
+        && state.confirmedReviewGeneration === state.reviewGeneration
+        ? { ...state, buildStatus: "error", builtOutput: null, safeBuildMessage: action.message }
+        : state;
+
+    case "tutorial/seen":
+      return state.tutorialSeenVersion === action.version
+        ? state
+        : { ...state, tutorialSeenVersion: action.version };
+
+    case "session/reset":
+      return {
+        ...state,
+        items: [],
+        focusedItemId: null,
+        operationGeneration: state.operationGeneration + 1,
+        reviewGeneration: state.reviewGeneration + 1,
+        buildGeneration: state.buildGeneration + 1,
+        confirmedReviewGeneration: null,
+        buildStatus: "idle",
+        builtOutput: null,
+        safeBuildMessage: "",
+      };
+  }
+}
