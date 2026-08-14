@@ -1,5 +1,5 @@
 import { StrictMode } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ownImageBytes, type ImageProvenance } from "../../src/image/contracts";
 import type {
@@ -45,6 +45,36 @@ function setViewport(width: number): void {
       dispatchEvent: vi.fn(() => true),
     };
   }));
+}
+
+function installResponsiveViewport(initialWidth: number) {
+  let width = initialWidth;
+  const listeners = new Set<(event: Event) => void>();
+  vi.stubGlobal("innerWidth", width);
+  vi.stubGlobal("matchMedia", vi.fn((query: string) => {
+    const matches = () => {
+      const minimum = /min-width:\s*(\d+)px/u.exec(query)?.[1];
+      const maximum = /max-width:\s*(\d+)px/u.exec(query)?.[1];
+      return (!minimum || width >= Number(minimum)) && (!maximum || width <= Number(maximum));
+    };
+    return {
+      get matches() { return matches(); },
+      media: query,
+      onchange: null,
+      addEventListener: (_type: string, listener: (event: Event) => void) => listeners.add(listener),
+      removeEventListener: (_type: string, listener: (event: Event) => void) => listeners.delete(listener),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(() => true),
+    };
+  }));
+  return {
+    resize(nextWidth: number) {
+      width = nextWidth;
+      vi.stubGlobal("innerWidth", width);
+      for (const listener of listeners) listener(new Event("change"));
+    },
+  };
 }
 
 function rememberTutorial(): void {
@@ -238,6 +268,28 @@ describe("Image object URL custody", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "false");
   });
 
+  it("dismisses the tablet drawer on mode change without reopening and scopes aria-expanded to tablet", async () => {
+    const viewport = installResponsiveViewport(1024);
+    rememberTutorial();
+    const harness = workbenchHarness();
+    render(<ImageWorkbench services={harness.services} />);
+    const trigger = screen.getByRole("button", { name: "Settings" });
+
+    trigger.focus();
+    fireEvent.click(trigger);
+    expect(screen.getByRole("dialog", { name: /image settings/iu })).toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+    act(() => viewport.resize(1586));
+    expect(screen.queryByRole("dialog", { name: /image settings/iu })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    expect(trigger).not.toHaveAttribute("aria-expanded");
+
+    act(() => viewport.resize(1024));
+    expect(screen.queryByRole("dialog", { name: /image settings/iu })).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("leases only the active mobile panel and revokes on switching and reset", async () => {
     setViewport(390);
     rememberTutorial();
@@ -263,6 +315,8 @@ describe("Image object URL custody", () => {
     fireEvent.click(screen.getByRole("tab", { name: "IMAGES" }));
     await waitFor(() => expect(harness.live.size).toBe(1));
     fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Start a new Image session?" }))
+      .getByRole("button", { name: "CLEAR IMAGE SESSION" }));
     await waitFor(() => expect(harness.live.size).toBe(0));
     expect(new Set(harness.revoked)).toEqual(new Set(harness.created));
   });

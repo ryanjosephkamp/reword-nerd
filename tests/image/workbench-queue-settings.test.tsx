@@ -88,6 +88,58 @@ async function renderWithImages() {
 }
 
 describe("Image queue interaction domains", () => {
+  it("confirms New session before clearing admitted custody and restores its trigger on cancel", async () => {
+    const value = await renderWithImages();
+    const trigger = screen.getByRole("button", { name: "New session" });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const dialog = screen.getByRole("dialog", { name: "Start a new Image session?" });
+    expect(screen.getByRole("group", { name: "first.png image controls" })).toBeInTheDocument();
+    expect(value.revoke).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "CANCEL" }));
+    expect(screen.queryByRole("dialog", { name: "Start a new Image session?" })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    expect(screen.getByRole("group", { name: "first.png image controls" })).toBeInTheDocument();
+
+    fireEvent.click(trigger);
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Start a new Image session?" }))
+      .getByRole("button", { name: "CLEAR IMAGE SESSION" }));
+    expect(screen.queryByRole("group", { name: "first.png image controls" })).not.toBeInTheDocument();
+    expect(screen.getByText("No images in this local session.")).toBeInTheDocument();
+    expect(value.revoke).toHaveBeenCalled();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("restores remove cancel to its exact trigger and confirm to a surviving logical control", async () => {
+    await renderWithImages();
+    const second = screen.getByRole("group", { name: "second.png image controls" });
+    const rowTrigger = within(second).getByRole("button", { name: "Remove second.png" });
+    rowTrigger.focus();
+    fireEvent.click(rowTrigger);
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Remove images?" })).getByRole("button", { name: "CANCEL" }));
+    expect(rowTrigger).toHaveFocus();
+
+    fireEvent.click(within(second).getByRole("checkbox", { name: "Select second.png" }));
+    const selectedTrigger = screen.getByRole("button", { name: "REMOVE 1" });
+    selectedTrigger.focus();
+    fireEvent.click(selectedTrigger);
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Remove images?" }))
+      .getByRole("button", { name: "REMOVE 1 IMAGE" }));
+    expect(screen.getByRole("button", { name: "Focus first.png" })).toHaveFocus();
+  });
+
+  it("focuses the queue heading when confirmed removal leaves no surviving image", async () => {
+    await renderWithImages();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select first.png" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select second.png" }));
+    fireEvent.click(screen.getByRole("button", { name: "REMOVE 2" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Remove images?" }))
+      .getByRole("button", { name: "REMOVE 2 IMAGES" }));
+
+    expect(screen.getByRole("heading", { name: "IMAGES" })).toHaveFocus();
+  });
+
   it("keeps focus, bulk selection, and inclusion independent", async () => {
     await renderWithImages();
     const first = screen.getByRole("group", { name: "first.png image controls" });

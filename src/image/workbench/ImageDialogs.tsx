@@ -9,14 +9,24 @@ interface ImageDialogsProps {
   readonly quickStartOpen: boolean;
   readonly helpOpen: boolean;
   readonly infoOpen: boolean;
+  readonly newSessionOpen: boolean;
   readonly removeItems?: readonly Readonly<{ id: string; name: string }>[];
   readonly helpReturnFocusRef: RefObject<HTMLButtonElement | null>;
   readonly infoReturnFocusRef: RefObject<HTMLButtonElement | null>;
+  readonly newSessionReturnFocusRef: RefObject<HTMLButtonElement | null>;
+  readonly removeReturnFocusRef: RefObject<HTMLElement | null>;
   readonly onDismissQuickStart: () => void;
   readonly onDismissHelp: () => void;
   readonly onDismissInfo: () => void;
+  readonly onDismissNewSession: () => void;
+  readonly onConfirmNewSession: () => void;
   readonly onDismissRemove?: () => void;
   readonly onConfirmRemove?: () => void;
+}
+
+function restoreFocus(ref: RefObject<HTMLElement | null>): void {
+  ref.current?.focus();
+  queueMicrotask(() => ref.current?.focus());
 }
 
 export function ImageDialogs(props: ImageDialogsProps) {
@@ -39,6 +49,25 @@ export function ImageDialogs(props: ImageDialogsProps) {
         </div>
       </div>
       <div className="dialog-actions"><button type="button" data-image-start onClick={props.onDismissQuickStart}>START LOCAL SESSION</button></div>
+    </ModalShell>
+
+    <ModalShell
+      open={props.newSessionOpen}
+      title="Start a new Image session?"
+      closeLabel="Cancel new Image session"
+      onDismiss={props.onDismissNewSession}
+      returnFocusRef={props.newSessionReturnFocusRef}
+      className="image-new-session-dialog confirm-dialog"
+      initialFocusSelector="[data-image-new-session]"
+    >
+      <p>This clears every local image occurrence, exact source byte, OCR review, selection, and setting in the current Image session.</p>
+      <div className="dialog-actions">
+        <button type="button" data-image-new-session className="danger-action" onClick={props.onConfirmNewSession}>CLEAR IMAGE SESSION</button>
+        <button type="button" onClick={() => {
+          props.onDismissNewSession();
+          restoreFocus(props.newSessionReturnFocusRef);
+        }}>CANCEL</button>
+      </div>
     </ModalShell>
 
     <ModalShell
@@ -81,6 +110,7 @@ export function ImageDialogs(props: ImageDialogsProps) {
       title="Remove images?"
       closeLabel="Cancel image removal"
       onDismiss={() => props.onDismissRemove?.()}
+      returnFocusRef={props.removeReturnFocusRef}
       className="image-remove-dialog confirm-dialog"
       initialFocusSelector="[data-image-remove]"
     >
@@ -90,7 +120,10 @@ export function ImageDialogs(props: ImageDialogsProps) {
         <button type="button" data-image-remove className="danger-action" onClick={() => props.onConfirmRemove?.()}>
           REMOVE {props.removeItems?.length ?? 0} {(props.removeItems?.length ?? 0) === 1 ? "IMAGE" : "IMAGES"}
         </button>
-        <button type="button" onClick={() => props.onDismissRemove?.()}>CANCEL</button>
+        <button type="button" onClick={() => {
+          props.onDismissRemove?.();
+          restoreFocus(props.removeReturnFocusRef);
+        }}>CANCEL</button>
       </div>
     </ModalShell>
   </>;

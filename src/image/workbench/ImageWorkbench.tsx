@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { ModalShell } from "../../app/workbench/components/ModalShell";
 import type { ImageInputFile } from "../intake";
 import { CURRENT_IMAGE_TUTORIAL_VERSION } from "../preferences";
@@ -22,9 +22,9 @@ export function ImageWorkbench({
   services?: ImageWorkbenchServices;
 }) {
   const session = useImageSession(services);
-  const responsiveMode = useImageResponsiveMode();
   const [activeTab, setActiveTab] = useState<ImageMobileTab>("images");
   const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
+  const [newSessionOpen, setNewSessionOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [shareMessage, setShareMessage] = useState("");
@@ -34,6 +34,27 @@ export function ImageWorkbench({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const settingsDrawerOpenRef = useRef(false);
+  const newSessionReturnFocusRef = useRef<HTMLButtonElement>(null);
+  const removeReturnFocusRef = useRef<HTMLElement>(null);
+  const queueHeadingRef = useRef<HTMLHeadingElement>(null);
+  const postRemoveFocusRef = useRef<string | "queue-heading" | null>(null);
+  const handleResponsiveModeChange = useCallback((nextMode: "desktop" | "tablet" | "mobile") => {
+    if (nextMode === "tablet" || !settingsDrawerOpenRef.current) return;
+    settingsDrawerOpenRef.current = false;
+    setSettingsDrawerOpen(false);
+    settingsButtonRef.current?.focus();
+    queueMicrotask(() => settingsButtonRef.current?.focus());
+  }, []);
+  const responsiveMode = useImageResponsiveMode(handleResponsiveModeChange);
+
+  useLayoutEffect(() => {
+    const target = postRemoveFocusRef.current;
+    if (target === null) return;
+    postRemoveFocusRef.current = null;
+    if (target === "queue-heading") queueHeadingRef.current?.focus();
+    else document.getElementById(`image-focus-${target}`)?.focus();
+  }, [session.state.items]);
 
   const completeTutorial = () => {
     session.dispatch({ type: "tutorial/seen", version: CURRENT_IMAGE_TUTORIAL_VERSION });
@@ -71,11 +92,17 @@ export function ImageWorkbench({
     <ImageHeader
       ref={settingsButtonRef}
       hasSessionWork={session.state.items.length > 0 || session.intakeBusy || session.pdfCapture !== null}
-      settingsExpanded={responsiveMode === "tablet" ? settingsDrawerOpen : activeTab === "settings"}
+      settingsExpanded={responsiveMode === "tablet" ? settingsDrawerOpen : undefined}
       onOpenFiles={() => fileInputRef.current?.click()}
-      onNewSession={session.resetSession}
+      onNewSession={(button) => {
+        newSessionReturnFocusRef.current = button;
+        setNewSessionOpen(true);
+      }}
       onOpenSettings={() => {
-        if (responsiveMode === "tablet") setSettingsDrawerOpen(true);
+        if (responsiveMode === "tablet") {
+          settingsDrawerOpenRef.current = true;
+          setSettingsDrawerOpen(true);
+        }
         else setActiveTab("settings");
       }}
       onOpenHelp={(button) => { helpReturnFocusRef.current = button; setHelpOpen(true); }}
@@ -92,7 +119,7 @@ export function ImageWorkbench({
         aria-label="Image queue"
         data-active={activeTab === "images"}
       >
-        <header><p className="image-eyebrow">IMAGE SET</p><h2>IMAGES</h2></header>
+        <header><p className="image-eyebrow">IMAGE SET</p><h2 ref={queueHeadingRef} tabIndex={-1}>IMAGES</h2></header>
         <div
           className="image-intake-target"
           onDragOver={(event) => event.preventDefault()}
@@ -154,7 +181,10 @@ export function ImageWorkbench({
           onFocus={(itemId) => session.dispatch({ type: "focus/changed", itemId })}
           onSelect={(itemId, selected) => session.dispatch({ type: "bulk/selection-changed", itemId, selected })}
           onInclusion={(itemId, included) => session.dispatch({ type: "item/inclusion-changed", itemId, included })}
-          onRequestRemove={setRemoveItemIds}
+          onRequestRemove={(itemIds, trigger) => {
+            removeReturnFocusRef.current = trigger;
+            setRemoveItemIds(itemIds);
+          }}
           onRunOcr={(itemIds) => { void session.runOcr(itemIds); }}
         />
       </section>
@@ -190,7 +220,10 @@ export function ImageWorkbench({
       open={responsiveMode === "tablet" && settingsDrawerOpen}
       title="Image settings"
       closeLabel="Close Image settings"
-      onDismiss={() => setSettingsDrawerOpen(false)}
+      onDismiss={() => {
+        settingsDrawerOpenRef.current = false;
+        setSettingsDrawerOpen(false);
+      }}
       returnFocusRef={settingsButtonRef}
       variant="drawer"
       className="image-settings-drawer"
@@ -204,14 +237,28 @@ export function ImageWorkbench({
       quickStartOpen={session.state.tutorialSeenVersion !== CURRENT_IMAGE_TUTORIAL_VERSION}
       helpOpen={helpOpen}
       infoOpen={infoOpen}
+      newSessionOpen={newSessionOpen}
       removeItems={removeItems}
       helpReturnFocusRef={helpReturnFocusRef}
       infoReturnFocusRef={infoReturnFocusRef}
+      newSessionReturnFocusRef={newSessionReturnFocusRef}
+      removeReturnFocusRef={removeReturnFocusRef}
       onDismissQuickStart={completeTutorial}
       onDismissHelp={() => setHelpOpen(false)}
       onDismissInfo={() => setInfoOpen(false)}
+      onDismissNewSession={() => setNewSessionOpen(false)}
+      onConfirmNewSession={() => {
+        setNewSessionOpen(false);
+        session.resetSession();
+        newSessionReturnFocusRef.current?.focus();
+        queueMicrotask(() => newSessionReturnFocusRef.current?.focus());
+      }}
       onDismissRemove={() => setRemoveItemIds([])}
       onConfirmRemove={() => {
+        const removed = new Set(removeItemIds);
+        const survivingFocused = session.state.items.find((item) => item.id === session.state.focusedItemId && !removed.has(item.id));
+        const survivor = survivingFocused ?? session.state.items.find((item) => !removed.has(item.id));
+        postRemoveFocusRef.current = survivor?.id ?? "queue-heading";
         for (const id of removeItemIds) {
           const item = session.state.items.find((candidate) => candidate.id === id);
           if (item) session.discardItem(item);

@@ -180,6 +180,8 @@ describe("Image OCR review and confirmation", () => {
     fireEvent.click(screen.getByRole("button", { name: "REMOVE 1 IMAGE" }));
     expect(value.cancelItem).toHaveBeenCalledWith("first", value.admissions[0].sourceHash);
     fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Start a new Image session?" }))
+      .getByRole("button", { name: "CLEAR IMAGE SESSION" }));
     expect(value.reset).toHaveBeenCalled();
   });
 });

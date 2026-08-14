@@ -11,13 +11,22 @@ export function readImageResponsiveMode(): ImageResponsiveMode {
   return "desktop";
 }
 
-export function useImageResponsiveMode(): ImageResponsiveMode {
+export function useImageResponsiveMode(
+  onModeChange?: (nextMode: ImageResponsiveMode) => void,
+): ImageResponsiveMode {
   const [mode, setMode] = useState(readImageResponsiveMode);
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
     const mobile = window.matchMedia(MOBILE_QUERY);
     const tablet = window.matchMedia(TABLET_QUERY);
-    const update = () => setMode(readImageResponsiveMode());
+    let currentMode = readImageResponsiveMode();
+    const update = () => {
+      const nextMode = readImageResponsiveMode();
+      if (nextMode === currentMode) return;
+      currentMode = nextMode;
+      onModeChange?.(nextMode);
+      setMode(nextMode);
+    };
     mobile.addEventListener("change", update);
     tablet.addEventListener("change", update);
     update();
@@ -25,6 +34,6 @@ export function useImageResponsiveMode(): ImageResponsiveMode {
       mobile.removeEventListener("change", update);
       tablet.removeEventListener("change", update);
     };
-  }, []);
+  }, [onModeChange]);
   return mode;
 }

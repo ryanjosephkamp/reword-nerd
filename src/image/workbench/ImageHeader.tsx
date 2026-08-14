@@ -11,9 +11,9 @@ import {
 
 export interface ImageHeaderProps {
   readonly hasSessionWork: boolean;
-  readonly settingsExpanded: boolean;
+  readonly settingsExpanded?: boolean;
   readonly onOpenFiles: () => void;
-  readonly onNewSession: () => void;
+  readonly onNewSession: (returnFocus: HTMLButtonElement) => void;
   readonly onOpenSettings: () => void;
   readonly onOpenHelp: (returnFocus: HTMLButtonElement) => void;
   readonly onOpenInfo: (returnFocus: HTMLButtonElement) => void;
@@ -37,7 +37,7 @@ export const ImageHeader = forwardRef<HTMLButtonElement, ImageHeaderProps>(funct
     </div>
     <div className="image-header-actions" aria-label="Image workspace utilities">
       <button type="button" className="icon-button" aria-label="Open files" onClick={props.onOpenFiles}><FolderIcon /></button>
-      <button type="button" className="icon-button" aria-label="New session" onClick={props.onNewSession}><RestartIcon /></button>
+      <button type="button" className="icon-button" aria-label="New session" onClick={(event) => props.onNewSession(event.currentTarget)}><RestartIcon /></button>
       <button
         type="button"
         className="icon-button"

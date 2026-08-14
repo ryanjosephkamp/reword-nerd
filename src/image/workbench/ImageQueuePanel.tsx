@@ -25,7 +25,7 @@ function ImageQueueRow({
   onFocus(): void;
   onSelect(selected: boolean): void;
   onInclusion(included: boolean): void;
-  onRemove(): void;
+  onRemove(trigger: HTMLButtonElement): void;
 }) {
   const name = item.provenance.sourceName;
   const thumbnailUrl = useImageObjectUrl(objectUrls, {
@@ -56,10 +56,10 @@ function ImageQueueRow({
       <span className={item.included ? "image-included" : "image-omitted"}>{item.included ? "INCLUDED" : "OMITTED"}</span>
     </div>
     <div className="image-row-controls">
-      <button type="button" aria-label={`Focus ${name}`} aria-current={focused ? "true" : undefined} onClick={onFocus}>FOCUS</button>
+      <button id={`image-focus-${item.id}`} type="button" aria-label={`Focus ${name}`} aria-current={focused ? "true" : undefined} onClick={onFocus}>FOCUS</button>
       <label><input type="checkbox" aria-label={`Select ${name}`} checked={item.bulkSelected} onChange={(event) => onSelect(event.target.checked)} /> SELECT</label>
       <button type="button" aria-label={`${item.included ? "Omit" : "Include"} ${name}`} onClick={() => onInclusion(!item.included)}>{item.included ? "OMIT" : "INCLUDE"}</button>
-      <button type="button" aria-label={`Remove ${name}`} onClick={onRemove}>REMOVE</button>
+      <button type="button" aria-label={`Remove ${name}`} onClick={(event) => onRemove(event.currentTarget)}>REMOVE</button>
     </div>
   </article>;
 }
@@ -82,7 +82,7 @@ export function ImageQueuePanel({
   onFocus(itemId: string): void;
   onSelect(itemId: string, selected: boolean): void;
   onInclusion(itemId: string, included: boolean): void;
-  onRequestRemove(itemIds: readonly string[]): void;
+  onRequestRemove(itemIds: readonly string[], trigger: HTMLButtonElement): void;
   onRunOcr(itemIds: readonly string[]): void;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -125,7 +125,7 @@ export function ImageQueuePanel({
       <strong>{selected.length} SELECTED</strong>
       <button type="button" onClick={() => selected.forEach((item) => onInclusion(item.id, true))}>INCLUDE {selected.length}</button>
       <button type="button" onClick={() => selected.forEach((item) => onInclusion(item.id, false))}>OMIT {selected.length}</button>
-      <button type="button" onClick={() => onRequestRemove(selected.map((item) => item.id))}>REMOVE {selected.length}</button>
+      <button type="button" onClick={(event) => onRequestRemove(selected.map((item) => item.id), event.currentTarget)}>REMOVE {selected.length}</button>
       <button type="button" onClick={() => onRunOcr(selected.map((item) => item.id))}>RUN OCR ON {selected.length}</button>
     </div> : null}
     <div className="image-queue-list" ref={listRef}>
@@ -138,7 +138,7 @@ export function ImageQueuePanel({
         onFocus={() => onFocus(item.id)}
         onSelect={(selectedValue) => onSelect(item.id, selectedValue)}
         onInclusion={(included) => onInclusion(item.id, included)}
-        onRemove={() => onRequestRemove([item.id])}
+        onRemove={(trigger) => onRequestRemove([item.id], trigger)}
       />)}
     </div>
   </>;
