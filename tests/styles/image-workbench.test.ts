@@ -16,6 +16,31 @@ describe("scoped Image workbench visual contract", () => {
       .toBe("var(--color-ready)");
     expect(cssRuleProperty(css, ".image-workbench a, .image-workbench a:visited", "color"))
       .toBe("var(--image-action)");
+    expect(cssRuleProperty(css, ".image-workbench .brand", "color"))
+      .toBe("var(--image-action)");
+  });
+
+  it("uses the Text portal's dark native-control palette for Image selects and options", () => {
+    expect(cssRuleProperty(css, ".image-workbench select, .image-workbench select option, .image-workbench select optgroup", "background-color"))
+      .toBe("var(--color-canvas)");
+    expect(cssRuleProperty(css, ".image-workbench select, .image-workbench select option, .image-workbench select optgroup", "color"))
+      .toBe("var(--color-text)");
+    expect(cssRuleProperty(css, ".image-workbench", "color-scheme")).toBe("dark");
+    expect(css).not.toContain("var(--color-bg)");
+  });
+
+  it("keeps every Image modal accent orange and centers its close icon", () => {
+    expect(cssRuleProperty(css, ".image-workbench :is(.help-dialog, .quick-start-dialog, .confirm-dialog, .settings-drawer)", "border-color"))
+      .toBe("var(--image-action)");
+    expect(cssRuleProperty(css, ".image-workbench .info-group, .image-workbench .info-group-links a", "border-color"))
+      .toBe("var(--image-action)");
+    expect(cssRuleProperty(css, ".image-workbench .modal-shell:focus-visible", "outline-color"))
+      .toBe("var(--image-action)");
+    expect(cssRuleProperty(css, ".image-workbench .dialog-close", "padding")).toBe("0px");
+    expect(cssRuleProperty(css, ".image-workbench .dialog-close", "line-height")).toBe("0");
+    expect(cssRuleProperty(css, ".image-workbench .dialog-close", "width")).toBe("42px");
+    expect(cssRuleProperty(css, ".image-workbench .dialog-close", "height")).toBe("42px");
+    expect(cssRuleProperty(css, ".image-workbench .dialog-close svg", "display")).toBe("block");
   });
 
   it("uses visible orange focus and a yellow review border plus textual state", () => {
@@ -40,10 +65,23 @@ describe("scoped Image workbench visual contract", () => {
     expect(contrastRatio(blocked!, canvas!)).toBeGreaterThanOrEqual(4.5);
   });
 
-  it("keeps review/build content in normal flow on an opaque surface", () => {
+  it("keeps the prominent package action card in normal flow on an opaque surface", () => {
     expect(cssRuleProperty(css, ".image-workbench .image-build-dock", "position")).toBe("static");
     expect(cssRuleProperty(css, ".image-workbench .image-build-dock", "background"))
       .toBe("var(--color-surface)");
+    expect(cssRuleProperty(css, ".image-workbench .image-build-dock", "border"))
+      .toContain("var(--image-action)");
+    expect(cssRuleProperty(css, ".image-workbench .image-package-actions", "display")).toBe("grid");
+    expect(cssRuleProperty(css, ".image-workbench .image-build-button", "width")).toBe("100%");
+    expect(cssRuleProperty(css, ".image-workbench .image-build-button", "min-height")).toBe("58px");
+    expect(cssRuleProperty(css, ".image-workbench .image-build-button", "border"))
+      .toContain("var(--image-action)");
+    const buildHoverSelector = ".image-workbench .image-package-actions button.image-build-button:not(:disabled):hover";
+    expect(cssRuleProperty(css, buildHoverSelector, "background")).toBe("var(--image-action)");
+    expect(cssRuleProperty(css, buildHoverSelector, "color")).toBe("rgb(25, 19, 10)");
+    expect(contrastRatio("#ff9f1c", "#19130a")).toBeGreaterThanOrEqual(4.5);
+    expect(cssRuleProperty(css, ".image-workbench .image-confirm-button", "border"))
+      .toContain("var(--image-review)");
   });
 
   it("reserves real horizontal separation between the three header groups", () => {

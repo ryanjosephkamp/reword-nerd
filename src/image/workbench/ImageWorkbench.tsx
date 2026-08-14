@@ -95,17 +95,17 @@ export function ImageWorkbench({
 
   const settingsContent = <>
     <header><p className="image-eyebrow">PROMPT INTENT</p><h2>SETTINGS</h2></header>
-    <ImageSettingsPanel
-      key={session.state.sessionGeneration}
-      state={session.state}
-      focusedItem={focusedItem}
-      dispatch={session.dispatch}
-    />
     <ImageBuildDock
       state={session.state}
       dispatch={session.dispatch}
       buildPackage={session.buildPackage}
       downloadPackage={session.downloadPackage}
+    />
+    <ImageSettingsPanel
+      key={session.state.sessionGeneration}
+      state={session.state}
+      focusedItem={focusedItem}
+      dispatch={session.dispatch}
     />
   </>;
 

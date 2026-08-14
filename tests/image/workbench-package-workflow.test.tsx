@@ -1,4 +1,4 @@
-import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_IMAGE_PROMPT_SETTINGS, ownImageBytes, type ImageProvenance } from "../../src/image/contracts";
 import type {
@@ -361,7 +361,11 @@ describe("Image package controller and build dock", () => {
       target: { files: [new File([new Uint8Array([1])], "one.png", { type: "image/png" })] },
     });
     await screen.findByRole("group", { name: "one.png image controls" });
-    expect(screen.getByRole("button", { name: "BUILD PACKAGE" })).toBeDisabled();
+    const settings = screen.getByRole("region", { name: "Image settings" });
+    const buildButton = within(settings).getByRole("button", { name: "BUILD PACKAGE" });
+    const firstSetting = within(settings).getByLabelText("Default model family");
+    expect(buildButton.compareDocumentPosition(firstSetting) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(buildButton).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "CONFIRM IMAGE SET" }));
     expect(screen.getByRole("button", { name: "BUILD PACKAGE" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "DOWNLOAD ZIP" })).toBeDisabled();

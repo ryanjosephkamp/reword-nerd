@@ -229,6 +229,43 @@ test("Quick Start opens at its title and artwork instead of auto-scrolling to th
   await captureEvidence(page, "quick-start-top-320x568.png");
 });
 
+test("Image identity, modal accents, and close controls use the orange visual system", async ({ page }) => {
+  await page.setViewportSize({ width: 1246, height: 1610 });
+  await openWorkbench(page);
+  await expect(page.getByRole("heading", { name: "reword_nerd/" })).toHaveCSS("color", "rgb(255, 159, 28)");
+
+  const assertCenteredClose = async (dialogName: string, closeName: string) => {
+    const dialog = page.getByRole("dialog", { name: dialogName });
+    const close = dialog.getByRole("button", { name: closeName });
+    const centers = await close.evaluate((button) => {
+      const icon = button.querySelector("svg");
+      if (!icon) throw new Error("Missing close icon");
+      const buttonBox = button.getBoundingClientRect();
+      const iconBox = icon.getBoundingClientRect();
+      return {
+        x: Math.abs((buttonBox.left + buttonBox.width / 2) - (iconBox.left + iconBox.width / 2)),
+        y: Math.abs((buttonBox.top + buttonBox.height / 2) - (iconBox.top + iconBox.height / 2)),
+      };
+    });
+    expect(centers.x).toBeLessThanOrEqual(0.5);
+    expect(centers.y).toBeLessThanOrEqual(0.5);
+    await expect(dialog).toHaveCSS("border-color", "rgb(255, 159, 28)");
+    return close;
+  };
+
+  await page.getByRole("button", { name: "Help" }).click();
+  const helpClose = await assertCenteredClose("Image Help", "Close Image Help");
+  await helpClose.click();
+
+  await page.getByRole("button", { name: "Info" }).click();
+  const info = page.getByRole("dialog", { name: "About reword-nerd Image" });
+  const infoClose = await assertCenteredClose("About reword-nerd Image", "Close Image info");
+  await expect(info.locator(".info-group").first()).toHaveCSS("border-color", "rgb(255, 159, 28)");
+  await expect(info.getByRole("link", { name: "Updates" })).toHaveCSS("border-color", "rgb(255, 159, 28)");
+  await captureEvidence(page, "image-info-orange-1246x1610.png");
+  await infoClose.click();
+});
+
 test("settings remain unobscured and usable at every audited width", async ({ page }) => {
   const sizes = [
     { width: 320, height: 720, mode: "mobile" },
@@ -267,7 +304,18 @@ test("settings remain unobscured and usable at every audited width", async ({ pa
     const [fieldsBox, dockBox] = await Promise.all([fields.boundingBox(), dock.boundingBox()]);
     expect(fieldsBox).not.toBeNull();
     expect(dockBox).not.toBeNull();
-    expect(dockBox!.y).toBeGreaterThanOrEqual(fieldsBox!.y + fieldsBox!.height - 1);
+    expect(dockBox!.y + dockBox!.height).toBeLessThanOrEqual(size.height + 1);
+    expect(dockBox!.y).toBeLessThan(fieldsBox!.y);
+    await expect(page.getByRole("button", { name: "BUILD PACKAGE" })).toHaveCount(1);
+    await expect(surface.getByRole("button", { name: "BUILD PACKAGE" })).toBeVisible();
+    if (size.mode === "mobile") {
+      const tabsBox = await page.getByRole("tablist", { name: "Image workbench panels" }).boundingBox();
+      expect(tabsBox).not.toBeNull();
+      expect(dockBox!.y + dockBox!.height).toBeLessThanOrEqual(tabsBox!.y + 1);
+    }
+    const modelSelect = surface.getByLabel("Default model family");
+    await expect(modelSelect).toHaveCSS("background-color", "rgb(9, 11, 16)");
+    await expect(modelSelect).toHaveCSS("color", "rgb(215, 221, 232)");
 
     const packagePreview = surface.getByRole("article", { name: "Package preview" });
     await packagePreview.scrollIntoViewIfNeeded();

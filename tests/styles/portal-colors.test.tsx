@@ -34,12 +34,14 @@ describe("portal navigation colors", () => {
 
     const textPortal = screen.getByRole("link", { name: "TEXT" });
     const imagePortal = screen.getByRole("link", { name: "IMAGE" });
+    const brand = screen.getByRole("heading", { name: "reword_nerd/" });
     fireEvent.click(screen.getByRole("button", { name: "Info" }));
     const updates = screen.getByRole("link", { name: "Updates" });
     const community = screen.getByRole("link", { name: "Report a bug" });
 
     expect(getComputedStyle(textPortal).color).toBe("var(--color-ready)");
     expect(getComputedStyle(imagePortal).color).toBe("rgb(255, 159, 28)");
+    expect(getComputedStyle(brand).color).toBe("var(--image-action)");
     expect(getComputedStyle(updates).color).toBe("rgb(255, 159, 28)");
     expect(getComputedStyle(community).color).toBe("rgb(255, 159, 28)");
 

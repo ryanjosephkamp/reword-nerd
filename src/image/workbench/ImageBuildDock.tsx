@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CubeIcon } from "../../app/workbench/components/Icons";
 import type { ImageDownloadResult } from "../export";
 import type { ImagePortalAction, ImagePortalState } from "../reducer";
 import { selectImageConfirmation } from "./selectors";
@@ -34,6 +35,7 @@ export function ImageBuildDock({
     <p className={confirmation.confirmed ? "image-confirmed" : "image-confirmation-guidance"}>{confirmation.guidance}</p>
     <button
       type="button"
+      className="image-confirm-button"
       disabled={!confirmation.ready}
       onClick={() => dispatch({ type: "review/confirmed", expectedReviewGeneration: state.reviewGeneration })}
     >CONFIRM IMAGE SET</button>
@@ -49,11 +51,13 @@ export function ImageBuildDock({
     <div className="image-package-actions">
       <button
         type="button"
+        className="image-build-button"
         disabled={!canBuild}
         onClick={() => { setDownloadFeedback({ key: "", message: "" }); void buildPackage(); }}
-      >BUILD PACKAGE</button>
+      ><CubeIcon />BUILD PACKAGE</button>
       <button
         type="button"
+        className="image-download-button"
         disabled={!canDownload}
         onClick={() => {
           const result = downloadPackage();
