@@ -1,4 +1,4 @@
-import { createImagePortalItem, DEFAULT_IMAGE_PROMPT_SETTINGS, type ImageOcrState } from "../../src/image/contracts";
+import { createImagePortalItem, DEFAULT_IMAGE_PROMPT_SETTINGS, ownImageBytes, type ImageOcrState } from "../../src/image/contracts";
 import {
   DEFAULT_IMAGE_PROMPT_PROFILE_ID,
   IMAGE_PROMPT_PROFILES,
@@ -9,7 +9,8 @@ function imageWithOcr(ocr: Readonly<ImageOcrState>) {
   const item = createImagePortalItem({
     id: "poster",
     incarnation: 1,
-    bytes: new Uint8Array([1, 2, 3]),
+    sourceBytes: ownImageBytes(new Uint8Array([1, 2, 3]), "image/png"),
+    byteCount: 3,
     sourceHash: "source-hash",
     mimeType: "image/png",
     fileExtension: "png",
@@ -19,6 +20,7 @@ function imageWithOcr(ocr: Readonly<ImageOcrState>) {
       intakeKind: "direct",
       sourceName: "poster.png",
       sourcePath: null,
+      containerChain: [],
       containerName: null,
       containerHash: null,
       containerPath: null,

@@ -12,7 +12,8 @@ describe("Image domain contracts", () => {
     const item = createImagePortalItem({
       id: "image-1",
       incarnation: 1,
-      bytes: callerBytes,
+      sourceBytes: new Blob([Uint8Array.from(callerBytes)], { type: "image/png" }),
+      byteCount: callerBytes.byteLength,
       sourceHash: "sha256-source-1",
       mimeType: "image/png",
       fileExtension: "png",
@@ -22,6 +23,7 @@ describe("Image domain contracts", () => {
         intakeKind: "direct",
         sourceName: "tiny.png",
         sourcePath: null,
+        containerChain: [],
         containerName: null,
         containerHash: null,
         containerPath: null,
@@ -50,7 +52,8 @@ describe("Image domain contracts", () => {
       const item = createImagePortalItem({
         id: "cloneable-image",
         incarnation: 2,
-        bytes: new Uint8Array([0, 255, 17, 34]),
+        sourceBytes: new NativeBlob([new Uint8Array([0, 255, 17, 34])], { type: "image/png" }) as Blob,
+        byteCount: 4,
         sourceHash: "cloneable-hash",
         mimeType: "image/png",
         fileExtension: "png",
@@ -60,6 +63,7 @@ describe("Image domain contracts", () => {
           intakeKind: "direct",
           sourceName: "cloneable.png",
           sourcePath: null,
+          containerChain: [],
           containerName: null,
           containerHash: null,
           containerPath: null,
@@ -91,8 +95,15 @@ describe("Image domain contracts", () => {
       intakeKind: "zip" as const,
       sourceName: "card.webp",
       sourcePath: "assets/card.webp",
+      containerChain: [{
+        kind: "zip" as const,
+        name: "bundle.zip",
+        sha256: "e".repeat(64),
+        path: "assets/card.webp",
+        byteCount: 12,
+      }],
       containerName: "bundle.zip",
-      containerHash: "sha256-container",
+      containerHash: "e".repeat(64),
       containerPath: "assets/card.webp",
       pageNumber: null,
       relationshipId: null,
@@ -101,7 +112,8 @@ describe("Image domain contracts", () => {
     const item = createImagePortalItem({
       id: "image-2",
       incarnation: 3,
-      bytes: new Uint8Array([1, 2, 3]),
+      sourceBytes: new Blob([new Uint8Array([1, 2, 3])], { type: "image/webp" }),
+      byteCount: 3,
       sourceHash: "sha256-source-2",
       mimeType: "image/webp",
       fileExtension: "webp",
@@ -142,5 +154,97 @@ describe("Image domain contracts", () => {
       requestedChanges: "",
       mustPreserve: "",
     });
+  });
+
+  it("accepts an already-owned Blob admission and deeply freezes its complete container chain", async () => {
+    // Catches reducer admission copying bytes again, trusting a mismatched byte count, or retaining mutable ancestry.
+    const sourceBytes = new NativeBlob([new Uint8Array([9, 8, 7])], { type: "image/png" }) as Blob;
+    const containerChain = [
+      { kind: "folder" as const, name: "outer", sha256: null, path: null, byteCount: null },
+      { kind: "zip" as const, name: "bundle.zip", sha256: "a".repeat(64), path: "bundle.zip", byteCount: 400 },
+      { kind: "docx" as const, name: "notes.docx", sha256: "b".repeat(64), path: "docs/notes.docx", byteCount: 300 },
+    ];
+    const item = createImagePortalItem({
+      id: "owned-admission",
+      incarnation: 4,
+      sourceBytes,
+      byteCount: 3,
+      sourceHash: "source-hash",
+      mimeType: "image/png",
+      fileExtension: "png",
+      width: 1,
+      height: 1,
+      provenance: {
+        intakeKind: "docx-extracted",
+        sourceName: "image1.png",
+        sourcePath: "word/media/image1.png",
+        containerChain,
+        containerName: "wrong compatibility value",
+        containerHash: "wrong compatibility value",
+        containerPath: "wrong compatibility value",
+        pageNumber: null,
+        relationshipId: null,
+      },
+      settings: DEFAULT_IMAGE_PROMPT_SETTINGS,
+    });
+
+    expect(item.sourceBytes).toBe(sourceBytes);
+    expect(item.byteCount).toBe(3);
+    expect(item.provenance.containerChain).toEqual(containerChain);
+    expect(item.provenance).toMatchObject({
+      containerName: "notes.docx",
+      containerHash: "b".repeat(64),
+      containerPath: "docs/notes.docx",
+    });
+    expect(Object.isFrozen(item.provenance.containerChain)).toBe(true);
+    expect(item.provenance.containerChain.every(Object.isFrozen)).toBe(true);
+
+    containerChain[2].name = "mutated.docx";
+    expect(item.provenance.containerChain[2].name).toBe("notes.docx");
+    expect(Array.from(await copyImageBytes(item.sourceBytes, 3))).toEqual([9, 8, 7]);
+
+    expect(() => createImagePortalItem({
+      id: item.id,
+      incarnation: 5,
+      sourceBytes,
+      byteCount: 2,
+      sourceHash: item.sourceHash,
+      mimeType: item.mimeType,
+      fileExtension: item.fileExtension,
+      width: item.dimensions.width,
+      height: item.dimensions.height,
+      provenance: item.provenance,
+      settings: DEFAULT_IMAGE_PROMPT_SETTINGS,
+    })).toThrow("IMAGE_ITEM_BYTE_COUNT_MISMATCH");
+
+    for (const invalidNode of [
+      { kind: "zip" as const, name: "bundle.zip", sha256: "not-a-sha256", path: "bundle.zip", byteCount: 3 },
+      { kind: "pdf" as const, name: "unsafe.pdf", sha256: "c".repeat(64), path: "../unsafe.pdf", byteCount: 3 },
+      { kind: "docx" as const, name: "drive.docx", sha256: "d".repeat(64), path: "C:/drive.docx", byteCount: 3 },
+    ]) {
+      expect(() => createImagePortalItem({
+        id: "invalid-provenance",
+        incarnation: 6,
+        sourceBytes,
+        byteCount: 3,
+        sourceHash: "source-hash",
+        mimeType: "image/png",
+        fileExtension: "png",
+        width: 1,
+        height: 1,
+        provenance: {
+          intakeKind: "zip",
+          sourceName: "image.png",
+          sourcePath: null,
+          containerChain: [invalidNode],
+          containerName: null,
+          containerHash: null,
+          containerPath: null,
+          pageNumber: null,
+          relationshipId: null,
+        },
+        settings: DEFAULT_IMAGE_PROMPT_SETTINGS,
+      })).toThrow("IMAGE_PROVENANCE_CONTAINER_INVALID");
+    }
   });
 });

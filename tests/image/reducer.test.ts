@@ -2,10 +2,10 @@ import { DEFAULT_IMAGE_PROMPT_SETTINGS, ownImageBytes, type ImagePromptSettings 
 import {
   createInitialImagePortalState,
   imagePortalReducer as strictImagePortalReducer,
-  type ImageAdmission,
   type ImagePortalAction,
   type ImagePortalState,
 } from "../../src/image/reducer";
+import type { ImageAdmission } from "../../src/image/intakeContracts";
 
 type ImageOcrAction = Extract<ImagePortalAction, { type: `ocr/${string}` }>;
 type ImageOcrTokenField = "expectedSessionGeneration" | "expectedItemIncarnation" | "expectedSourceHash";
@@ -35,7 +35,9 @@ function imagePortalReducer(state: ImagePortalState, action: TestImagePortalActi
 function admission(id: string, sourceHash = `hash-${id}`): ImageAdmission {
   return {
     id,
-    bytes: new Uint8Array([1, 2, id.length]),
+    ordinal: 0,
+    sourceBytes: ownImageBytes(new Uint8Array([1, 2, id.length]), "image/png"),
+    byteCount: 3,
     sourceHash,
     mimeType: "image/png",
     fileExtension: "png",
@@ -45,6 +47,7 @@ function admission(id: string, sourceHash = `hash-${id}`): ImageAdmission {
       intakeKind: "direct",
       sourceName: `${id}.png`,
       sourcePath: null,
+      containerChain: [],
       containerName: null,
       containerHash: null,
       containerPath: null,

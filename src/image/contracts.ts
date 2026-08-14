@@ -147,10 +147,22 @@ export interface ImageDimensions {
   readonly megapixels: number;
 }
 
+export type ImageContainerKind = "folder" | "zip" | "pdf" | "docx";
+
+export interface ImageContainerProvenanceNode {
+  readonly kind: ImageContainerKind;
+  readonly name: string;
+  readonly sha256: string | null;
+  readonly path: string | null;
+  readonly byteCount: number | null;
+}
+
 export interface ImageProvenance {
   readonly intakeKind: ImageIntakeKind;
   readonly sourceName: string;
   readonly sourcePath: string | null;
+  readonly containerChain: readonly ImageContainerProvenanceNode[];
+  /** Derived compatibility fields for the innermost container node. */
   readonly containerName: string | null;
   readonly containerHash: string | null;
   readonly containerPath: string | null;
@@ -172,6 +184,7 @@ export interface ImagePortalItem {
   readonly id: string;
   readonly incarnation: number;
   readonly sourceBytes: ImmutableImageBytes;
+  readonly byteCount: number;
   readonly sourceHash: string;
   readonly mimeType: ImageMimeType;
   readonly fileExtension: ImageFileExtension;
@@ -188,7 +201,8 @@ export interface ImagePortalItem {
 export interface CreateImagePortalItemInput {
   readonly id: string;
   readonly incarnation: number;
-  readonly bytes: Uint8Array;
+  readonly sourceBytes: ImmutableImageBytes;
+  readonly byteCount: number;
   readonly sourceHash: string;
   readonly mimeType: ImageMimeType;
   readonly fileExtension: ImageFileExtension;
@@ -199,14 +213,73 @@ export interface CreateImagePortalItemInput {
   readonly warnings?: readonly string[];
 }
 
+function cloneContainerChain(
+  chain: readonly ImageContainerProvenanceNode[],
+): readonly ImageContainerProvenanceNode[] {
+  return Object.freeze(chain.map((node) => {
+    const safePath = node.path === null || (() => {
+      const normalized = node.path.normalize("NFC");
+      return normalized === node.path
+        && normalized.length > 0
+        && !normalized.includes("\\")
+        && !normalized.startsWith("/")
+        && !/^[A-Za-z]:/u.test(normalized)
+        && normalized.split("/").every((segment) => segment.length > 0
+          && segment !== "."
+          && segment !== ".."
+          && !Array.from(segment).some((character) => (character.codePointAt(0) ?? 0) <= 31));
+    })();
+    const validFolder = node.kind === "folder"
+      && node.sha256 === null
+      && node.byteCount === null;
+    const validContainer = node.kind !== "folder"
+      && typeof node.sha256 === "string"
+      && /^[a-f0-9]{64}$/iu.test(node.sha256)
+      && Number.isSafeInteger(node.byteCount)
+      && (node.byteCount ?? 0) > 0;
+    if (!node.name || !safePath || (!validFolder && !validContainer)) {
+      throw new Error("IMAGE_PROVENANCE_CONTAINER_INVALID");
+    }
+    return Object.freeze({
+      kind: node.kind,
+      name: node.name,
+      sha256: node.sha256,
+      path: node.path,
+      byteCount: node.byteCount,
+    });
+  }));
+}
+
+function cloneImageProvenance(provenance: ImageProvenance): Readonly<ImageProvenance> {
+  const containerChain = cloneContainerChain(provenance.containerChain);
+  const innermost = containerChain.at(-1);
+  return Object.freeze({
+    intakeKind: provenance.intakeKind,
+    sourceName: provenance.sourceName,
+    sourcePath: provenance.sourcePath,
+    containerChain,
+    containerName: innermost?.name ?? null,
+    containerHash: innermost?.sha256 ?? null,
+    containerPath: innermost?.path ?? null,
+    pageNumber: provenance.pageNumber,
+    relationshipId: provenance.relationshipId,
+  });
+}
+
 export function createImagePortalItem(input: CreateImagePortalItemInput): ImagePortalItem {
   if (!Number.isSafeInteger(input.incarnation) || input.incarnation < 1) {
     throw new Error("IMAGE_ITEM_INCARNATION_INVALID");
   }
+  if (!Number.isSafeInteger(input.byteCount)
+    || input.byteCount < 1
+    || input.sourceBytes.size !== input.byteCount) {
+    throw new Error("IMAGE_ITEM_BYTE_COUNT_MISMATCH");
+  }
   return {
     id: input.id,
     incarnation: input.incarnation,
-    sourceBytes: ownImageBytes(input.bytes, input.mimeType),
+    sourceBytes: input.sourceBytes,
+    byteCount: input.byteCount,
     sourceHash: input.sourceHash,
     mimeType: input.mimeType,
     fileExtension: input.fileExtension,
@@ -215,7 +288,7 @@ export function createImagePortalItem(input: CreateImagePortalItemInput): ImageP
       height: input.height,
       megapixels: (input.width * input.height) / 1_000_000,
     }),
-    provenance: Object.freeze({ ...input.provenance }),
+    provenance: cloneImageProvenance(input.provenance),
     included: true,
     bulkSelected: false,
     ocr: Object.freeze({

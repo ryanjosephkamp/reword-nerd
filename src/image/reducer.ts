@@ -5,14 +5,14 @@ import {
   isImagePromptSettings,
   isImagePromptSettingValue,
   isImageOcrTextWithinLimit,
-  type CreateImagePortalItemInput,
   type ImagePortalItem,
   type ImagePromptSettings,
   type ImmutableImageBytes,
 } from "./contracts";
+import type { ImageAdmission } from "./intakeContracts";
 import type { SavedImagePreferences } from "./preferences";
 
-export type ImageAdmission = Omit<CreateImagePortalItemInput, "settings" | "incarnation">;
+export type { ImageAdmission } from "./intakeContracts";
 export type ImageSettingField = keyof ImagePromptSettings;
 
 export type ImageSettingChangeAction = {
