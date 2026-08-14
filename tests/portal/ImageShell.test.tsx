@@ -4,14 +4,17 @@ import { ImageApp } from "../../src/image/ImageApp";
 import { shareImageCanonicalUrl } from "../../src/image/share";
 
 describe("Image portal shell", () => {
-  it("identifies Image with the supplied artwork while leaving the workbench for later tasks", () => {
-    // This catches the new physical entry being a duplicate Text app or prematurely claiming Image workbench functionality.
+  it("hosts the local Image workbench while preserving Image identity and canonical links", () => {
+    window.localStorage.setItem(
+      "reword-nerd:image-preferences:v1",
+      JSON.stringify({ version: 1, data: { tutorialVersion: "0.8" } }),
+    );
     render(<ImageApp />);
 
-    expect(screen.getByRole("main", { name: "reword_nerd Image portal" })).toHaveTextContent("IMAGE WORKBENCH ARRIVING NEXT");
+    expect(screen.getByRole("main", { name: "reword_nerd Image workbench" })).toHaveTextContent("LOCAL SESSION");
     expect(screen.getByRole("link", { name: "IMAGE" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("img", { name: "Orange pyramid artwork" })).toHaveAttribute("src", "/image/orange-pyramid.webp");
     fireEvent.click(screen.getByRole("button", { name: "Info" }));
+    expect(screen.getByRole("img", { name: "Orange pyramid artwork" })).toHaveAttribute("src", "/image/orange-pyramid.webp");
     expect(screen.getByRole("link", { name: "Updates" })).toHaveAttribute("href", "/updates/v0-7-0/");
     expect(screen.getByRole("link", { name: "Community" })).toHaveAttribute("href", "https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=bug_report.yml");
   });

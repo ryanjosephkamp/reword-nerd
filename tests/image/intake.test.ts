@@ -1,12 +1,18 @@
 import {
+  createBrowserImageIntakeService,
   createImageIntakeService,
+  type BrowserImageIntakeServiceOptions,
+  type ImageAdmission,
+  type ImageInputFile,
+  type ImageIntakeIssue,
+  type ImageIntakeResult,
+  type ImagePdfCaptureChoice,
+  type ImagePublicationAcknowledgement,
   type ImageIntakeService,
 } from "../../src/image/intake";
 import { Uint8ArrayReader, Uint8ArrayWriter, ZipWriter } from "@zip.js/zip.js";
 import {
   MAX_IMAGE_SESSION_BYTES,
-  type ImageAdmission,
-  type ImageInputFile,
 } from "../../src/image/intakeContracts";
 import type { ArchiveEntryAdapter, ArchiveReaderAdapter } from "../../src/image/safeArchive";
 import type { ImagePdfAdapter, ImagePdfPage } from "../../src/image/pdfIntake";
@@ -114,6 +120,56 @@ function harness(overrides: {
 }
 
 describe("Image intake integration", () => {
+  it("constructs a browser-ready service that decodes without a UI-owned decoder", async () => {
+    // Catches a missing facade factory or one that does not install the browser decode adapter.
+    const close = vi.fn();
+    const decode = vi.fn(async (source: Blob) => ({
+      width: source.size > 0 ? 23 : 0,
+      height: 17,
+      close,
+    }));
+    vi.stubGlobal("createImageBitmap", decode);
+    const authoritative: ImageAdmission[] = [];
+    let service!: ImageIntakeService;
+    const acknowledgement = (
+      admission: ImageAdmission,
+      sessionEpoch: number,
+    ): ImagePublicationAcknowledgement => {
+      authoritative.push(admission);
+      service.reconcile(authoritative);
+      return { accepted: true, occurrenceId: admission.id, sessionEpoch };
+    };
+    const captureChoice: ImagePdfCaptureChoice = { mode: "embedded-only" };
+    const options: BrowserImageIntakeServiceOptions = {
+      hash: async () => HASH,
+      idFactory: () => "browser-occurrence",
+      publish: acknowledgement,
+      resolvePdfCapture: () => captureChoice,
+    };
+
+    try {
+      service = createBrowserImageIntakeService(options);
+      const result: ImageIntakeResult = await service.intake([
+        file("browser.png", PNG, "image/png"),
+      ]);
+      const issue: ImageIntakeIssue | null = result.ledger[0].issue;
+
+      expect(result.admissions).toEqual([
+        expect.objectContaining({
+          id: "browser-occurrence",
+          width: 23,
+          height: 17,
+        }),
+      ]);
+      expect(issue).toBeNull();
+      expect(decode).toHaveBeenCalledOnce();
+      expect(decode.mock.calls[0][0]).toBeInstanceOf(Blob);
+      expect(close).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("admits a mixed top-level batch with an exact partial ledger and ZIP provenance", async () => {
     // Catches top-level all-or-nothing rollback, silent unsupported entries, and flattened ZIP custody.
     const reader = archiveReader([

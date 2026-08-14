@@ -12,6 +12,7 @@ import {
   type ImageIntakeResult,
 } from "./intakeContracts";
 import {
+  createBrowserImageDecodeAdapter,
   prepareImageInput,
   validatePreparedImage,
   type ImageDecodeAdapter,
@@ -39,6 +40,15 @@ import {
   type ImageIntakeCapacityScope,
   type ImagePublicationAcknowledgement,
 } from "./intakeCapacity";
+
+export type {
+  ImageAdmission,
+  ImageInputFile,
+  ImageIntakeIssue,
+  ImageIntakeResult,
+} from "./intakeContracts";
+export type { ImagePublicationAcknowledgement } from "./intakeCapacity";
+export type { ImagePdfCaptureChoice } from "./pdfIntake";
 
 const PDF_MIME_TYPES = new Set(["application/pdf"]);
 const DOCX_MIME_TYPES = new Set([
@@ -346,6 +356,8 @@ export interface ImageIntakeServiceOptions extends ImageFolderIntakeOptions {
   ) => ImagePublicationAcknowledgement;
   readonly archiveOpen?: (source: Blob) => Promise<ArchiveReaderAdapter>;
 }
+
+export type BrowserImageIntakeServiceOptions = Omit<ImageIntakeServiceOptions, "decoder">;
 
 
 export interface ImageIntakePdfCaptureContext {
@@ -781,6 +793,15 @@ export function createImageIntakeService(options: ImageIntakeServiceOptions): Im
     reset: () => capacity.reset(),
     snapshot: () => capacity.snapshot(),
   };
+}
+
+export function createBrowserImageIntakeService(
+  options: BrowserImageIntakeServiceOptions,
+): ImageIntakeService {
+  return createImageIntakeService({
+    ...options,
+    decoder: createBrowserImageDecodeAdapter(),
+  });
 }
 
 function fileFromArchiveEntry(path: string, bytes: Uint8Array): ImageInputFile {

@@ -7,7 +7,7 @@ describe("portal navigation colors", () => {
   it("keeps Text teal and Image orange for portal links", () => {
     // This catches the global teal link rule erasing Image identity.
     const stylesheet = document.createElement("style");
-    stylesheet.textContent = `${readFileSync("src/styles/index.css", "utf8")}\n${readFileSync("src/styles/workbench.css", "utf8")}`;
+    stylesheet.textContent = `${readFileSync("src/styles/index.css", "utf8")}\n${readFileSync("src/styles/workbench.css", "utf8")}\n${readFileSync("src/styles/image-workbench.css", "utf8")}`;
     document.head.append(stylesheet);
     const text = document.createElement("a");
     const image = document.createElement("a");
@@ -28,7 +28,7 @@ describe("portal navigation colors", () => {
   it("uses orange links and keyboard focus throughout the Image shell without recoloring Text", () => {
     // This catches Image controls inheriting the global teal link/focus treatment or the shared Text portal losing teal identity.
     const stylesheet = document.createElement("style");
-    stylesheet.textContent = `${readFileSync("src/styles/index.css", "utf8")}\n${readFileSync("src/styles/workbench.css", "utf8")}`;
+    stylesheet.textContent = `${readFileSync("src/styles/index.css", "utf8")}\n${readFileSync("src/styles/workbench.css", "utf8")}\n${readFileSync("src/styles/image-workbench.css", "utf8")}`;
     document.head.append(stylesheet);
     render(<ImageApp />);
 

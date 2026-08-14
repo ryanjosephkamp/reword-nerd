@@ -3,7 +3,8 @@ import { expect, test } from "@playwright/test";
 test("Image keeps its local links and keyboard focus orange without recoloring Text", async ({ page }) => {
   // This catches generic Image controls falling back to the Text teal interaction color.
   await page.goto("image/");
-  await expect(page.getByRole("main", { name: "reword_nerd Image portal" })).toBeVisible();
+  await expect(page.getByRole("main", { name: "reword_nerd Image workbench" })).toBeVisible();
+  await page.getByRole("button", { name: "START LOCAL SESSION" }).click();
 
   const textPortal = page.getByRole("link", { name: "TEXT" });
   const imagePortal = page.getByRole("link", { name: "IMAGE" });

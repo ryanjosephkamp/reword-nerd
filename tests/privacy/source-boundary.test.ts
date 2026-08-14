@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { IMAGE_PROMPT_PROFILES } from "../../src/image/profiles";
@@ -49,6 +49,28 @@ const forbidden = [
   /\bindexedDB\s*\.\s*open\b/u,
   /\bcaches\s*\.\s*open\b/u,
 ];
+
+const forbiddenWorkbenchImageModules = new Set([
+  "imageValidation",
+  "intakeCapacity",
+  "safeArchive",
+  "pdfIntake",
+  "docxIntake",
+]);
+
+function workbenchLowLevelImportFindings(path: string, source: string): string[] {
+  const displayPath = path.startsWith(process.cwd()) ? relative(process.cwd(), path) : path;
+  if (!displayPath.split("/").join("\\").includes("src\\image\\workbench\\")) return [];
+  const moduleSpecifiers = [
+    ...source.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s*)["']([^"']+)["']/gu),
+  ].map((match) => match[1]);
+  return moduleSpecifiers.flatMap((specifier) => {
+    const moduleName = specifier.split("/").at(-1)?.replace(/\.(?:ts|tsx)$/u, "") ?? "";
+    return forbiddenWorkbenchImageModules.has(moduleName)
+      ? [`${displayPath} imported forbidden low-level Image module ${moduleName}`]
+      : [];
+  });
+}
 
 function boundaryFindings(path: string, source: string): string[] {
   const displayPath = path.startsWith(process.cwd()) ? relative(process.cwd(), path) : path;
@@ -103,6 +125,35 @@ describe("production privacy boundary", () => {
     ]);
     expect(boundaryFindings("src/image/preferences.ts", "storage.setItem(dynamicKey, serialized);"))
       .toEqual(["src/image/preferences.ts used an unapproved browser-storage call setItem(dynamicKey)"]);
+  });
+
+  it("rejects low-level intake imports from every Image workbench module", () => {
+    // Catches UI code bypassing the public Image facade and taking ownership of validation or extraction internals.
+    const fixture = [
+      'import "../imageValidation";',
+      'export { readSafeArchive } from "../safeArchive.ts";',
+      'const capacity = import("../intakeCapacity");',
+      'import type { ImagePdfAdapter } from "../pdfIntake";',
+      'import type { DocxConverterAdapter } from "../docxIntake";',
+      'import { createBrowserImageIntakeService } from "../intake";',
+    ].join("\n");
+
+    expect(workbenchLowLevelImportFindings("src/image/workbench/unsafe.ts", fixture)).toEqual([
+      "src/image/workbench/unsafe.ts imported forbidden low-level Image module imageValidation",
+      "src/image/workbench/unsafe.ts imported forbidden low-level Image module safeArchive",
+      "src/image/workbench/unsafe.ts imported forbidden low-level Image module intakeCapacity",
+      "src/image/workbench/unsafe.ts imported forbidden low-level Image module pdfIntake",
+      "src/image/workbench/unsafe.ts imported forbidden low-level Image module docxIntake",
+    ]);
+  });
+
+  it("keeps production Image workbench modules on public facades", () => {
+    const root = join(process.cwd(), "src", "image", "workbench");
+    const findings = existsSync(root)
+      ? sourceFiles(root).flatMap((path) => workbenchLowLevelImportFindings(path, readFileSync(path, "utf8")))
+      : [];
+
+    expect(findings).toEqual([]);
   });
 
   it("binds each official documentation URL to its exact Image profile tuple", () => {
