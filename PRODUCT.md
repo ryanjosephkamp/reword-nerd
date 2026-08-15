@@ -23,6 +23,10 @@ can configure the intended model family, verify every source and setting, and
 export a deterministic package without sending source material to this site or
 supplying provider credentials.
 
+The current formal product release is `0.8.0`. The shared Updates ledger,
+application identity, package metadata, and Text schema-6 manifest version are
+required to agree with that release.
+
 ## Brand Personality
 
 Precise, calm, and technically confident. Product copy should be direct and

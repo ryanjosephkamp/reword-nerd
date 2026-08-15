@@ -211,7 +211,7 @@ saved as the user entered them, so they may contain sensitive text the user
 chooses to type. Neither adapter writes the other portal's key.
 
 `src/version.ts` exposes `APP_VERSION` from package metadata. The footer and
-Info dialog render `0.7.0` from that source, while schema-v6 contracts and tests
+Info dialog render `0.8.0` from that source, while schema-v6 contracts and tests
 require the manifest package version to match the release.
 
 ## Updates publication boundary

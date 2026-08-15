@@ -1,6 +1,6 @@
 # Prompt package manifest v3
 
-> Historical contract. Current `0.7.0` packages use [manifest schema v6](manifest-v6.md).
+> Historical contract. Current `0.8.0` packages use [manifest schema v6](manifest-v6.md).
 
 Manifest schema `3` is the historical `reword-nerd` `0.3.0` package contract. It
 extends v2 without changing the canonical four-stage prompt order.

@@ -245,7 +245,7 @@ are not replaced by this inventory.
 - `ALL CHANGES SAVED`, `v1.0.0`
 
 The version string in the visual reference is compositional sample copy. The
-current implementation renders its package version (`v0.7.0`) in that footer
+current implementation renders its package version (`v0.8.0`) in that footer
 position while preserving the same hierarchy and session-only meaning.
 
 ## v0.6 source and project additions

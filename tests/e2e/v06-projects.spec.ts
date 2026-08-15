@@ -219,7 +219,7 @@ test("folder and generic ZIP projects build one schema-v6 archive with sanitized
       };
     }>;
   };
-  expect(manifest).toMatchObject({ schemaVersion: 6, package: { version: "0.7.0" } });
+  expect(manifest).toMatchObject({ schemaVersion: 6, package: { version: "0.8.0" } });
   expect(manifest.documents.map((record) => [record.originalDisplayName, record.source.kind, record.source.intakeKind]))
     .toEqual([
       ["folder-workspace", "project", "folder"],

@@ -1,7 +1,7 @@
 # Historical reword-nerd v1 implementation plan
 
 > Historical record only. This plan describes the original v0.1 foundation,
-> not the current v0.7 Text capability, completed Image companion, or release
+> not the current v0.8 Text capability, completed Image companion, or release
 > status. See the repository README, architecture, design system, manifest-v6,
 > and Image package manifest-v1 specifications for current behavior.
 
@@ -11,8 +11,9 @@ The companion implementation is outside this historical plan. For current
 behavior, see the [README](../README.md), [architecture](architecture.md),
 [privacy boundary](privacy.md), [extraction limitations](extraction-limitations.md),
 [design system](design-system.md), and [Image manifest](image-package-manifest-v1.md).
-Those current references are not a version bump, Updates entry, deployment
-instruction, or authorization to publish.
+Those current references document the formal `0.8.0` release; this historical
+plan remains neither a deployment instruction nor independent publication
+authority.
 
 ## Global constraints
 

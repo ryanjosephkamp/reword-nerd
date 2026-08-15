@@ -9,7 +9,7 @@ function read(relativePath: string): string {
 }
 
 describe("completed Image companion documentation contract", () => {
-  it("maps the physical companion page without changing the Text default or release version", () => {
+  it("maps the physical companion page while documenting the formal v0.8 release", () => {
     // Catches the shipped Image page remaining undiscoverable or being described as a router alias/replacement.
     for (const path of [
       "README.md",
@@ -47,9 +47,9 @@ describe("completed Image companion documentation contract", () => {
     expect(directory).toContain("public/image/orange-pyramid.webp");
     expect(directory).toMatch(/└── tests\/\n\s+├── image\//u);
 
-    expect(JSON.parse(read("package.json")).version).toBe("0.7.0");
+    expect(JSON.parse(read("package.json")).version).toBe("0.8.0");
     for (const path of ["README.md", "PRODUCT.md", "docs/architecture.md", "docs/implementation-plan.md"]) {
-      expect(read(path)).not.toContain("0.8.0");
+      expect(read(path)).toContain("0.8.0");
     }
   });
 
@@ -180,12 +180,13 @@ describe("completed Image companion documentation contract", () => {
     expect(directory).toContain("pairs/<pair-key>/");
   });
 
-  it("keeps Image release and visual review evidence truthful and separately gated", () => {
+  it("keeps formal Image release identity and remote publication authority truthful", () => {
     const release = read("docs/release-workflow.md");
     expect(release).toContain("/reword-nerd/image/");
-    expect(release).toMatch(/Image[^\n]*(?:release|publication)[^\n]*(?:separate|owner)[^\n]*(?:gate|authorization)/iu);
+    expect(release).toMatch(/formal `0\.8\.0` release[\s\S]{0,120}Image Quick Start/iu);
+    expect(release).toMatch(/owner-controlled remote publication|repository-owner actions/iu);
     expect(release).toMatch(/Image Quick Start[^\n]*(?:embedded|video)[^\n]*(?:local|same-origin)/iu);
-    expect(release).not.toMatch(/v0\.8[^\n]*(?:published|deployed|released)/iu);
+    expect(release).not.toMatch(/v0\.8[^\n]*deployed/iu);
 
     const qa = read("docs/design-qa.md");
     expect(qa).toMatch(/Image companion[^\n]*comparison ledger/iu);

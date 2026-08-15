@@ -12,23 +12,31 @@ function section(markdown: string, heading: "Added" | "Changed" | "Fixed") {
   return match[1];
 }
 
-describe("v0.8 Image portal Updates article", () => {
-  it("publishes a visual article without changing the formal v0.7 release identity", async () => {
-    // Turning this article into a release or making it current must not silently perform the separately gated version bump.
+describe("v0.8 Image portal release", () => {
+  it("promotes the approved visual article into the sole formal current v0.8 release", async () => {
+    // Leaving any version surface or the prior current release behind must make the final release gate fail.
     expect(validateReleaseLedger(ledger)).toBe(ledger);
     const current = ledger.entries.filter((entry) => entry.kind === "release" && entry.status === "current");
-    const article = ledger.entries.find((entry) => entry.slug === "v0-8-0");
+    const previous = ledger.entries.find((entry) => entry.slug === "v0-7-0");
+    const release = ledger.entries.find((entry) => entry.slug === "v0-8-0");
     const packageMetadata = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
+    const lockMetadata = JSON.parse(await readFile(join(root, "package-lock.json"), "utf8"));
+    const reviewInventory = JSON.parse(await readFile(join(root, "content/updates/release-review-v0.8.0.json"), "utf8"));
 
     expect(current).toHaveLength(1);
-    expect(current[0]).toMatchObject({ slug: "v0-7-0", version: "0.7.0" });
-    expect(packageMetadata.version).toBe("0.7.0");
-    expect(article).toMatchObject({
-      kind: "article",
+    expect(previous).toMatchObject({ kind: "release", slug: "v0-7-0", version: "0.7.0", status: "published" });
+    expect(current[0]).toMatchObject({ slug: "v0-8-0", version: "0.8.0" });
+    expect(packageMetadata.version).toBe("0.8.0");
+    expect(lockMetadata.version).toBe("0.8.0");
+    expect(lockMetadata.packages[""].version).toBe("0.8.0");
+    expect(release).toMatchObject({
+      kind: "release",
       slug: "v0-8-0",
-      status: "published",
+      status: "current",
       date: "2026-08-14",
       markdownPath: "content/updates/v0-8-0.md",
+      version: "0.8.0",
+      classification: "feature",
       visualChanges: true,
       video: {
         policy: "required",
@@ -38,8 +46,14 @@ describe("v0.8 Image portal Updates article", () => {
         transcriptPath: "/reword-nerd/media/updates/v0-8-0/transcript.txt",
       },
     });
-    expect(article).not.toHaveProperty("version");
-    expect(article).not.toHaveProperty("classification");
+    expect(reviewInventory).toMatchObject({
+      schemaVersion: 1,
+      version: "0.8.0",
+      previousVersion: "0.7.0",
+      classification: "feature",
+      generatedFrom: "local-git-history",
+    });
+    expect(reviewInventory.commits.length).toBeGreaterThan(0);
   });
 
   it("uses neutral action-led prose and records the complete approved v0.8 scope", async () => {
@@ -67,5 +81,8 @@ describe("v0.8 Image portal Updates article", () => {
       "selectable-text containment",
       "timestamped ZIP downloads",
     ]) expect(markdown).toContain(topic);
+
+    expect(markdown).not.toMatch(/separately authorized release gate|complete the formal version change/iu);
+    expect(markdown).toMatch(/future marketing media and external writing[\s\S]{0,120}independent later work/iu);
   });
 });

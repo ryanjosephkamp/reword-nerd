@@ -1,16 +1,16 @@
 # Release workflow
 
-This is the local, reviewable v0.7 release procedure for the static Updates
+This is the local, reviewable v0.8 release procedure for the static Updates
 journal. It separates authoring evidence from remote publication authority.
 Running a local command does not publish, commit, push, merge, open a pull
 request, change a GitHub setting, or deploy.
 
 The current application has a physical default Text page and a physical Image
-companion at `/reword-nerd/image/`. Image publication remains a separate owner-authorization gate; documenting or locally validating the page does not
-release it. The Image Quick Start video is embedded as silent same-origin media
-with a poster and transcript. The prepared v0.8 article records the local Image work
-and declares separate same-origin update media, while the formal
-version change, merge, and Pages deployment remain separately gated.
+companion at `/reword-nerd/image/`. The formal `0.8.0` release includes the
+Image Quick Start embedded as silent same-origin video with a poster and transcript. Its
+current Updates post declares separate same-origin release media. A local
+release command still does not authorize a merge or Pages deployment; those
+remain explicit repository-owner actions.
 
 ## Scope and custody
 

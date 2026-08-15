@@ -132,7 +132,7 @@ describe("v6 workbook package", () => {
     if (!result.ok) throw new Error("fixture should export");
     expect(result.manifest).toMatchObject({
       schemaVersion: 6,
-      package: { name: "reword-nerd", version: "0.7.0", format: "dual-mode-prompt-package" },
+      package: { name: "reword-nerd", version: "0.8.0", format: "dual-mode-prompt-package" },
       workflow: {
         modes: ["one-shot", "manual"],
         manualStages: ["decompose", "rewrite", "verify", "final"],

@@ -27,7 +27,7 @@ describe("Image portal shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Info" }));
     const info = screen.getByRole("dialog", { name: "About reword-nerd Image" });
     const expectedLinks = [
-      ["Updates", "/updates/v0-7-0/"],
+      ["Updates", "/updates/v0-8-0/"],
       ["Repository", "https://github.com/ryanjosephkamp/reword-nerd"],
       ["Report a bug", "https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=bug_report.yml"],
       ["Suggest a feature", "https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=feature_request.yml"],

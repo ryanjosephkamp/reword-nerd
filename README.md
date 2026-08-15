@@ -156,13 +156,13 @@ uploaded session content, prompt packages, and downloaded progress copies. They
 are reviewed source files and same-origin release assets; they are never added
 to a user's package or inferred from a user's session.
 
-The prepared v0.8 article documents the local Image companion and its focused
-Text/export polish without changing the formal v0.7.0 product version. Making
-that version transition, merging, and deploying remain a separate gate.
+The current v0.8 release documents the local Image companion and its focused
+Text/export polish. The JSON ledger, package metadata, application footer, and
+schema-6 Text package contract share the formal `0.8.0` version.
 
 ```sh
 npm run updates:new -- --slug road-to-v0-6 --title "Road to v0.6" --date 2026-08-13
-npm run release:prepare -- --version 0.7.0 --title "reword-nerd v0.7" --date 2026-08-13
+npm run release:prepare -- --version 0.8.0 --title "reword-nerd v0.8: Image prompt packages" --date 2026-08-14
 npm run updates:check
 npm run updates:render
 ```

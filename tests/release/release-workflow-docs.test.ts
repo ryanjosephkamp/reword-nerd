@@ -8,7 +8,7 @@ function read(relativePath: string): string {
   return readFileSync(join(root, relativePath), "utf8");
 }
 
-describe("v0.7 release documentation contract", () => {
+describe("v0.8 release documentation contract", () => {
   it("publishes an explicit local authoring, review, video, and owner-controlled publication workflow", () => {
     // Without a dedicated workflow, contributors can mistake offline generators or a local build for publication authority.
     const workflowPath = join(root, "docs/release-workflow.md");
@@ -52,7 +52,7 @@ describe("v0.7 release documentation contract", () => {
     }
   });
 
-  it("documents the complete v0.7 navigation and overlay privacy inventory", () => {
+  it("documents the complete site-wide navigation and overlay privacy inventory", () => {
     // Stale counts or omitted overlays make the source allowlist and focus boundary impossible to audit from the docs.
     const privacy = read("docs/privacy.md");
     expect(privacy).toMatch(/exactly seven[\s\S]*external navigation destinations/iu);
