@@ -81,6 +81,73 @@ describe("Updates authoring commands", () => {
     expect(await readFile(postPath, "utf8")).toContain("Human-reviewed sentence.");
   });
 
+  it("promotes an existing published article into the current release without rewriting approved prose or media", async () => {
+    // Replacing the article instead of promoting it would destroy the separately reviewed v0.8 prose/media declaration.
+    const root = await releaseRoot();
+    expect(await createUpdate(root, {
+      slug: "v0-7-0",
+      title: "reword-nerd v0.7: Image prompt packages",
+      date: "2026-08-14",
+    })).toBe("created");
+
+    const postPath = join(root, "content/updates/v0-7-0.md");
+    const approvedPost = `${await readFile(postPath, "utf8")}\nApproved neutral release prose.\n`;
+    await writeFile(postPath, approvedPost);
+
+    const ledgerPath = join(root, "content/updates/releases.json");
+    const ledger = JSON.parse(await readFile(ledgerPath, "utf8"));
+    const article = ledger.entries.find((entry: { slug: string }) => entry.slug === "v0-7-0");
+    Object.assign(article, {
+      status: "published",
+      summary: "Approved Image companion summary.",
+      tags: ["image portal", "local processing"],
+      relatedPrs: [10],
+      visualChanges: true,
+      video: {
+        policy: "required",
+        mp4Path: "/reword-nerd/media/updates/v0-7-0/release-update.mp4",
+        webmPath: "/reword-nerd/media/updates/v0-7-0/release-update.webm",
+        posterPath: "/reword-nerd/media/updates/v0-7-0/poster.webp",
+        transcriptPath: "/reword-nerd/media/updates/v0-7-0/transcript.txt",
+      },
+    });
+    await writeFile(ledgerPath, `${JSON.stringify(ledger, null, 2)}\n`);
+
+    expect(await prepareRelease(root, {
+      version: "0.7.0",
+      title: "reword-nerd v0.7: Image prompt packages",
+      date: "2026-08-14",
+    })).toBe("created");
+
+    expect(await readFile(postPath, "utf8")).toBe(approvedPost);
+    const promotedLedger = JSON.parse(await readFile(ledgerPath, "utf8"));
+    expect(promotedLedger.entries).toHaveLength(2);
+    expect(promotedLedger.entries[0]).toMatchObject({ kind: "release", slug: "v0-6-0", status: "published" });
+    expect(promotedLedger.entries[1]).toMatchObject({
+      kind: "release",
+      slug: "v0-7-0",
+      status: "current",
+      version: "0.7.0",
+      classification: "feature",
+      summary: "Approved Image companion summary.",
+      tags: ["image portal", "local processing"],
+      relatedPrs: [10],
+      visualChanges: true,
+      video: {
+        policy: "required",
+        mp4Path: "/reword-nerd/media/updates/v0-7-0/release-update.mp4",
+        webmPath: "/reword-nerd/media/updates/v0-7-0/release-update.webm",
+        posterPath: "/reword-nerd/media/updates/v0-7-0/poster.webp",
+        transcriptPath: "/reword-nerd/media/updates/v0-7-0/transcript.txt",
+      },
+    });
+    expect(JSON.parse(await readFile(join(root, "content/updates/release-review-v0.7.0.json"), "utf8"))).toMatchObject({
+      version: "0.7.0",
+      previousVersion: "0.6.0",
+      classification: "feature",
+    });
+  });
+
   it("scaffolds articles and releases in terse changelog voice without first-person singular prose", async () => {
     // Reintroducing "I added"-style scaffold copy must make generated public prose violate the editorial contract.
     const root = await releaseRoot();

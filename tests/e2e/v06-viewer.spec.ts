@@ -6,6 +6,7 @@ import {
   hostileHtmlFixture,
   hostileJsonFixture,
   markdownFixture,
+  createMultiPageSelectablePdfFixture,
   strictCodeFixture,
   unknownUtf8Fixture,
   type BrowserFixture,
@@ -135,6 +136,57 @@ test("ORIGINAL stays inert and contained at every supported mobile width", async
     expect(containment.scrollWidth).toBeLessThanOrEqual(containment.clientWidth);
     expect(containment.clipped).toEqual([]);
   }
+  expect(externalRequests).toEqual([]);
+});
+
+test("multi-page PDF ORIGINAL scrolls continuously and offers a bounded page gallery", async ({ page, baseURL }) => {
+  const externalRequests = externalRequestMonitor(page, baseURL!);
+  const fixture = createMultiPageSelectablePdfFixture();
+  await openWorkbench(page);
+  await page.getByLabel("Add supported files").setInputFiles(asPayload(fixture));
+  await expect(page.getByLabel(`Extracted text for ${fixture.name}`)).toHaveValue(/Continuous PDF page 6/u);
+  await showOriginal(page);
+
+  const pageWindow = page.locator(".pdf-continuous-list");
+  await expect(pageWindow.getByRole("region", { name: /PDF page slot/u })).toHaveCount(6);
+  const secondSlot = pageWindow.getByRole("region", { name: "PDF page slot 2" });
+  await secondSlot.locator("summary").click();
+  const selectableText = secondSlot.locator("details > p");
+  await expect(selectableText).toContainText("Long selectable text remains readable");
+  const selectableGeometry = await selectableText.evaluate((text) => {
+    const details = text.closest("details");
+    const slot = text.closest<HTMLElement>("[data-pdf-page]");
+    const nextSlot = slot?.nextElementSibling as HTMLElement | null;
+    if (!details || !slot || !nextSlot) throw new Error("Missing continuous page geometry");
+    return {
+      textScrollHeight: text.scrollHeight,
+      textClientHeight: text.clientHeight,
+      textBottom: text.getBoundingClientRect().bottom,
+      detailsBottom: details.getBoundingClientRect().bottom,
+      slotBottom: slot.getBoundingClientRect().bottom,
+      nextTop: nextSlot.getBoundingClientRect().top,
+    };
+  });
+  expect(selectableGeometry.textScrollHeight).toBeGreaterThan(selectableGeometry.textClientHeight);
+  expect(selectableGeometry.textBottom).toBeLessThanOrEqual(selectableGeometry.detailsBottom + 0.5);
+  expect(selectableGeometry.detailsBottom).toBeLessThanOrEqual(selectableGeometry.slotBottom + 0.5);
+  expect(selectableGeometry.slotBottom).toBeLessThanOrEqual(selectableGeometry.nextTop + 0.5);
+  await pageWindow.evaluate((windowNode) => {
+    const slot = windowNode.querySelector<HTMLElement>('[data-pdf-page="4"]');
+    if (!slot) throw new Error("Missing page 4 slot");
+    windowNode.scrollTop = slot.offsetTop - windowNode.clientHeight / 2 + slot.offsetHeight / 2;
+    windowNode.dispatchEvent(new Event("scroll"));
+  });
+  await expect(page.getByText("PAGE 4 / 6")).toBeVisible();
+
+  await page.getByRole("button", { name: "GALLERY" }).click();
+  const gallery = page.locator(".pdf-page-gallery");
+  await expect(gallery.getByRole("button", { name: /Open PDF page \d+ of 6/u })).toHaveCount(6);
+  await expect(gallery.locator("canvas")).toHaveCount(6);
+  await gallery.getByRole("button", { name: "Open PDF page 6 of 6" }).click();
+  await expect(page.getByText("PAGE 6 / 6")).toBeVisible();
+  await expect(page.getByRole("button", { name: "CONTINUOUS", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("region", { name: "PDF page slot 6" })).toBeFocused();
   expect(externalRequests).toEqual([]);
 });
 

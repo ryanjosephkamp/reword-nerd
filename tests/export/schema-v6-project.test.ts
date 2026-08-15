@@ -95,7 +95,7 @@ describe("schema v6 project packages", () => {
     if (!first.ok || !second.ok) throw new Error("safe project should export");
     expect(first.manifest).toMatchObject({
       schemaVersion: 6,
-      package: { version: "0.7.0", format: "dual-mode-prompt-package" },
+      package: { version: "0.8.0", format: "dual-mode-prompt-package" },
       documents: [{ source: {
         kind: "project",
         intakeKind: "folder",

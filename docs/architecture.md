@@ -4,6 +4,15 @@
 memory; there is no application server, account service, model request,
 telemetry sender, code runner, or source persistence layer.
 
+Vite builds two physical entry documents under the same Pages base. Root
+`index.html` loads the default Text workbench, while `image/index.html` loads
+the `/reword-nerd/image/` companion directly, including on deep-link reload.
+The pages share only the portal shell, static community/Updates destinations,
+and visual foundations. `src/image/` owns a sibling Image domain and sibling
+Image reducer, preferences, intake services, prompt profiles, workbench, and
+export boundary. Text source state, schemas, prompts, preferences, and package
+bytes remain unchanged and isolated.
+
 ## Processing and state path
 
 ```text
@@ -50,6 +59,51 @@ HTML uses a local parser and semantic allowlist; DOCX is labeled as an
 approximation; CSV/TSV and JSON use bounded structured views; code/config/text
 uses an exact read-only line view. Uploaded content is never injected as HTML or
 loaded through a frame, object, embed, or active resource/link surface.
+
+## Image companion processing and state path
+
+```text
+File API / drop event / folder FileList
+  -> signature/MIME/path/limit validation
+  -> direct image ownership or local PDF/DOCX/folder/safe-ZIP visual extraction
+  -> bounded queue + focused preview + optional local OCR review
+  -> per-image settings snapshots or explicit field-masked bulk patches
+  -> CONFIRM IMAGE SET revision boundary
+  -> one profile-built prompt + run card per included source image
+  -> schema-1 manifest + deterministic Image ZIP Blob
+  -> built-snapshot cards + explicit download
+```
+
+The Image reducer is independent of `WorkspaceItem`. It distinguishes focused
+navigation, bulk selection, Include/Omit, and removal. Defaults snapshot only
+into future admissions; bulk Apply changes only checked fields. Source, OCR,
+inclusion, or configuration mutation advances the review generation, cancels
+current work, and discards ZIP bytes and preview pairs together. Synchronous
+snapshot-before-await plus session/review/build tokens prevents stale completion
+from restoring output.
+
+Direct PNG, JPEG, WebP, and AVIF bytes remain exact. PDF and DOCX extraction,
+opt-in PDF page capture, folder traversal, and safe ZIP expansion use public
+facades with bounded sequential work. Image OCR is local and off by default;
+only reviewed/accepted text enters the prompt. Object URLs are purpose-scoped
+and bounded to the visible/lazy window. An occurrence object URL is revoked on
+occurrence removal or lease-window exit; a built-card object URL is revoked on
+output invalidation or replacement. All remaining object URLs are revoked on
+reset, portal navigation, or unmount.
+
+`src/image/export/` distrusts the confirmed snapshot again: it rechecks shape,
+profile version, provenance, signature/MIME/extension, dimensions, limits, and
+SHA-256 before rendering. It emits exactly one ordered source/prompt/run-card
+pair per included image. Sorted paths, fixed ZIP metadata, deterministic JSON,
+per-artifact hashes, and exact source bytes produce repeatable schema-1 output.
+Original PDF, DOCX, and ZIP containers never enter the archive.
+
+Root, per-pair, and bounded self-contained HTML are responsive offline cards.
+They escape dynamic values, use a restrictive CSP, perform no network/storage
+or model action, and expose Copy Prompt/Image with selection, Open Image,
+Download Image, and drag fallbacks under unsupported Clipboard or `file://`
+conditions. `OPEN-ME-FULL.html` is omitted when final UTF-8 bytes would exceed
+33,554,432.
 
 ## Prompt and context contracts
 
@@ -141,15 +195,23 @@ new session. Global saved preferences and the tutorial record are retained.
 
 ## Preference boundary
 
-`src/app/workbench/preferences.ts` is the only production browser-storage
-boundary. It owns one namespaced key, validates a version-1 envelope and a
-fixed allowlist, and fails safely when storage is missing or corrupt. The key
+`src/app/workbench/preferences.ts` is the Text browser-storage boundary. It owns
+one namespaced key, validates a version-1 envelope and a fixed allowlist, and
+fails safely when storage is missing or corrupt. The key
 contains only global model/context, rewrite, processing, code-rewrite, and
 tutorial-version preferences. Workbench sources, project decisions, previews,
 and workbook progress are never included.
 
+`src/image/preferences.ts` is the separate Image storage boundary. Its
+`reword-nerd:image-preferences:v1` envelope may contain only validated Image
+defaults and the Image tutorial marker. There is no dedicated image-byte,
+filename, path, selection, OCR, prompt/package, or review-state field. The
+requested-changes and must-preserve defaults are bounded free-form text and are
+saved as the user entered them, so they may contain sensitive text the user
+chooses to type. Neither adapter writes the other portal's key.
+
 `src/version.ts` exposes `APP_VERSION` from package metadata. The footer and
-Info dialog render `0.7.0` from that source, while schema-v6 contracts and tests
+Info dialog render `0.8.0` from that source, while schema-v6 contracts and tests
 require the manifest package version to match the release.
 
 ## Updates publication boundary
@@ -179,11 +241,12 @@ Escape/X/direct-backdrop dismissal, and confirmation cancellation. Settings
 question-mark disclosures are local non-modal help surfaces with hover/focus
 previews and pinned click/tap behavior.
 
-The overview and three Help chapters are pre-rendered, same-origin video assets
+The Text overview and three Text Help chapters are pre-rendered, same-origin video assets
 with posters and transcripts. Remotion remains authoring-only under
 `video/remotion/`; no Remotion runtime ships with the app. Videos and the brand
 logo are site assets only and never enter user ZIPs. The unchanged v0.5 clips
 predate project-workspace support; current written Help covers that workflow.
+The Image Quick Start uses a dedicated orange same-origin video, poster, and transcript from the same authoring-only Remotion tree. The Text Quick Start media and behavior remain unchanged.
 
 Desktop Parameters visibility is session-only view state. The gear collapses
 the third column and allows Preview to fill the freed width; it does not alter
@@ -204,6 +267,7 @@ the runbook or prompt content.
 | `src/domain/` | File/project admission, safe source classification, extraction, tree hashing, media/OCR/LaTeX, profiles, settings, and context. |
 | `src/prompting/` | Canonical template loading and `PromptBundle` rendering. |
 | `src/export/` | Semantic runbook, immutable workbook/progress engine, schema-v6 manifest, ZIP, safe paths, downloads. |
+| `src/image/` | Isolated Image contracts/reducer, local intake/OCR, dated image-model profiles, workbench, and schema-1 export. |
 | `prompts/` | Canonical One-shot and four Manual Markdown templates. |
 | `public/brand/`, `public/media/demo/` | Same-origin logo/icon and pre-rendered Help media; never exported with document packages. |
 | `content/updates/`, `scripts/updates/` | JSON-authoritative authored Updates ledger/posts and offline validation/rendering commands. |
@@ -211,5 +275,5 @@ the runbook or prompt content.
 | `video/remotion/` | Authoring-only deterministic demo and release compositions. |
 | `tests/e2e/` | Built-preview Chromium, real fixtures, downloads, `file://`, network, and visual QA. |
 
-See [manifest v6](manifest-v6.md), [privacy](privacy.md), [model guidance](model-guidance/README.md),
+See [manifest v6](manifest-v6.md), [Image manifest v1](image-package-manifest-v1.md), [privacy](privacy.md), [model guidance](model-guidance/README.md),
 and [extraction limitations](extraction-limitations.md).

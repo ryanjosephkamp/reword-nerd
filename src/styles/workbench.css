@@ -62,6 +62,146 @@ button:disabled {
   line-height: 1;
 }
 
+.brand-portal {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.portal-switcher {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  white-space: nowrap;
+}
+
+.portal-switcher::before {
+  color: var(--color-muted);
+  content: "/";
+}
+
+.portal-link {
+  border-bottom: 2px solid transparent;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-decoration: none;
+}
+
+.portal-link-text:link,
+.portal-link-text:visited {
+  color: var(--color-ready);
+}
+
+.portal-link-image:link,
+.portal-link-image:visited {
+  color: #ff9f1c;
+}
+
+.portal-link.is-active {
+  border-bottom-color: currentColor;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.portal-link-image:focus-visible {
+  outline-color: #ff9f1c;
+}
+
+.image-shell {
+  min-width: 320px;
+  min-height: 100vh;
+  color: var(--color-text);
+  background: var(--color-canvas);
+}
+
+.image-shell a:link,
+.image-shell a:visited {
+  color: #ff9f1c;
+}
+
+.image-shell .portal-link-text:link,
+.image-shell .portal-link-text:visited {
+  color: var(--color-ready);
+}
+
+.image-shell :focus-visible {
+  outline-color: #ff9f1c;
+}
+
+.image-shell-header {
+  display: flex;
+  min-height: 70px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.image-shell-actions {
+  display: flex;
+  gap: 10px;
+  padding-right: 24px;
+}
+
+.image-shell-actions button {
+  min-height: 36px;
+  padding: 0 13px;
+}
+
+.image-shell-actions button:hover {
+  border-color: #ff9f1c;
+  color: #ff9f1c;
+}
+
+.image-shell-poster {
+  display: grid;
+  grid-template-columns: minmax(180px, 312px) minmax(0, 540px);
+  gap: clamp(24px, 5vw, 72px);
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: clamp(44px, 10vh, 120px) 28px;
+  align-items: center;
+}
+
+.image-shell-poster > img {
+  width: 100%;
+  max-width: 312px;
+  height: auto;
+  border: 1px solid #ff9f1c;
+  border-radius: 4px;
+}
+
+.image-shell-kicker {
+  margin: 0 0 12px;
+  color: #ff9f1c;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.image-shell-poster h2 {
+  margin: 0;
+  font-size: clamp(26px, 5vw, 50px);
+  line-height: 1.06;
+}
+
+.image-shell-poster p:last-child {
+  max-width: 58ch;
+  color: var(--color-muted);
+  line-height: 1.6;
+}
+
+.image-info-identity {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.image-info-identity img {
+  border: 1px solid #ff9f1c;
+  border-radius: 3px;
+}
+
 .session-copy {
   display: flex;
   justify-content: center;
@@ -671,17 +811,27 @@ button:disabled {
   color: var(--color-ready);
 }
 
+.pdf-view-switch {
+  display: flex;
+  gap: 6px;
+}
+
 .pdf-page-window {
   display: grid;
   min-width: 0;
+  min-height: 0;
+  flex: 1;
   overflow: auto;
   gap: 18px;
   justify-items: center;
   padding: 20px;
+  overscroll-behavior: contain;
 }
 
 .pdf-page {
+  min-width: 0;
   width: max-content;
+  max-width: 100%;
 }
 
 .pdf-page.is-adjacent {
@@ -692,6 +842,112 @@ button:disabled {
   display: block;
   max-width: none;
   background: white;
+}
+
+.pdf-continuous-list {
+  align-content: start;
+  scroll-behavior: smooth;
+  scroll-snap-type: y proximity;
+}
+
+.pdf-page-slot {
+  display: grid;
+  width: 100%;
+  height: max-content;
+  min-width: 0;
+  place-items: start center;
+  scroll-margin-top: 12px;
+  scroll-snap-align: start;
+}
+
+.pdf-page-slot:focus-visible,
+.pdf-page-slot.is-active {
+  outline: 2px solid var(--color-ready);
+  outline-offset: 5px;
+}
+
+.pdf-page-placeholder {
+  display: grid;
+  width: min(100%, 720px);
+  min-height: 480px;
+  place-items: center;
+  border: 1px dashed var(--color-border);
+  background: var(--color-surface-raised);
+  color: var(--color-muted);
+}
+
+.pdf-page details {
+  width: min(100%, 70ch);
+  max-width: 100%;
+  min-width: 0;
+  margin-top: 8px;
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+.pdf-page summary { cursor: pointer; }
+
+.pdf-page .pdf-selectable-text[open] {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+}
+
+.pdf-page .pdf-selectable-text[open] > summary {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.pdf-page .pdf-selectable-text[open] > p {
+  max-width: 100%;
+  max-height: min(38vh, 360px);
+  margin: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.pdf-page-gallery {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  align-content: start;
+  justify-items: stretch;
+}
+
+.pdf-gallery-page {
+  display: grid;
+  min-width: 0;
+  min-height: 220px;
+  place-items: center;
+  gap: 10px;
+  overflow: hidden;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+.pdf-gallery-page[aria-current="page"] {
+  border-color: var(--color-ready);
+  box-shadow: inset 0 0 0 1px var(--color-ready);
+}
+
+.pdf-gallery-page canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 180px;
+  background: white;
+  object-fit: contain;
+}
+
+.pdf-gallery-placeholder {
+  display: grid;
+  width: 100%;
+  min-height: 160px;
+  place-items: center;
+  border: 1px dashed var(--color-border);
+  color: var(--color-muted);
 }
 
 .supported-file-hint {
@@ -710,7 +966,7 @@ button:disabled {
   display: none;
 }
 
-.pdf-page > p {
+.pdf-page p {
   max-width: 70ch;
   margin: 8px 0 0;
   color: var(--color-muted);
@@ -2447,6 +2703,47 @@ button:disabled {
     letter-spacing: 0.01em;
   }
 
+  .brand-portal {
+    gap: 6px;
+  }
+
+  .brand-portal .brand {
+    padding: 0;
+  }
+
+  .portal-switcher {
+    gap: 6px;
+  }
+
+  .portal-link {
+    font-size: 11px;
+  }
+
+  .image-shell-header {
+    min-height: 72px;
+    padding: max(14px, env(safe-area-inset-top)) 16px 10px;
+  }
+
+  .image-shell-actions {
+    gap: 6px;
+    padding-right: 0;
+  }
+
+  .image-shell-actions button {
+    min-height: 34px;
+    padding: 0 9px;
+    font-size: 12px;
+  }
+
+  .image-shell-poster {
+    grid-template-columns: 1fr;
+    padding: 48px 24px;
+  }
+
+  .image-shell-poster > img {
+    max-width: 250px;
+  }
+
   .mobile-menu {
     width: 42px;
     height: 42px;
@@ -2902,5 +3199,12 @@ button:disabled {
   *::after {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 379px) {
+  .workbench-header {
+    padding-right: 8px;
+    padding-left: 8px;
   }
 }

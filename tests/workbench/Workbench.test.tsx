@@ -276,7 +276,7 @@ describe("Night Terminal workbench", () => {
     const infoButton = screen.getByRole("button", { name: "Info" });
     fireEvent.click(infoButton);
     const dialog = screen.getByRole("dialog", { name: "About reword-nerd" });
-    expect(within(dialog).getByText("reword-nerd v0.7.0")).toBeInTheDocument();
+    expect(within(dialog).getByText("reword-nerd v0.8.0")).toBeInTheDocument();
     expect(within(dialog).getByRole("img", { name: /reword-nerd logo/i })).toBeInTheDocument();
     const repository = within(dialog).getByRole("link", { name: "Repository" });
     const creator = within(dialog).getByRole("region", { name: "Creator" });
@@ -297,13 +297,13 @@ describe("Night Terminal workbench", () => {
   it("discovers Updates and privacy-safe community feedback through grouped Info and Help links", () => {
     // This catches community destinations moving outside their named groups or a missing local Updates path.
     render(<App services={services()} />);
-    expect(within(screen.getByRole("contentinfo")).getByRole("link", { name: "v0.7.0" })).toHaveAttribute("href", "/updates/v0-7-0/");
+    expect(within(screen.getByRole("contentinfo")).getByRole("link", { name: "v0.8.0" })).toHaveAttribute("href", "/updates/v0-8-0/");
     fireEvent.click(screen.getByRole("button", { name: "Info" }));
     const info = screen.getByRole("dialog", { name: "About reword-nerd" });
     const product = within(info).getByRole("region", { name: "Product" });
     const community = within(info).getByRole("region", { name: "Community" });
     const creator = within(info).getByRole("region", { name: "Creator" });
-    expect(within(product).getByRole("link", { name: "Updates" })).toHaveAttribute("href", "/updates/v0-7-0/");
+    expect(within(product).getByRole("link", { name: "Updates" })).toHaveAttribute("href", "/updates/v0-8-0/");
     expect(within(product).getByRole("link", { name: "Repository" })).toHaveAttribute("href", "https://github.com/ryanjosephkamp/reword-nerd");
     expect(within(community).getByRole("link", { name: "Report a bug" })).toHaveAttribute("href", "https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=bug_report.yml");
     expect(within(community).getByRole("link", { name: "Suggest a feature" })).toHaveAttribute("href", "https://github.com/ryanjosephkamp/reword-nerd/issues/new?template=feature_request.yml");

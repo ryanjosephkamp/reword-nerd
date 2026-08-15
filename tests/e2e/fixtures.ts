@@ -224,6 +224,30 @@ export function createSelectablePdfFixture(): BrowserFixture {
   };
 }
 
+export function createMultiPageSelectablePdfFixture(pageCount = 6): BrowserFixture {
+  const pageIds = Array.from({ length: pageCount }, (_, index) => 3 + index);
+  const contentIds = Array.from({ length: pageCount }, (_, index) => 3 + pageCount + index);
+  const fontId = 3 + pageCount * 2;
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageCount} >>`,
+    ...pageIds.map((_, index) => `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentIds[index]} 0 R >>`),
+    ...contentIds.map((_, index) => {
+      const textCommands = index === 1
+        ? Array.from({ length: 90 }, (_, line) => `(Long selectable text remains readable inside its own page, line ${line + 1}.) Tj\nT*\n`).join("")
+        : "";
+      const stream = `BT\n/F1 18 Tf\n22 TL\n72 720 Td\n(Continuous PDF page ${index + 1}.) Tj\nT*\n${textCommands}ET\n`;
+      return `<< /Length ${Buffer.byteLength(stream, "ascii")} >>\nstream\n${stream}endstream`;
+    }),
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+  return {
+    name: "continuous-pages.pdf",
+    mimeType: "application/pdf",
+    buffer: pdf(objects),
+  };
+}
+
 export function createTextlessPdfFixture(): BrowserFixture {
   const stream = "q\n0 0 10 10 re\nS\nQ\n";
   return {

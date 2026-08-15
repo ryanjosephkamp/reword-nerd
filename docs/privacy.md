@@ -1,11 +1,14 @@
 # Privacy and local-processing boundary
 
 `reword-nerd` processes selected files, folders, and ZIP workspaces in the
-browser. Validation, safe project classification, extraction, hashing, review
-edits, inert ORIGINAL previews, prompt generation, package preview, clipboard
-handling, ZIP creation, and progress-copy rendering are local operations.
+browser. Validation, safe project classification, Text and Image extraction,
+hashing, review edits, local OCR, inert ORIGINAL previews, prompt generation,
+package preview, clipboard handling, ZIP creation, and progress-copy rendering
+are local operations.
 
-## The one saved-preference key
+## Exactly two saved-preference localStorage keys
+
+### Text preferences
 
 The application may write exactly one namespaced localStorage key:
 `reword-nerd:preferences:v1`. Its versioned value is decoded through a strict
@@ -19,7 +22,7 @@ allowlist and may contain only:
 - the tutorial version used to decide whether Quick start appears.
 
 Corrupt, unsupported, oversized, or unknown fields are ignored or replaced with
-safe defaults. Reset saved preferences removes this one key after confirmation.
+safe defaults. Reset saved preferences removes this Text key after confirmation.
 **NEW SESSION** does not remove or rewrite it: that command clears the current
 in-memory work while keeping validated global preferences and the tutorial
 record.
@@ -30,8 +33,24 @@ per-file overrides, generated prompts, model responses, workbook progress, ZIP
 bytes, or built packages. Those remain in memory and are cleared by reload or
 session end.
 
-The application does not use sessionStorage, IndexedDB, Cache Storage, cookies,
-or a service worker for workbench state.
+### Image preferences
+
+The Image companion uses only `reword-nerd:image-preferences:v1`. Its strict
+version-1 envelope may contain validated defaults for model family, aspect
+ratio, size intent, visible-text preservation, background/transparency behavior,
+requested changes, must-preserve notes, and the Image tutorial marker.
+
+There is no dedicated image-byte, filename, or path field in Image preferences,
+and the app does not serialize source images, provenance, inclusion/bulk
+selection, focused item, OCR state, warnings, review/build generations, prompts,
+run cards, manifests, previews, object URLs, or package bytes. Free-form
+requested changes and must-preserve defaults are persisted as bounded user-entered text, however, and may contain sensitive names, paths, or instructions a user types.
+Changing Text preferences does not rewrite Image defaults, and changing Image
+defaults does not rewrite Text preferences or existing Image items.
+
+Beyond exactly these two validated localStorage keys, the application does not
+use sessionStorage, IndexedDB, Cache Storage, cookies, or a service worker for
+workbench state.
 
 ## Network and provider boundary
 
@@ -39,9 +58,11 @@ or a service worker for workbench state.
 - Selected files are not uploaded to a model provider.
 - There is no analytics, telemetry, remote font, remote library, or runtime
   request that sends document data off-device. Bundled PDF/OCR assets, the logo,
-  Help posters, and Help videos may be requested from the same app origin when
+  Text Help posters and Text Help videos may be requested from the same app origin when
   those local features are used.
 - A model profile is descriptive prompt metadata only; it creates no connection.
+- The Image portal never calls or requests a model, never asks for provider
+  credentials, and never uploads a source image.
 - Uploaded HTML/Markdown cannot navigate or load active resources, and uploaded
   code is never run, compiled, dependency-resolved, or tested.
 
@@ -82,6 +103,25 @@ The static host receives ordinary requests for application files, not selected
 documents. Browser extensions, device management, local development servers,
 and network environments may have their own policies.
 
+## Image source and lifetime boundary
+
+Direct PNG/JPEG/WebP/AVIF and locally recovered PDF/DOCX/folder/ZIP visuals are
+owned as in-memory Blobs after bounded validation. Exact direct-image and DOCX
+media bytes may retain EXIF or location metadata; the UI and package README
+warn about that custody. PDF visuals and page captures are locally rasterized
+to PNG and therefore are not byte-identical to embedded PDF streams. Original PDF and DOCX containers are never included or exported in an Image package;
+original ZIP containers are also excluded. Only retained image bytes, bounded provenance, settings, hashes,
+prompts, and run cards enter the explicit schema-1 output.
+
+Image OCR is off by default, local, and review-gated. Detected text remains in
+memory; only accepted OCR is quoted into a prompt. Purpose-scoped URLs back
+bounded thumbnails, one focused preview, and lazy built cards. An occurrence object URL is revoked when that occurrence is removed or leaves its bounded lease window. A built-card object URL is revoked when package output is invalidated or replaced. All remaining image-byte object URLs are revoked on reset, portal navigation, or unmount. The pinned local PDF parser uses one page-lifetime Blob URL for its application worker code; it contains no user image or document bytes and is not a storage record.
+
+Confirmation snapshots source bytes and configuration before asynchronous work.
+Any later source, OCR, inclusion, or setting mutation invalidates both the built
+ZIP and preview cards. Cancellation and generation tokens prevent late work from
+repopulating the current session.
+
 ## Public Updates and release media
 
 Public authored Updates posts and release media are site material, distinct from
@@ -102,6 +142,14 @@ canonical URL locally.
 
 **BUILD PACKAGE** creates a revision-bound ZIP Blob and workbooks in memory; it
 does not download. **DOWNLOAD ZIP** explicitly hands that Blob to the browser.
+
+On the Image page, **BUILD PACKAGE** likewise creates the deterministic
+`reword-nerd-image-prompt-package.zip` only in memory; **DOWNLOAD ZIP** is a
+separate deliberate action. Image root/per-pair HTML references packaged sibling
+images, while the optional bounded full HTML uses data URLs. Under `file://` or
+without Clipboard access, Copy Prompt selects visible text and Copy Image keeps
+Open Image, Download Image, and drag fallbacks. These files make no network
+request, tracking write, automatic upload, or model call.
 
 **DOWNLOAD PROGRESS COPY** is a separate deliberate HTML download containing
 current prompt edits and response fields. It can include the rewritten document,

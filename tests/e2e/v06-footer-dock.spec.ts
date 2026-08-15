@@ -65,7 +65,7 @@ test("desktop Preview Footer Dock stays contained and drives schema-v6 build and
   const archive = await JSZip.loadAsync(await downloadBytes(await pending), { checkCRC32: true });
   expect(JSON.parse(await archive.file("manifest.json")!.async("string"))).toMatchObject({
     schemaVersion: 6,
-    package: { version: "0.7.0" },
+    package: { version: "0.8.0" },
   });
 
   const initialWidth = dockBox!.width;
@@ -104,6 +104,6 @@ test("tablet uses the Settings drawer and mobile retains local build/download ac
   await expect(mobileDownload).toBeEnabled();
   const pending = page.waitForEvent("download");
   await mobileDownload.click();
-  expect((await pending).suggestedFilename()).toBe("reword-nerd-prompt-package.zip");
+  expect((await pending).suggestedFilename()).toMatch(/^reword-nerd-text-prompt-package-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z\.zip$/u);
   await expectNoHorizontalOverflow(page);
 });

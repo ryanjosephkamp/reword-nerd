@@ -4,7 +4,7 @@
 reword-nerd/
 ├── README.md, CONTRIBUTING.md, LICENSE, CODE_OF_CONDUCT.md, SECURITY.md
 ├── package.json, package-lock.json
-├── index.html, vite.config.ts, vitest.config.ts, playwright.config.ts
+├── index.html, image/index.html, vite.config.ts, vitest.config.ts, playwright.config.ts
 ├── prompts/
 │   ├── 00_one_shot.md              # canonical single-request workflow
 │   ├── 01_decompose.md             # canonical Manual stages
@@ -14,12 +14,13 @@ reword-nerd/
 ├── examples/                        # synthetic local examples
 ├── docs/
 │   ├── architecture.md, privacy.md, extraction-limitations.md, release-workflow.md
-│   ├── manifest-v1.md … manifest-v6.md
+│   ├── manifest-v1.md … manifest-v6.md, image-package-manifest-v1.md
 │   ├── model-guidance/              # dated strategy evidence and parity
 │   ├── design-principles.md, design-system.md, design-qa.md
 │   └── design/references/           # approved visual references
 ├── public/
 │   ├── brand/                       # metadata-free logo and browser icons
+│   ├── image/orange-pyramid.webp    # Image identity and favicon artwork
 │   └── media/
 │       ├── demo/                    # local videos and static posters
 │       └── updates/<release>/       # final synthetic release media and transcript
@@ -31,14 +32,19 @@ reword-nerd/
 │   ├── app/workbench/               # item state, safe previews, project review, hooks/UI
 │   ├── domain/                      # file/project admission, safety, extraction, context
 │   ├── export/                      # runbook/workbooks, schema v6, ZIP/download
+│   ├── image/                       # isolated intake/OCR/profiles/reducer/workbench/schema 1
 │   ├── prompting/                   # `PromptBundle` renderer
 │   ├── styles/                      # Night Terminal and responsive rules
 │   ├── types/                       # third-party declarations
 │   └── main.tsx
 └── tests/
-    ├── domain/, export/, prompting/, workbench/, privacy/, styles/
+    ├── image/                       # tests/image/ isolated domain, intake, UI, and export contracts
+    ├── domain/, export/, portal/, prompting/, workbench/, privacy/, styles/
     └── e2e/                         # real fixtures, built-preview and file:// QA
 ```
+
+The Image identity asset is tracked at `public/image/orange-pyramid.webp`, and
+Image tests remain nested under `tests/image/`.
 
 Source, deterministic fixtures, root prompts, authored demo compositions,
 rendered site media, and manifest specifications are versioned. The public
@@ -107,3 +113,28 @@ The ZIP contains file entries only; it does not emit directory entries. See
 [manifest v6](manifest-v6.md) for project provenance, hashing, compression,
 deterministic ordering, and optional-artifact rules. Manifests v1–v5 remain
 historical contracts.
+
+## Exported Image schema-1 package
+
+The physical `image/index.html` entry loads `src/image/main.tsx` without routing
+through the Text root. Image packages use a separate filename, format, schema,
+and pair tree:
+
+```text
+reword-nerd-image-prompt-package.zip
+├── README.md
+├── OPEN-ME.html
+├── OPEN-ME-FULL.html                 # only when final HTML is at most 32 MiB
+├── manifest.json
+└── pairs/<pair-key>/
+    ├── source.<ext>
+    ├── prompt.txt
+    ├── run-card.md
+    ├── metadata.json
+    └── OPEN-ME.html
+```
+
+There is one `pairs/<pair-key>/` directory for each confirmed included image in
+queue order. Direct-image and recoverable DOCX-media bytes remain exact; PDF
+visuals and page captures are locally rasterized to PNG. Original PDF, DOCX,
+and ZIP containers are not entries. See [Image manifest v1](image-package-manifest-v1.md).

@@ -421,8 +421,9 @@ function renderMarkdown(markdown) {
   return output.join("\n");
 }
 
-function renderReleaseVideo(video) {
-  return `<figure class="release-video"><div class="release-video-motion"><video controls muted playsinline preload="none" poster="${escapeHtml(video.posterPath)}"><source src="${escapeHtml(video.webmPath)}" type="video/webm"><source src="${escapeHtml(video.mp4Path)}" type="video/mp4">Your browser cannot play this same-origin release video.</video></div><div class="release-video-poster"><img src="${escapeHtml(video.posterPath)}" alt="Synthetic reword-nerd v0.7 Updates, feedback, and Share release poster"></div><figcaption>Silent, synthetic release walkthrough. <a href="${escapeHtml(video.transcriptPath)}">Read the transcript</a>.</figcaption><p class="release-video-fallback">Video unavailable? <a href="${escapeHtml(video.posterPath)}">Open the release poster</a>.</p></figure>`;
+function renderReleaseVideo(entry) {
+  const { video } = entry;
+  return `<figure class="release-video"><div class="release-video-motion"><video controls muted playsinline preload="none" aria-label="Silent, synthetic release walkthrough for ${escapeHtml(entry.title)}" poster="${escapeHtml(video.posterPath)}"><source src="${escapeHtml(video.webmPath)}" type="video/webm"><source src="${escapeHtml(video.mp4Path)}" type="video/mp4">Your browser cannot play this same-origin release video.</video></div><div class="release-video-poster"><img src="${escapeHtml(video.posterPath)}" alt="Synthetic Updates walkthrough poster for ${escapeHtml(entry.title)}"></div><figcaption>Silent, synthetic release walkthrough. <a href="${escapeHtml(video.transcriptPath)}">Read the transcript</a>.</figcaption><p class="release-video-fallback">Video unavailable? <a href="${escapeHtml(video.posterPath)}">Open the release poster</a>.</p></figure>`;
 }
 
 function pageShell({ site, title, description, canonicalPath, type, body, jsonLd }) {
@@ -486,8 +487,9 @@ export async function renderUpdates(rootDirectory, outputDirectory = resolve(roo
 
   for (const entry of entries) {
     const canonicalPath = `/reword-nerd/updates/${entry.slug}/`;
-    const video = entry.video.policy === "required" ? renderReleaseVideo(entry.video) : "";
-    const body = `<main><article itemscope itemtype="https://schema.org/BlogPosting"><p class="eyebrow">${escapeHtml(entry.kind === "release" ? `${entry.classification} release` : "retrospective")}</p><p class="meta"><time itemprop="datePublished" datetime="${entry.date}">${entry.date}</time> · ${escapeHtml(entry.author)}</p>${renderMarkdown(posts.get(entry.slug))}${video}</article><button class="share-control" type="button" data-share-url="${escapeHtml(`${ledger.site.canonicalOrigin}${canonicalPath}`)}" data-share-title="${escapeHtml(entry.title)}">Share</button><p><a href="/reword-nerd/updates/">← All Updates</a></p></main>`;
+    const video = entry.video.policy === "required" ? renderReleaseVideo(entry) : "";
+    const articleLabel = entry.tags.includes("retrospective") ? "retrospective" : "builder's journal";
+    const body = `<main><article itemscope itemtype="https://schema.org/BlogPosting"><p class="eyebrow">${escapeHtml(entry.kind === "release" ? `${entry.classification} release` : articleLabel)}</p><p class="meta"><time itemprop="datePublished" datetime="${entry.date}">${entry.date}</time> · ${escapeHtml(entry.author)}</p>${renderMarkdown(posts.get(entry.slug))}${video}</article><button class="share-control" type="button" data-share-url="${escapeHtml(`${ledger.site.canonicalOrigin}${canonicalPath}`)}" data-share-title="${escapeHtml(entry.title)}">Share</button><p><a href="/reword-nerd/updates/">← All Updates</a></p></main>`;
     const jsonLd = { "@context": "https://schema.org", "@type": "BlogPosting", headline: entry.title, description: entry.summary, datePublished: entry.date, author: { "@type": "Person", name: entry.author }, url: `${ledger.site.canonicalOrigin}${canonicalPath}` };
     await writeOutput(resolve(outputDirectory, `updates/${entry.slug}/index.html`), pageShell({ site: ledger.site, title: `${entry.title} · Updates`, description: entry.summary, canonicalPath, type: "article", body, jsonLd }));
   }
@@ -709,11 +711,20 @@ export async function prepareRelease(rootDirectory, options, transactionHooks) {
   const commits = await localGitInventory(rootDirectory);
   const ledger = await readReleaseLedger(rootDirectory);
   const slug = `v${options.version.replaceAll(".", "-")}`;
-  const existing = ledger.entries.find((entry) => entry.kind === "release" && entry.version === options.version);
-  if (existing) {
-    if (existing.slug !== slug || existing.title !== options.title || existing.date !== options.date) throw new Error(`Release ${options.version} already has different metadata`);
+  const existingRelease = ledger.entries.find((entry) => entry.kind === "release" && entry.version === options.version);
+  if (existingRelease) {
+    if (existingRelease.slug !== slug || existingRelease.title !== options.title || existingRelease.date !== options.date) throw new Error(`Release ${options.version} already has different metadata`);
     return "unchanged";
   }
+  const existingSlugEntry = ledger.entries.find((entry) => entry.slug === slug);
+  const promotedArticle = existingSlugEntry?.kind === "article" ? existingSlugEntry : null;
+  if (existingSlugEntry && !promotedArticle) throw new Error(`Slug already belongs to a different entry: ${slug}`);
+  if (promotedArticle && (
+    promotedArticle.title !== options.title
+    || promotedArticle.date !== options.date
+    || promotedArticle.status !== "published"
+    || promotedArticle.markdownPath !== `content/updates/${slug}.md`
+  )) throw new Error(`Published article ${slug} has different release metadata`);
 
   const packagePath = resolve(rootDirectory, "package.json");
   const lockPath = resolve(rootDirectory, "package-lock.json");
@@ -727,7 +738,9 @@ export async function prepareRelease(rootDirectory, options, transactionHooks) {
 
   const postPath = resolve(rootDirectory, `content/updates/${slug}.md`);
   const inventoryPath = resolve(rootDirectory, `content/updates/release-review-v${options.version}.json`);
-  if (await pathExists(postPath)) throw new Error(`Refusing to overwrite existing prose: content/updates/${slug}.md`);
+  if (promotedArticle) {
+    if (!(await pathExists(postPath))) throw new Error(`Published article prose is missing: content/updates/${slug}.md`);
+  } else if (await pathExists(postPath)) throw new Error(`Refusing to overwrite existing prose: content/updates/${slug}.md`);
   if (await pathExists(inventoryPath)) throw new Error(`Refusing to overwrite existing review inventory: content/updates/release-review-v${options.version}.json`);
 
   const versionSource = await readFile(versionPath, "utf8");
@@ -737,7 +750,13 @@ export async function prepareRelease(rootDirectory, options, transactionHooks) {
   packageLock.version = options.version;
   packageLock.packages[""].version = options.version;
 
-  const entry = {
+  const entry = promotedArticle ? {
+    ...promotedArticle,
+    kind: "release",
+    status: "current",
+    version: options.version,
+    classification: classifyRelease(options.version),
+  } : {
     kind: "release",
     slug,
     title: options.title,
@@ -753,23 +772,27 @@ export async function prepareRelease(rootDirectory, options, transactionHooks) {
     visualChanges: false,
     video: { policy: "exempt", exemptionReason: "This initial scaffold declares no visual behavior change; update the declaration and add release media before publishing if the interface changes." },
   };
-  const nextEntries = ledger.entries.map((candidate) => candidate.kind === "release" && candidate.status === "current" ? { ...candidate, status: "published" } : candidate);
-  const nextLedger = { ...ledger, entries: [...nextEntries, entry] };
+  const nextEntries = ledger.entries.map((candidate) => {
+    if (promotedArticle && candidate.slug === slug) return entry;
+    return candidate.kind === "release" && candidate.status === "current" ? { ...candidate, status: "published" } : candidate;
+  });
+  const nextLedger = { ...ledger, entries: promotedArticle ? nextEntries : [...nextEntries, entry] };
   const inventory = { schemaVersion: 1, version: options.version, previousVersion, classification: entry.classification, generatedFrom: "local-git-history", commits };
   const nextVersionSource = versionSource.replaceAll(`"${previousVersion}"`, `"${options.version}"`);
   const nextContractsSource = contractsSource.replaceAll(`version: "${previousVersion}"`, `version: "${options.version}"`);
-  await publishAuthoringTransaction(rootDirectory, [
-    { path: postPath, bytes: journalScaffold(options.title, "release") },
+  const publication = [
     { path: inventoryPath, bytes: jsonBytes(inventory) },
     { path: packagePath, bytes: jsonBytes(packageJson) },
     { path: lockPath, bytes: jsonBytes(packageLock) },
     { path: versionPath, bytes: nextVersionSource },
     { path: contractsPath, bytes: nextContractsSource },
     { path: resolve(rootDirectory, "content/updates/releases.json"), bytes: jsonBytes(nextLedger) },
-  ], async (staged) => {
+  ];
+  if (!promotedArticle) publication.unshift({ path: postPath, bytes: journalScaffold(options.title, "release") });
+  await publishAuthoringTransaction(rootDirectory, publication, async (staged) => {
     const stagedLedger = validateReleaseLedger(JSON.parse(await readFile(staged.get(resolve(rootDirectory, "content/updates/releases.json")), "utf8")));
-    const stagedPost = await readFile(staged.get(postPath), "utf8");
-    const problem = markdownProblem(stagedPost, stagedLedger.entries.at(-1));
+    const stagedPost = await readFile(staged.get(postPath) ?? postPath, "utf8");
+    const problem = markdownProblem(stagedPost, stagedLedger.entries.find((candidate) => candidate.slug === slug));
     if (problem) throw new Error(`Invalid staged Markdown: ${problem}`);
     const stagedPackage = await readJson(staged.get(packagePath), "staged package.json");
     const stagedLock = await readJson(staged.get(lockPath), "staged package-lock.json");

@@ -54,6 +54,75 @@ DOCX and LaTeX images are deduplicated and assigned stable asset IDs where
 supported. Decorative classification is conservative and remains reviewable.
 Review tables, equations, footnotes, tracked changes, captions, and placement.
 
+## Image companion intake and limits
+
+The separate Image portal accepts direct PNG, JPEG (`.jpg`/`.jpeg`), WebP, and
+AVIF. It also accepts PDF and DOCX containers for local visual extraction, plus
+a selected folder or safe ZIP containing those supported sources. An image-only
+or textless PDF/DOCX is valid here when recoverable visuals exist; this does not
+change the Text portal's text-extraction rules.
+
+Every direct image is checked for supported extension, magic signature, MIME
+coherence, successful decode, dimensions, and exact byte count before admission.
+Embedded PDF candidates precede opt-in page-capture candidates in queue and
+package order. On a selected page, the bounded renderer must capture page pixels
+before releasing page-owned decoded resources, then it recovers and admits the
+embedded candidates before admitting the held capture. That internal render can
+spend the PDF worker allowance before embedded recovery; capture remains an
+explicit choice, not an automatic substitute for missing figures. PDF annotation
+appearances are disabled. Visual image operators nested
+inside tiling-pattern or Type3-glyph programs are rejected before nested
+evaluation. Asynchronously expanded PDF content streams and form groups,
+including transparency groups, are also rejected before expansion or group
+rendering. PDF JPEG 2000 (JPX) and JBIG2 visuals are unsupported and are rejected
+when their stream decoders are constructed, including behind a filter chain;
+import those source visuals directly when needed. Ordinary PDF JPEG, synchronous
+Flate, and bounded CCITT decoding remain supported.
+DOCX reads only safe OOXML media relationships. Folder intake
+normalizes relative paths and rejects traversal and portability collisions, but a browser-selected folder cannot independently verify original filesystem symlink identity.
+Safe ZIP intake additionally rejects link entries, encryption, collisions, nested archives, and archive-bomb conditions before publishing admissions. Duplicate images remain separate queue items; users may Include/Omit or Remove them explicitly.
+
+Image v1 rejects SVG, GIF, BMP, TIFF, HEIC, nested archives, encrypted or
+malformed containers, and remote HTML/Markdown images with a specific local
+error. Likely decorative assets remain available but carry a review warning.
+
+Image-specific safety bounds are:
+
+- maximum 100 retained images per session;
+- maximum 20 MiB for each direct image, PDF/DOCX container, or ZIP input;
+- maximum 100 MiB of retained encoded image bytes across the session;
+- maximum 40 megapixels and 16,384 pixels on either decoded axis;
+- PDF decoding additionally caps aggregate source-image raster work at 40
+  megapixels per page evaluator before starting another decode;
+- the pinned PDF worker allows at most 128 MiB of cumulative `DecodeStream`
+  buffer allocations over its lifetime. A separate monotonic 160,000,000-byte
+  allowance counts expanded PDF image samples across base images and stream
+  masks before sample-array work begins. Replacing or releasing buffers never
+  returns capacity to either allowance. JPEG dimensions, component sampling,
+  PDF image/mask dimensions and sample formats, Predictor rows, and CCITT rows
+  are validated before their corresponding guarded allocations. These are
+  targeted allocation guards, not a claim that every internal PDF.js allocation
+  is included. Filter-heavy or near-limit PDFs may therefore fail closed below
+  the ordinary image limits;
+- safe ZIP metadata is capped at 500 entries, 100 MiB expanded bytes, and a
+  100:1 compression ratio; paths are capped at 1,024 UTF-8 bytes and 255 bytes
+  per segment;
+- PDF containers are capped at 500 pages before extraction/capture.
+
+Image OCR is local English recognition and off by default. It may be requested
+per image or for an explicit bulk selection. Results always enter a needs-review
+state; only reviewed, accepted OCR enters an Image prompt or package. Rejected,
+failed, processing, and unreviewed OCR never enters output.
+
+Exact direct-image bytes and exact recoverable DOCX media bytes are retained
+rather than transcoded. PDF recovery is different: embedded PDF rasters and
+opt-in page captures are locally decoded and encoded as PNG, so their retained
+bytes are newly rasterized recovery output rather than the original embedded
+stream bytes. Preserved direct/DOCX source bytes may retain EXIF or location
+metadata; review or sanitize sources before use when that matters. Original PDF,
+DOCX, and ZIP containers are not exported in the Image package—only retained
+image bytes plus bounded provenance and hashes are included.
+
 ## ORIGINAL preview limits
 
 ORIGINAL is view-only and cannot change review/package revision. PDF renders

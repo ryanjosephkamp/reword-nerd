@@ -24,6 +24,7 @@ describe("prompt-package download initiation", () => {
   it("starts one explicit download and revokes its object URL after cleanup delay", () => {
     // This catches reuse of global navigation or leaked URLs after a successful user-initiated download.
     vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-14T21:06:53.456Z"));
     const createObjectURL = vi.fn(() => "blob:package");
     const revokeObjectURL = vi.fn();
     vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
@@ -32,6 +33,8 @@ describe("prompt-package download initiation", () => {
     expect(initiatePromptPackageDownload(new Blob(["package"]))).toEqual({ ok: true });
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     expect(click).toHaveBeenCalledTimes(1);
+    expect((click.mock.instances[0] as HTMLAnchorElement).download)
+      .toBe("reword-nerd-text-prompt-package-2026-08-14T21-06-53Z.zip");
     expect(document.querySelector('a[href="blob:package"]')).toBeNull();
     vi.advanceTimersByTime(100);
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:package");

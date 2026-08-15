@@ -3,7 +3,8 @@
 ## Scope and authority
 
 This document records the approved visual source of truth for the browser-only
-workbench. It is derived only from:
+Text workbench and its same-style Image companion. The original Text composition
+is derived from:
 
 - `docs/design/references/night-terminal-desktop.png` (1586 × 992)
 - `docs/design/references/night-terminal-mobile.png` (853 × 1844)
@@ -27,17 +28,45 @@ and major component families require explicit approval.
 | `--color-ready` | `#42e8b4` | Brand mark, selected state, readiness, progress, and primary action |
 | `--color-review` | `#f2b84b` | Review warning and pending-review state |
 | `--color-blocked` | `#ff667a` | Blocked/error state |
+| `--image-action` | `#ff9f1c` | Image links, selection, actions, and ready state |
+| `--image-review` | `#ffd166` | Image review and pending-attention state |
 
 No CSS gradients, glows, or color substitutions are permitted in interface
 chrome. Borders are crisp, low-contrast rules; emphasis comes from hierarchy
 and the approved semantic colors rather than shadows. The supplied raster logo
 is approved brand artwork rather than an interface-surface effect.
 
-Every site link uses `--color-ready` (`#42e8b4`) in both its unvisited and
-visited states; browser-default blue or purple link colors are not part of the
-system. Light-background offline workbook companions use the accessible darker
-teal `#007a5a` for both states so the same semantic treatment retains AA
-contrast on white.
+Text and static Updates links use `--color-ready` (`#42e8b4`) in both their
+unvisited and visited states. Image links use orange `--image-action`
+(`#ff9f1c`) and remain orange after visiting; browser-default blue or purple
+link colors are not part of either portal. Image yellow `#ffd166` is reserved
+for review/pending meaning so it is not confused with orange action/ready state.
+Text stays teal and Image stays orange when the physical page changes; color is
+always paired with labels, icons, borders, or status text. Light-background
+offline Text workbook companions use the accessible darker teal `#007a5a` for
+both states so the same semantic treatment retains AA contrast on white.
+
+## Image companion composition
+
+The physical Image page mirrors the Night Terminal hierarchy without replacing
+the Text default. Its supplied orange pyramid artwork replaces the Text logo in
+Image Quick Start/Info identity; the dark canvas, typography, borders, spacing,
+and blocked/error color remain shared. The inline `TEXT / IMAGE` portal links
+sit beside the brand: Text is teal and Image is orange, with the active portal
+identified by more than color.
+
+Desktop Image uses three columns: an image queue with thumbnails and distinct
+bulk-selection/Include/Omit/Remove controls; a focused source preview with
+metadata, warnings, OCR review, and built pair cards; and Settings with
+`DEFAULTS` and `SELECTED [N]` scopes plus Build/Download. Mobile uses
+`IMAGES / PREVIEW / SETTINGS`; the inactive Preview panel owns no package-card
+object URLs. Focused navigation never implies bulk selection.
+
+Built output uses responsive cards rather than a wide table. Every card shows
+the snapshotted source, provenance, model profile, run card, exact prompt,
+Copy Prompt/Image, and visible Open/Download/drag fallbacks. Orange identifies
+Image action/ready controls; yellow identifies review or copy-fallback status.
+Keyboard focus remains explicit, and no state is communicated by color alone.
 
 ## Typography and spacing
 
@@ -122,8 +151,8 @@ contrast on white.
 | Context meter | labelled percentage bar | stacked card-like meter | normal, warned, acknowledged |
 | Primary action | outlined green full-width action | full-width action above persistent navigation | enabled, hover, focus-visible, disabled, busy, export failure |
 | Preview Footer Dock | side-by-side shared Build/Download below Preview | omitted; existing mobile actions remain | ready, blocked, building, downloadable, failed/retry |
-| Quick start | focus-trapped first-visit dialog, local overview video, Review settings primary | contained modal with poster/transcript fallback and Add files secondary | first visit, replay, dismiss, reduced motion |
-| Help | scrollable chapter guide with lazy local Settings/Review/Package videos | scrollable modal above navigation | open, close, chapter switch, replay |
+| Text Quick start | focus-trapped first-visit dialog, local overview video, Review settings primary | contained modal with poster/transcript fallback and Add files secondary | first visit, replay, dismiss, reduced motion |
+| Text Help | scrollable chapter guide with lazy local Settings/Review/Package videos | scrollable modal above navigation | open, close, chapter switch, replay |
 | Info | branded version/product/creator dialog | opened from mobile utility disclosure | open, close, deliberate external navigation |
 | Settings help | question-mark hover/focus preview that pins on click | question-mark tap disclosure | preview, pinned, outside/Escape/X dismissal |
 | New session | header restart action and confirmation | mobile utility action and confirmation | open, cancel, confirm, busy invalidation |
@@ -216,7 +245,7 @@ are not replaced by this inventory.
 - `ALL CHANGES SAVED`, `v1.0.0`
 
 The version string in the visual reference is compositional sample copy. The
-current implementation renders its package version (`v0.7.0`) in that footer
+current implementation renders its package version (`v0.8.0`) in that footer
 position while preserving the same hierarchy and session-only meaning.
 
 ## v0.6 source and project additions
@@ -236,9 +265,11 @@ position while preserving the same hierarchy and session-only meaning.
 - Context presentation adds project file count/risk reasons and keeps the
   inspect-diffs/run-tests warning visible without changing Night Terminal
   semantic colors.
-- Existing demo video bytes and tutorial version remain unchanged. Quick Start
-  and Help label those clips as document-workflow demonstrations that predate
+- Existing Text demo video bytes and tutorial version remain unchanged. Text Quick Start
+  and Text Help label those clips as document-workflow demonstrations that predate
   project-workspace support.
+- Image Quick Start uses its own silent, same-origin orange video walkthrough,
+  poster, and transcript. It does not reuse or recolor the Text tutorial.
 
 ## v0.5.1 polish
 
@@ -254,8 +285,8 @@ position while preserving the same hierarchy and session-only meaning.
 
 ## v0.5 interaction additions
 
-- First visit opens a focus-trapped Quick start with a non-autoplaying local
-  overview. Help provides Settings, Review, and Package chapters, local videos,
+- Text first visit opens a focus-trapped Quick start with a non-autoplaying local
+  overview. Text Help provides Settings, Review, and Package chapters, local videos,
   transcripts, and replay. Reduced motion replaces playback with static posters.
 - Quick start, Help, Info, Settings drawer, Reset saved preferences, and New
   session share one modal overlay contract. X, Escape, and direct backdrop

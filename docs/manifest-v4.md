@@ -1,6 +1,6 @@
 # Prompt package manifest v4
 
-> Historical contract. Current `0.7.0` packages use [manifest schema v6](manifest-v6.md).
+> Historical contract. Current `0.8.0` packages use [manifest schema v6](manifest-v6.md).
 
 Manifest schema `4` is the historical `reword-nerd` `0.4.0` contract. Its package
 format is the literal `dual-mode-prompt-package`. It always declares both

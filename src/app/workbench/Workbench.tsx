@@ -408,6 +408,17 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
       else if (result === "manual") dispatch({ type: "overlay/opened", overlay: "share" });
     });
   };
+  const clearSession = (focusAfterReset: "upload" | "parameters") => {
+    setBusyOcrCandidate(null);
+    projectReviewSessionGenerationRef.current += 1;
+    projectReviewQueuesRef.current.clear();
+    projectMutationCustodyRef.current.clear();
+    intakeCapacity.reset();
+    intake.resetSession();
+    projectIntake.resetSession();
+    editor.resetSession();
+    dispatch({ type: "session/reset-confirmed", focusAfterReset });
+  };
 
   return <main className="workbench" aria-label="reword_nerd workbench">
     <Header
@@ -423,6 +434,8 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
       settingsExpanded={mode === "tablet" ? state.activeOverlay === "settings" : state.desktopSettingsExpanded}
       settingsControls={mode === "tablet" ? "settings-drawer" : "panel-settings"}
       settingsButtonRef={settingsButtonRef}
+      hasSessionWork={state.items.length > 0}
+      onClearSessionForPortal={() => clearSession(mode === "desktop" ? "parameters" : "upload")}
     />
     <MobileTabs active={state.mobileTab} onChange={(tab) => dispatch({ type: "mobile/tab-changed", tab })} />
     <div className={`workbench-grid${mode === "desktop" && !state.desktopSettingsExpanded ? " settings-collapsed" : ""}`}>
@@ -602,18 +615,7 @@ export function Workbench({ services = defaultWorkbenchServices }: { services?: 
       }}
       returnFocusRef={newSessionReturnFocusRef}
       onConfirm={() => {
-        setBusyOcrCandidate(null);
-        projectReviewSessionGenerationRef.current += 1;
-        projectReviewQueuesRef.current.clear();
-        projectMutationCustodyRef.current.clear();
-        intakeCapacity.reset();
-        intake.resetSession();
-        projectIntake.resetSession();
-        editor.resetSession();
-        dispatch({
-          type: "session/reset-confirmed",
-          focusAfterReset: mode === "desktop" ? "parameters" : "upload",
-        });
+        clearSession(mode === "desktop" ? "parameters" : "upload");
       }}
     />
     <ResetPreferencesDialog

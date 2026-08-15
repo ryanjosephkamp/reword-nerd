@@ -1,8 +1,10 @@
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Children, isValidElement, type ReactElement } from "react";
 import ts from "typescript";
 import { afterEach, describe, expect, it } from "vitest";
+import { RemotionRoot } from "../../video/remotion/Root";
 import {
   RELEASE_UPDATE_DURATION_IN_FRAMES,
   RELEASE_UPDATE_FPS,
@@ -131,5 +133,129 @@ describe("v0.7 release video contract", () => {
     })).rejects.toThrow(/injected final verification failure/i);
 
     expect(await readFile(join(prior, "transcript.txt"), "utf8")).not.toContain("Candidate copy.");
+  });
+});
+
+describe("v0.8 release video contract", () => {
+  it("registers a distinct 24-second 1280x720 ReleaseUpdateV08 composition", () => {
+    // Removing the v0.8 composition or aliasing it to the v0.7 composition must make this fail.
+    const root = RemotionRoot() as ReactElement<{ children?: React.ReactNode }>;
+    const compositions = Children.toArray(root.props.children)
+      .filter(isValidElement)
+      .map((element) => element.props as Record<string, unknown>);
+    const v07 = compositions.find((props) => props.id === "ReleaseUpdate");
+    const v08 = compositions.find((props) => props.id === "ReleaseUpdateV08");
+
+    expect(v08).toMatchObject({
+      id: "ReleaseUpdateV08",
+      durationInFrames: 720,
+      fps: 30,
+      width: 1280,
+      height: 720,
+      defaultProps: expect.objectContaining({
+        version: "0.8.0",
+        accent: "#ff9f1c",
+      }),
+    });
+    expect(v08?.component).not.toBe(v07?.component);
+  });
+
+  it("uses authorized Remotion image assets for the v0.8 queue thumbnails and focused preview", async () => {
+    // Replacing real synthetic assets with gradient or div-drawn image placeholders must make this fail.
+    const source = await readFile(join(process.cwd(), "video/remotion/release-v08/scenes/ImagePortalSceneV08.tsx"), "utf8");
+    expect(source).toContain("Img");
+    expect(source).toContain("staticFile");
+    expect(source).toContain('staticFile("image/orange-pyramid.webp")');
+    expect(source).toContain('staticFile("media/demo/overview-poster.webp")');
+    expect(source).toContain('staticFile("media/demo/package-poster.webp")');
+    expect(source).toContain("<Img src={source.src}");
+    expect(source).toContain("<Img src={focusedSource.src}");
+    expect(source).not.toMatch(/(?:linear|radial)-gradient/iu);
+  });
+
+  it("configures separate deterministic compositions and action-led transcripts for v0.7 and v0.8", async () => {
+    // Mapping v0.8 to the old composition, omitting it from checks, or using first-person release copy must make this fail.
+    const pipeline = await import("../../scripts/updates/video-lib.mjs") as Record<string, unknown>;
+    const versions = pipeline.RELEASE_VIDEO_VERSIONS;
+    const configuration = pipeline.releaseVideoConfiguration;
+    const transcript = pipeline.releaseVideoTranscript;
+
+    expect(versions).toEqual(["0.7.0", "0.8.0"]);
+    expect(configuration).toBeTypeOf("function");
+    expect(transcript).toBeTypeOf("function");
+    if (typeof configuration !== "function" || typeof transcript !== "function") return;
+
+    expect(configuration("0.7.0")).toMatchObject({ compositionId: "ReleaseUpdate", stagingPrefix: ".v0-7-0-staged-" });
+    expect(configuration("0.8.0")).toMatchObject({ compositionId: "ReleaseUpdateV08", stagingPrefix: ".v0-8-0-staged-" });
+    expect(() => configuration("0.9.0")).toThrow(/No deterministic release-update composition/iu);
+
+    const v08Transcript = transcript("0.8.0") as string;
+    expect(v08Transcript).toContain("reword-nerd v0.8 —");
+    expect(v08Transcript).not.toContain("reword-nerd v0.8.0");
+    expect(v08Transcript).toContain("Added the IMAGE portal");
+    expect(v08Transcript).toContain("Changed PDF review");
+    expect(v08Transcript).toContain("Fixed selectable-text containment");
+    expect(v08Transcript).toContain("timestamped ZIP downloads");
+    expect(v08Transcript).toContain("No model runs. Nothing uploads.");
+    expect(v08Transcript).not.toMatch(/\b(?:I|me|my)\b/iu);
+  });
+
+  it("builds the Remotion invocation from the checked-in binary for the configured version", async () => {
+    // Reintroducing npx or pnpm, or rendering the v0.8 media from the v0.7 composition, must make this fail.
+    const pipeline = await import("../../scripts/updates/video-lib.mjs") as Record<string, unknown>;
+    const invocation = pipeline.releaseRenderInvocation;
+    expect(invocation).toBeTypeOf("function");
+    if (typeof invocation !== "function") return;
+
+    const result = invocation(process.cwd(), "0.8.0", "/tmp/release-update-source.mp4") as { executable: string; args: string[] };
+    expect(result).toEqual({
+      executable: join(process.cwd(), "node_modules", ".bin", "remotion"),
+      args: [
+        "render",
+        "video/remotion/index.ts",
+        "ReleaseUpdateV08",
+        "/tmp/release-update-source.mp4",
+        "--codec=h264",
+        "--crf=32",
+        "--concurrency=2",
+        "--log=error",
+      ],
+    });
+    expect(JSON.stringify(result)).not.toMatch(/\b(?:npx|pnpm)\b/iu);
+  });
+
+  it("accepts the v0.8 media contract but rejects first-person release transcript copy", async () => {
+    // Letting first-person copy into the published v0.8 transcript must make this fail.
+    const root = await mkdtemp(join(tmpdir(), "reword-nerd-v08-media-contract-"));
+    temporaryRoots.push(root);
+    const source = join(process.cwd(), "public/media/updates/v0-7-0");
+    await Promise.all(["release-update.mp4", "release-update.webm", "poster.webp"].map((file) => copyFile(join(source, file), join(root, file))));
+    const pipeline = await import("../../scripts/updates/video-lib.mjs");
+    const transcript = pipeline.releaseVideoTranscript("0.8.0");
+    await writeFile(join(root, "transcript.txt"), transcript);
+    await expect(checkReleaseMediaDirectory(root, "0.8.0")).resolves.toMatchObject({
+      mp4: { codec: "h264" },
+      webm: { codec: "vp9" },
+      poster: { codec: "webp" },
+    });
+
+    await writeFile(join(root, "transcript.txt"), `${transcript}\nI added this release video.\n`);
+    await expect(checkReleaseMediaDirectory(root, "0.8.0")).rejects.toThrow(/first-person singular/iu);
+  });
+
+  it("fails closed before rendering when the Data volume has less than 6 GiB free", async () => {
+    // Lowering or bypassing the pre-render disk floor must make this fail.
+    const pipeline = await import("../../scripts/updates/video-lib.mjs") as Record<string, unknown>;
+    const floor = pipeline.RELEASE_VIDEO_MINIMUM_FREE_BYTES;
+    const guard = pipeline.assertReleaseVideoDiskFloor;
+    expect(floor).toBe(6n * 1024n * 1024n * 1024n);
+    expect(guard).toBeTypeOf("function");
+    if (typeof floor !== "bigint" || typeof guard !== "function") return;
+
+    const blocks = floor / 4096n;
+    await expect(guard(process.cwd(), async () => ({ bavail: blocks - 1n, bsize: 4096n })))
+      .rejects.toThrow(/at least 6 GiB/iu);
+    await expect(guard(process.cwd(), async () => ({ bavail: blocks, bsize: 4096n })))
+      .resolves.toBe(floor);
   });
 });

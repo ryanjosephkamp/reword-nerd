@@ -121,7 +121,7 @@ test("mixed real formats preserve the complete historical document contract in a
   }
 
   const download = await captureDownload(page);
-  expect(download.suggestedFilename()).toBe("reword-nerd-prompt-package.zip");
+  expect(download.suggestedFilename()).toMatch(/^reword-nerd-text-prompt-package-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z\.zip$/u);
   const archiveBytes = await downloadBytes(download);
   const archive = await JSZip.loadAsync(archiveBytes, { checkCRC32: true });
   const manifestText = await archive.file("manifest.json")?.async("string");
@@ -440,7 +440,7 @@ test("keyboard navigation, modal focus, live state, removal focus, and reduced m
   const downloadButton = page.getByRole("button", { name: "DOWNLOAD ZIP" });
   await downloadButton.focus();
   await page.keyboard.press("Enter");
-  expect((await download).suggestedFilename()).toBe("reword-nerd-prompt-package.zip");
+  expect((await download).suggestedFilename()).toMatch(/^reword-nerd-text-prompt-package-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z\.zip$/u);
   expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
@@ -551,7 +551,7 @@ test("in-site package progress hydrates, survives navigation, downloads, and res
   expect(archive.file("OPEN-ME.html")).not.toBeNull();
   expect(JSON.parse(await archive.file("manifest.json")!.async("string"))).toMatchObject({
     schemaVersion: 6,
-    package: { format: "dual-mode-prompt-package", version: "0.7.0" },
+    package: { format: "dual-mode-prompt-package", version: "0.8.0" },
   });
 });
 
@@ -596,6 +596,12 @@ test("standalone file workbook supports both workflows, copy paths, and progress
     }
   });
   await standalone.goto(pathToFileURL(standalonePath).href);
+  for (const viewport of [{ width: 320, height: 720 }, { width: 390, height: 844 }, { width: 1586, height: 992 }]) {
+    await standalone.setViewportSize(viewport);
+    await expect(standalone.locator("body")).toHaveCSS("background-color", "rgb(9, 11, 16)");
+    await expect(standalone.locator(".eyebrow")).toHaveCSS("color", "rgb(66, 232, 180)");
+    expect(await standalone.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  }
   const readmeTab = standalone.getByRole("tab", { name: "README" });
   await expect(readmeTab).toHaveAttribute("aria-selected", "true");
   await expect(standalone.getByRole("heading", { name: "reword-nerd prompt package" })).toBeVisible();

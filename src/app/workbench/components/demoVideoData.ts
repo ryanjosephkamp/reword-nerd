@@ -1,4 +1,4 @@
-export type DemoVideoId = "overview" | "settings" | "review" | "package";
+export type DemoVideoId = "overview" | "settings" | "review" | "package" | "image-overview";
 
 interface DemoDefinition {
   title: string;
@@ -51,6 +51,20 @@ export const DEMO_DEFINITIONS: Readonly<Record<DemoVideoId, DemoDefinition>> = {
       "Read the Runbook first, then choose One-shot for the compact workflow or Manual for four inspectable stages.",
       "Copy the active prompt and paste model responses into the matching response fields.",
       "Download a progress copy or the complete ZIP when you are ready to keep the work outside this session.",
+    ],
+  },
+  "image-overview": {
+    title: "How reword_nerd Image works",
+    accessibleLabel: "reword_nerd Image Quick Start demonstration",
+    posterAlt: "reword_nerd Image Quick Start demonstration poster",
+    transcript: [
+      "Enter the Image portal from the TEXT / IMAGE switch.",
+      "Add images or a folder, then click or activate an image card to focus it.",
+      "Apply shared settings to selected images using Defaults or Selected.",
+      "Review warnings and optional local OCR before accepting any visible text.",
+      "Confirm the image set and build the confirmed package in memory.",
+      "Review the prompt pairs and download the timestamped ZIP only when ready.",
+      "No model runs and nothing uploads; the session stays local in this browser.",
     ],
   },
 };

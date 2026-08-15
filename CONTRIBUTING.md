@@ -1,7 +1,7 @@
 # Contributing to reword-nerd
 
-Thank you for helping improve this browser workbench for professional document
-rewriting workflows.
+Thank you for helping improve this browser workbench for professional Text
+rewriting and reference-image prompting workflows.
 
 ## Development setup
 
@@ -31,11 +31,14 @@ Run `npm run install:playwright` if Playwright does not yet have Chromium.
 - Improve the canonical One-shot or four Manual prompt templates.
 - Improve safe standalone-text/project intake, ORIGINAL previews, review,
   package generation, and accessibility.
+- Improve the isolated `/image/` intake, review, prompt-profile, schema-1
+  package, offline HTML, or accessibility contracts without broadening Text.
 - Improve the model-profile and writing-settings experience.
 - Add focused tests, synthetic fixtures, examples, or documentation.
 - Report reproducible defects or suggest a well-scoped enhancement.
 
-The application remains a browser-only, dual-mode prompt-package workbench.
+The application remains a browser-only prompt-package workbench with separate
+Text and Image domains.
 Changes that add a hosted service, account system, persistence layer, model
 execution, or unrelated interface should be discussed before implementation.
 
@@ -69,8 +72,20 @@ authority to commit, push, open a pull request, publish, or deploy.
   and risk manifests; the exported tree is AI context, not a source backup.
 - Keep document processing in the current browser session. Do not add provider
   calls, telemetry, remote assets, or service workers. The validated adapter in
-  `src/app/workbench/preferences.ts` is the only permitted storage writer; its
-  single-key global-preference allowlist must not expand to document data.
+  `src/app/workbench/preferences.ts` owns the Text key, while
+  `src/image/preferences.ts` owns the isolated Image key. Neither allowlist may
+  add dedicated source-byte, filename/path, selection, OCR, prompt, response,
+  preview, or package fields. Image requested-changes and must-preserve defaults
+  are intentionally persisted bounded free-form text, so repository and public
+  documentation must disclose that user-entered sensitive text in those
+  defaults will be saved.
+- Keep the Image portal on its public intake/export facades. Preserve magic and
+  MIME validation, safe folder/ZIP paths, bounded local PDF/DOCX extraction,
+  opt-in reviewed OCR, one image/one prompt pairing, exact source bytes,
+  deterministic schema-1 ZIP metadata, and original-container exclusion.
+- Preserve offline Image HTML fallbacks, cooperative cancellation, stale-build
+  suppression, and bounded/revoked object URLs. Image profiles are prompt
+  strategies only and must never become provider calls or credential fields.
 - Maintain the Night Terminal tokens and responsive behavior recorded in
   [the design system](docs/design-system.md).
 - Use clear, neutral, professional language in code, comments, prompts,
@@ -86,6 +101,10 @@ fixture that
 exercises DOCX or PDF extraction must use genuine format bytes, not a parser
 mock alone. Folder/ZIP fixtures must also exercise normalized paths, exclusions,
 tree hashes, and sanitized schema-v6 export without relying only on parser mocks.
+Image fixtures must use genuine tiny PNG/JPEG/WebP/AVIF, PDF, DOCX, or ZIP bytes
+as applicable and cover signature/MIME mismatch, path safety, limits, source-byte
+parity, schema-1 hashes, offline `file://` behavior, and cleanup without using
+private or copyrighted material.
 
 Run the relevant focused tests while iterating, then run the checks listed
 above against the built preview before proposing a change. Inspect generated
