@@ -1,0 +1,157 @@
+import { useCallback, useEffect, useRef } from "react";
+import { createProjectPromptSnapshot } from "../../domain";
+import { renderPromptBundle, renderPromptSource } from "../../prompting";
+import type { ExportSourceInput } from "../../export";
+import type { WorkbenchServices, WorkbenchState } from "./contracts";
+import type { WorkbenchAction } from "./reducer";
+import {
+  selectContextAssessment,
+  selectFirstExportBlocker,
+  selectResolvedSettings,
+  selectWorkingProfile,
+} from "./selectors";
+
+const safeBuildFailure = "Package could not be generated. Your session is still available.";
+const safeDownloadFailure = "Package could not be downloaded. Your built package is still ready.";
+
+export function useExportPackage(
+  state: WorkbenchState,
+  dispatch: React.Dispatch<WorkbenchAction>,
+  services: WorkbenchServices,
+) {
+  const blocker = selectFirstExportBlocker(state);
+  const nextOperationIdRef = useRef(0);
+  const activeOperationRef = useRef<{ operationId: number; revision: number } | null>(null);
+  const activeDownloadRef = useRef(false);
+
+  useEffect(() => {
+    const active = activeOperationRef.current;
+    if (!active) return;
+    if (
+      state.export.operationId !== active.operationId
+      || state.export.operationRevision !== active.revision
+    ) {
+      activeOperationRef.current = null;
+    }
+  }, [state.export.operationId, state.export.operationRevision]);
+
+  const build = useCallback(async () => {
+    const active = activeOperationRef.current;
+    if (active?.revision === state.revision
+      || state.export.status === "building"
+      || state.export.status === "downloading") return;
+    const revision = state.revision;
+    const operationId = nextOperationIdRef.current + 1;
+    nextOperationIdRef.current = operationId;
+    activeOperationRef.current = { operationId, revision };
+    dispatch({ type: "export/started", operationId, revision });
+    if (blocker) {
+      dispatch({ type: "export/build-failed", message: blocker, operationId, revision });
+      return;
+    }
+    try {
+      const profile = selectWorkingProfile(state);
+      const snapshot: ExportSourceInput[] = state.items.map((document) => {
+        const resolvedSettings = selectResolvedSettings(state, document.id);
+        if (document.kind === "project") {
+          const projectSnapshot = createProjectPromptSnapshot(document, 0);
+          const format = document.classification === "latex" ? "latex-project" as const : "text" as const;
+          const sourceContext = {
+            kind: "project" as const,
+            format,
+            assets: [],
+            reviewedTreeHash: projectSnapshot.reviewedTreeHash,
+            includedFiles: projectSnapshot.includedFiles,
+            excludedPaths: projectSnapshot.excludedPaths,
+            codeRewriteOptions: { ...state.globalCodeRewriteOptions, protectedExecutableSyntax: true as const },
+            latexMainFile: document.rootDocument,
+          };
+          const reviewedExtractedText = renderPromptSource(sourceContext);
+          return {
+            kind: "project",
+            projectId: document.id,
+            projectName: document.name,
+            project: document,
+            reviewedExtractedText,
+            resolvedSettings,
+            codeRewriteOptions: sourceContext.codeRewriteOptions,
+            chosenProfile: { ...profile },
+            promptBundle: renderPromptBundle(reviewedExtractedText, resolvedSettings, profile, sourceContext),
+            warnings: [...document.warnings],
+            sensitiveBlockedCounts: { ...document.sensitiveBlockedCounts },
+            contextAssessment: selectContextAssessment(state, document.id),
+            reviewed: document.status === "ready" && !document.requiresReview,
+            contextWarningAcknowledged: document.contextWarningAcknowledged,
+            uploadOrdinal: document.uploadOrdinal,
+          };
+        }
+        return {
+          kind: "document",
+          documentId: document.id,
+          documentName: document.name,
+          documentFormat: document.format,
+          original: document.original,
+          reviewedExtractedText: document.extractedText,
+          resolvedSettings,
+          chosenProfile: { ...profile },
+          promptBundle: renderPromptBundle(document.extractedText, resolvedSettings, profile, {
+            format: document.format,
+            assets: (document.visualAssets ?? []).map((asset) => ({
+              id: asset.id,
+              filename: asset.filename,
+              mimeType: asset.mimeType,
+              ...(asset.pageNumber ? { pageNumber: asset.pageNumber } : {}),
+              ...(asset.sourcePath ? { sourcePath: asset.sourcePath } : {}),
+              ...(asset.caption ? { caption: asset.caption } : {}),
+              ...(asset.altText ? { altText: asset.altText } : {}),
+              included: asset.included,
+            })),
+            codeRewriteOptions: { ...state.globalCodeRewriteOptions, protectedExecutableSyntax: true as const },
+            latexMainFile: document.latexProject?.mainFile,
+          }),
+          warnings: [...document.warnings],
+          contextAssessment: selectContextAssessment(state, document.id),
+          reviewed: document.status === "ready" && !document.requiresReview,
+          contextWarningAcknowledged: document.contextWarningAcknowledged,
+          uploadOrdinal: document.uploadOrdinal,
+          pageCount: document.pageCount ?? null,
+          extractionOptions: document.extractionOptions ?? state.globalExtractionOptions,
+          visualAssets: document.visualAssets ?? [],
+          ocrCandidates: document.ocrCandidates ?? [],
+          ...(document.latexProject ? { latexProject: document.latexProject } : {}),
+        };
+      });
+      const result = await services.buildPackage(snapshot);
+      if (!result.ok) {
+        dispatch({ type: "export/build-failed", message: safeBuildFailure, operationId, revision });
+        return;
+      }
+      dispatch({ type: "export/package-built", builtPackage: result, operationId, revision });
+    } catch {
+      dispatch({ type: "export/build-failed", message: safeBuildFailure, operationId, revision });
+    }
+  }, [blocker, dispatch, services, state]);
+
+  const download = useCallback(() => {
+    const builtPackage = state.export.builtPackage;
+    const revision = state.export.builtRevision;
+    if (!builtPackage
+      || revision === undefined
+      || revision !== state.revision
+      || activeDownloadRef.current) return;
+    activeDownloadRef.current = true;
+    dispatch({ type: "export/download-started", revision });
+    try {
+      const result = services.download(builtPackage.blob);
+      dispatch(result.ok
+        ? { type: "export/download-succeeded", revision }
+        : { type: "export/download-failed", revision, message: safeDownloadFailure });
+    } catch {
+      dispatch({ type: "export/download-failed", revision, message: safeDownloadFailure });
+    } finally {
+      activeDownloadRef.current = false;
+    }
+  }, [dispatch, services, state.export.builtPackage, state.export.builtRevision, state.revision]);
+
+  return { blocker, build, download };
+}
