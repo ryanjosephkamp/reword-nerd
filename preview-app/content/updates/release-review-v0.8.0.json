@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "version": "0.8.0",
+  "previousVersion": "0.7.0",
+  "classification": "feature",
+  "generatedFrom": "local-git-history",
+  "commits": [
+    {
+      "commit": "fe36ca7de91edfec670e2dc8c95a756fa2be5f25",
+      "authoredAt": "2026-08-14T19:28:44-04:00",
+      "subject": "fix: align v0.8 media accessibility"
+    },
+    {
+      "commit": "11e506447c41693de53ec85edcf7911a51e49e5b",
+      "authoredAt": "2026-08-14T18:55:25-04:00",
+      "subject": "test: align image tutorial release contracts"
+    },
+    {
+      "commit": "408e5846d911c88ad6fabea78e9a9b85b1c6a02b",
+      "authoredAt": "2026-08-14T18:52:32-04:00",
+      "subject": "feat(updates): add v0.8 image portal story"
+    },
+    {
+      "commit": "6cb7a2141d116e18b5d8db4221f162e648d0960c",
+      "authoredAt": "2026-08-14T18:33:54-04:00",
+      "subject": "feat(image): add quick start video"
+    },
+    {
+      "commit": "07dd03b5b541c2e3866097888bd734c3ffea515c",
+      "authoredAt": "2026-08-14T17:40:42-04:00",
+      "subject": "fix: contain pdf text and timestamp downloads"
+    },
+    {
+      "commit": "82bbdab51fa808dfcc49c738ab4a71e59a1706f4",
+      "authoredAt": "2026-08-14T16:06:36-04:00",
+      "subject": "feat: refine image and text review workflows"
+    },
+    {
+      "commit": "4041954b50616bf67173f787b98d171c15f32307",
+      "authoredAt": "2026-08-14T14:02:22-04:00",
+      "subject": "fix(image): surface package actions and orange polish"
+    },
+    {
+      "commit": "98c6aac8602640f12c730febb43f6e21ece07415",
+      "authoredAt": "2026-08-14T10:41:06-04:00",
+      "subject": "fix(image): harden final portal custody"
+    },
+    {
+      "commit": "9833a804d7730f0d442e82251428110395563275",
+      "authoredAt": "2026-08-14T07:50:35-04:00",
+      "subject": "docs(image): complete companion integration"
+    },
+    {
+      "commit": "1de691b317b0830f6bab7a877bb54664ed9237ae",
+      "authoredAt": "2026-08-14T07:18:10-04:00",
+      "subject": "feat(image): build deterministic prompt packages"
+    },
+    {
+      "commit": "dbddbc31e6f543ede31ecc8f2c55fe3096a48a1e",
+      "authoredAt": "2026-08-14T06:20:12-04:00",
+      "subject": "fix(image): observe queue scroll viewport"
+    },
+    {
+      "commit": "3eccea784caeceef62d00195271319232e2eb50a",
+      "authoredAt": "2026-08-14T06:10:48-04:00",
+      "subject": "fix(image): clear responsive review overlays"
+    },
+    {
+      "commit": "95bedb8b82d98cdf070565d5be43b2099f9496ba",
+      "authoredAt": "2026-08-14T05:56:56-04:00",
+      "subject": "fix(image): restore modal lifecycle focus"
+    },
+    {
+      "commit": "ceeb8ed3afdf1cb28b41b29ce5aa255a5519970a",
+      "authoredAt": "2026-08-14T05:44:00-04:00",
+      "subject": "feat(image): build responsive local workbench"
+    },
+    {
+      "commit": "5eec4c5da52fd4888be161a75c19ec9e2b7bda59",
+      "authoredAt": "2026-08-14T04:54:16-04:00",
+      "subject": "fix(image): detach cancelled OCR and PDF work"
+    },
+    {
+      "commit": "eecbbeead8ef49eddbc068d97550aad3c929e983",
+      "authoredAt": "2026-08-14T04:30:11-04:00",
+      "subject": "feat(image): add bounded local intake pipeline"
+    },
+    {
+      "commit": "fc34889c1983fde7e542bada24053310098ff85b",
+      "authoredAt": "2026-08-14T03:35:20-04:00",
+      "subject": "fix: bind image OCR to source incarnations"
+    },
+    {
+      "commit": "1cf5f5de557bde679cd4a4a31c46f06ee8c175a9",
+      "authoredAt": "2026-08-14T03:21:53-04:00",
+      "subject": "fix: harden image OCR custody"
+    },
+    {
+      "commit": "aa1b11a21c77d86acc2797f5d50c8959b698bc87",
+      "authoredAt": "2026-08-14T03:04:50-04:00",
+      "subject": "fix: harden image domain contracts"
+    },
+    {
+      "commit": "e2d3ed9c31b6853a14caccd231bb22bcbd86b619",
+      "authoredAt": "2026-08-14T02:25:55-04:00",
+      "subject": "feat: add image domain and prompt contracts"
+    },
+    {
+      "commit": "ab3c792df4d0d668521a9c42d4e2fc450cd8ecce",
+      "authoredAt": "2026-08-14T01:47:51-04:00",
+      "subject": "fix: scope image interactions and restore portal focus"
+    },
+    {
+      "commit": "26eef01face3d63b003e44a39085631e35bdb72d",
+      "authoredAt": "2026-08-14T01:39:20-04:00",
+      "subject": "feat: add image portal shell"
+    },
+    {
+      "commit": "273b51182ef7f1ce71d5ebf19b3a7a35a136f38a",
+      "authoredAt": "2026-08-13T20:22:34-04:00",
+      "subject": "Polish link colors and Updates voice (#9)"
+    },
+    {
+      "commit": "c4f6493064a1f7d47be871937ce8e7bb052eedb0",
+      "authoredAt": "2026-08-13T18:46:06-04:00",
+      "subject": "Release v0.7 Updates, community, and release media (#8)"
+    },
+    {
+      "commit": "bb3b2443fb61e4aeee8756519907d8922d92571a",
+      "authoredAt": "2026-08-13T06:01:54-04:00",
+      "subject": "Release v0.6.0: source viewer and project workspaces (#7)"
+    },
+    {
+      "commit": "d653a34f5844689eef8eb4eeaf9a21d5cb6728aa",
+      "authoredAt": "2026-08-12T22:11:04-04:00",
+      "subject": "Release v0.5.1 mobile preview and asset polish (#6)"
+    },
+    {
+      "commit": "582f731f46d8e8e87396d09a5f1b0c6e315403dc",
+      "authoredAt": "2026-08-12T19:16:35-04:00",
+      "subject": "Fix mobile Document processing help placement (#5)"
+    },
+    {
+      "commit": "f3c5743bd597455e2c3b6b978bf4af2a60986af4",
+      "authoredAt": "2026-08-12T19:06:40-04:00",
+      "subject": "Release v0.5 guided help and schema-v5 packages (#4)"
+    },
+    {
+      "commit": "8efb0ac4d9b5c4f7b2e1bfdb0aa36934220d15a2",
+      "authoredAt": "2026-08-12T02:37:40-04:00",
+      "subject": "chore: remove internal implementation report"
+    },
+    {
+      "commit": "98d1b45507d2f248a11010a1185334201448b4c1",
+      "authoredAt": "2026-08-12T02:32:38-04:00",
+      "subject": "Add dual-mode prompt workbooks and mobile release polish (#3)"
+    },
+    {
+      "commit": "10bfed0d80c2b27b985caec2bbbc13efb4191417",
+      "authoredAt": "2026-08-11T21:20:48-04:00",
+      "subject": "Add media OCR LaTeX and mobile workspace (#2)"
+    },
+    {
+      "commit": "af977b445eb35b7744536897fce07ef2ced6731b",
+      "authoredAt": "2026-08-11T17:56:03-04:00",
+      "subject": "Model-guided prompts, combined artifacts, and package preview (#1)"
+    },
+    {
+      "commit": "c36d4447be7695d6d7935f76c06abcc2cdaa73ed",
+      "authoredAt": "2026-08-11T15:01:01-04:00",
+      "subject": "Build browser prompt-package workbench"
+    }
+  ]
+}

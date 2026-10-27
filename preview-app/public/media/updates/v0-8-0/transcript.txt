@@ -1,0 +1,8 @@
+reword-nerd v0.8 — IMAGE portal and workbench polish
+
+00:00 — Added the IMAGE portal with an orange, local-first workbench for reference-image prompt packages.
+00:05 — Added safe local intake, per-image settings, optional OCR review, and deterministic package exports.
+00:10 — Changed PDF review with Continuous view and a page Gallery, and refreshed TEXT package HTML in the Night Terminal style.
+00:15 — Fixed selectable-text containment, accessible portal accents, and focused-image navigation.
+00:20 — Added timestamped ZIP downloads for both TEXT and IMAGE packages.
+00:23 — No model runs. Nothing uploads. Files stay in the browser until a deliberate download.

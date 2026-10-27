@@ -1,0 +1,621 @@
+/* Shared colors only: Studio's existing spacing, typography, and paper reader stay intact. */
+.unified-platform[data-palette][data-appearance] {
+  --appearance-bg: #131b23;
+  --appearance-panel: #18232b;
+  --appearance-raised: #24333e;
+  --appearance-text: #eaf0f3;
+  --appearance-muted: #a6b7c1;
+  --appearance-border: #334652;
+  --appearance-accent: #9bd7ed;
+  --appearance-accent-ink: #142934;
+  --appearance-paper: #f0efe5;
+  --appearance-ink: #293842;
+  --appearance-paper-muted: #606d75;
+  --appearance-paper-accent: #28657b;
+  --appearance-warning: #e5ba7e;
+  --appearance-error: #ecaaa2;
+  --appearance-welcome-panel: var(--appearance-panel);
+  --appearance-welcome-text: var(--appearance-text);
+  --appearance-welcome-muted: var(--appearance-muted);
+  --appearance-welcome-border: var(--appearance-border);
+  --appearance-welcome-accent-ink: var(--appearance-accent-ink);
+  --studio-bg: var(--appearance-bg);
+  --studio-panel: var(--appearance-panel);
+  --studio-raised: var(--appearance-raised);
+  --studio-text: var(--appearance-text);
+  --studio-muted: var(--appearance-muted);
+  --studio-border: var(--appearance-border);
+  --studio-mint: var(--appearance-accent);
+  --studio-accent-ink: var(--appearance-accent-ink);
+  --studio-paper: var(--appearance-paper);
+  --studio-ink: var(--appearance-ink);
+  --studio-paper-muted: var(--appearance-paper-muted);
+  --welcome-bg: var(--appearance-bg);
+  --welcome-panel: var(--appearance-welcome-panel);
+  --welcome-text: var(--appearance-welcome-text);
+  --welcome-muted: var(--appearance-welcome-muted);
+  --welcome-border: var(--appearance-welcome-border);
+  --welcome-mint: var(--appearance-accent);
+  --welcome-button-ink: var(--appearance-welcome-accent-ink);
+  --color-canvas: var(--appearance-bg);
+  --color-surface: var(--appearance-panel);
+  --color-surface-raised: var(--appearance-raised);
+  --color-border: var(--appearance-border);
+  --color-text: var(--appearance-text);
+  --color-muted: var(--appearance-muted);
+  --color-ready: var(--appearance-accent);
+  --color-review: var(--appearance-warning);
+  --color-blocked: var(--appearance-error);
+  --image-action: var(--appearance-accent);
+  --image-action-strong: var(--appearance-accent);
+  --image-review: var(--appearance-warning);
+  --image-panel-tint: color-mix(
+    in srgb,
+    var(--appearance-accent) 4%,
+    var(--appearance-bg)
+  );
+  color: var(--studio-text);
+  background: var(--studio-bg);
+  color-scheme: dark;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.unified-platform[data-palette="graphite"][data-appearance="light"] {
+  --appearance-bg: #e7edf0;
+  --appearance-panel: #f1f5f7;
+  --appearance-raised: #e2eaef;
+  --appearance-text: #253742;
+  --appearance-muted: #566b78;
+  --appearance-border: #c8d5dc;
+  --appearance-accent: #24667e;
+  --appearance-accent-ink: #fff;
+  --appearance-paper: #fffdf7;
+}
+
+.unified-platform[data-palette="lime"][data-appearance="dark"] {
+  --appearance-bg: #171c17;
+  --appearance-panel: #1d251c;
+  --appearance-raised: #2a3525;
+  --appearance-text: #eef3e6;
+  --appearance-muted: #afbba4;
+  --appearance-border: #3b4834;
+  --appearance-accent: #d0ed83;
+  --appearance-accent-ink: #263313;
+  --appearance-paper: #f3f1e7;
+  --appearance-ink: #334126;
+  --appearance-paper-muted: #667257;
+  --appearance-paper-accent: #557125;
+}
+
+.unified-platform[data-palette="lime"][data-appearance="light"] {
+  --appearance-bg: #eaeee0;
+  --appearance-panel: #f4f7ec;
+  --appearance-raised: #e6edd7;
+  --appearance-text: #314025;
+  --appearance-muted: #5e6e4e;
+  --appearance-border: #cdd6be;
+  --appearance-accent: #557125;
+  --appearance-accent-ink: #fff;
+  --appearance-paper: #fffdf5;
+  --appearance-ink: #334126;
+  --appearance-paper-muted: #667257;
+  --appearance-paper-accent: #557125;
+}
+
+.unified-platform[data-palette="amber"][data-appearance="dark"] {
+  --appearance-bg: #211c17;
+  --appearance-panel: #28221b;
+  --appearance-raised: #383025;
+  --appearance-text: #f5efe2;
+  --appearance-muted: #bdb09a;
+  --appearance-border: #4b4032;
+  --appearance-accent: #eec88c;
+  --appearance-accent-ink: #352616;
+  --appearance-paper: #f6f0e5;
+  --appearance-ink: #473a29;
+  --appearance-paper-muted: #76664f;
+  --appearance-paper-accent: #8a5c20;
+}
+
+.unified-platform[data-palette="amber"][data-appearance="light"] {
+  --appearance-bg: #f0e9dd;
+  --appearance-panel: #faf5ec;
+  --appearance-raised: #ece3d2;
+  --appearance-text: #443624;
+  --appearance-muted: #756148;
+  --appearance-border: #ddceba;
+  --appearance-accent: #8a5c20;
+  --appearance-accent-ink: #fff;
+  --appearance-paper: #fffdf7;
+  --appearance-ink: #443624;
+  --appearance-paper-muted: #756148;
+  --appearance-paper-accent: #8a5c20;
+}
+
+/* Approved Studio and introduction colors; paper metadata has a minimal contrast correction. */
+.unified-platform[data-palette="original"][data-appearance="dark"] {
+  --appearance-bg: #141815;
+  --appearance-panel: #191e1a;
+  --appearance-raised: #222923;
+  --appearance-text: #eff0e7;
+  --appearance-muted: #a0aa9e;
+  --appearance-border: #323c32;
+  --appearance-accent: #c1ed9b;
+  --appearance-accent-ink: #182614;
+  --appearance-paper: #f0efe5;
+  --appearance-ink: #2e382d;
+  --appearance-paper-muted: #666f5d;
+  --appearance-paper-accent: #4b643b;
+  --appearance-welcome-panel: #1b211c;
+  --appearance-welcome-text: #f0efe5;
+  --appearance-welcome-muted: #a6afa2;
+  --appearance-welcome-border: #343e33;
+  --appearance-welcome-accent-ink: #21311a;
+}
+
+.unified-platform[data-palette="original"][data-appearance="light"] {
+  --appearance-bg: #e8ece2;
+  --appearance-panel: #f2f4ee;
+  --appearance-raised: #e3e9dc;
+  --appearance-text: #263425;
+  --appearance-muted: #5d6b57;
+  --appearance-border: #cdd5c6;
+  --appearance-accent: #3d602b;
+  --appearance-accent-ink: #fff;
+  --appearance-paper: #fcfbf5;
+  --appearance-ink: #2e382d;
+  --appearance-paper-muted: #697260;
+  --appearance-paper-accent: #4b643b;
+}
+
+.unified-platform[data-palette][data-appearance="light"] {
+  --appearance-warning: #805520;
+  --appearance-error: #a44238;
+  color-scheme: light;
+}
+
+/* Component roots define their own defaults. Rebind them to the shared palette. */
+.unified-platform[data-palette][data-appearance] .nerd-studio {
+  --studio-bg: var(--appearance-bg);
+  --studio-panel: var(--appearance-panel);
+  --studio-raised: var(--appearance-raised);
+  --studio-text: var(--appearance-text);
+  --studio-muted: var(--appearance-muted);
+  --studio-border: var(--appearance-border);
+  --studio-mint: var(--appearance-accent);
+  --studio-accent-ink: var(--appearance-accent-ink);
+  --studio-paper: var(--appearance-paper);
+  --studio-ink: var(--appearance-ink);
+  --studio-paper-muted: var(--appearance-paper-muted);
+}
+
+.unified-platform[data-palette][data-appearance] .studio-welcome-page {
+  --welcome-bg: var(--appearance-bg);
+  --welcome-panel: var(--appearance-welcome-panel);
+  --welcome-text: var(--appearance-welcome-text);
+  --welcome-muted: var(--appearance-welcome-muted);
+  --welcome-border: var(--appearance-welcome-border);
+  --welcome-mint: var(--appearance-accent);
+  --welcome-button-ink: var(--appearance-welcome-accent-ink);
+}
+
+/* Original green keeps all of its original decorative and paper-review colors. */
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  :is(
+    .studio-document-item.selected,
+    .studio-package-success,
+    .studio-package-mode > button[aria-pressed="true"],
+    .studio-guide-note
+  ) {
+  background: color-mix(in srgb, var(--studio-mint) 5%, transparent);
+  border-color: color-mix(in srgb, var(--studio-mint) 20%, transparent);
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  :is(.studio-review-button, .studio-recipes > button[aria-pressed="true"]) {
+  color: var(--studio-mint);
+  background: color-mix(in srgb, var(--studio-mint) 6%, transparent);
+  border-color: color-mix(in srgb, var(--studio-mint) 42%, transparent);
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  :is(
+    .studio-reviewed,
+    .studio-recipes > button[aria-pressed="true"] > svg:last-child
+  ) {
+  color: var(--studio-mint);
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  .studio-import {
+  background: var(--studio-mint);
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  .studio-recipes
+  > button:hover {
+  border-color: var(--studio-mint);
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  .studio-drag-overlay {
+  background: color-mix(in srgb, var(--studio-bg) 96%, transparent);
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  .studio-source-editor {
+  outline-color: var(--appearance-paper-accent);
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  .studio-prose
+  blockquote {
+  color: var(--studio-paper-muted);
+  border-left-color: var(--appearance-paper-accent);
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  :is(.studio-prose code, .studio-source-image) {
+  color: var(--studio-ink);
+  background: color-mix(in srgb, var(--studio-ink) 7%, var(--studio-paper));
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  :is(.studio-prose th, .studio-prose td, .studio-result-review-footnote) {
+  border-color: color-mix(in srgb, var(--studio-ink) 20%, var(--studio-paper));
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  .studio-source-link {
+  color: var(--appearance-paper-accent);
+  text-decoration-color: color-mix(
+    in srgb,
+    var(--appearance-paper-accent) 45%,
+    transparent
+  );
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  .studio-paper-end {
+  color: color-mix(in srgb, var(--studio-ink) 40%, var(--studio-paper));
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  .studio-paper-end
+  > span {
+  background: color-mix(in srgb, var(--studio-ink) 20%, var(--studio-paper));
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  .studio-error,
+.unified-platform[data-palette="original"][data-appearance="light"]
+  .studio-error {
+  color: var(--appearance-error);
+  border-color: color-mix(in srgb, var(--appearance-error) 30%, transparent);
+  background: color-mix(in srgb, var(--appearance-error) 8%, transparent);
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  :is(.studio-notice, .studio-snapshot-notice) {
+  color: var(--appearance-warning);
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  :is(.studio-context-warning, .studio-snapshot-notice) {
+  border-color: color-mix(in srgb, var(--appearance-warning) 35%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--appearance-warning) 8%,
+    var(--studio-bg)
+  );
+}
+
+/* The result is still a paper surface even when the surrounding workspace is dark. */
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  .studio-result-review {
+  --studio-bg: var(--appearance-paper);
+  --studio-panel: color-mix(
+    in srgb,
+    var(--appearance-ink) 2%,
+    var(--appearance-paper)
+  );
+  --studio-raised: color-mix(
+    in srgb,
+    var(--appearance-ink) 6%,
+    var(--appearance-paper)
+  );
+  --studio-text: var(--appearance-ink);
+  --studio-muted: var(--appearance-paper-muted);
+  --studio-border: color-mix(
+    in srgb,
+    var(--appearance-ink) 19%,
+    var(--appearance-paper)
+  );
+  --studio-mint: var(--appearance-paper-accent);
+  --studio-accent-ink: #fff;
+  --studio-ink: var(--appearance-ink);
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  .studio-result-review
+  :is(.studio-result-review-origin p, .studio-result-review-footnote) {
+  color: var(--studio-muted);
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  .studio-result-review
+  .studio-result-review-actions
+  .studio-secondary {
+  color: var(--studio-mint);
+  border-color: var(--studio-border);
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  .studio-result-review
+  .studio-result-review-actions
+  .studio-secondary:hover {
+  background: var(--studio-raised);
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  .studio-compare-document
+  ins {
+  color: var(--studio-mint);
+  background: color-mix(in srgb, var(--studio-mint) 10%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--studio-mint) 45%, transparent);
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  .studio-compare-legend
+  .is-added {
+  background: var(--studio-mint);
+}
+
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  .welcome-writing-sheet {
+  background: var(--studio-paper);
+  color: var(--studio-ink);
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  :is(
+    .welcome-sheet-topline,
+    .welcome-sheet-label,
+    .welcome-before p,
+    .welcome-sheet-footer
+  ) {
+  color: var(--studio-paper-muted);
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  :is(
+    .welcome-sheet-symbol,
+    .welcome-sheet-divider,
+    .welcome-sheet-footer > button
+  ) {
+  color: var(--appearance-paper-accent);
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  .welcome-after
+  p {
+  color: var(--studio-ink);
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  .welcome-sheet-footer {
+  border-color: color-mix(in srgb, var(--studio-ink) 20%, var(--studio-paper));
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  .welcome-sheet-divider
+  > span {
+  background: color-mix(in srgb, var(--studio-ink) 20%, var(--studio-paper));
+}
+.unified-platform[data-palette]:not([data-palette="original"])[data-appearance]
+  .welcome-sheet-footer
+  > button:focus-visible {
+  outline-color: var(--appearance-paper-accent);
+}
+
+/* Embedded workspaces use Studio's control scale and retain their existing columns. */
+.unified-platform .platform-embedded :is(.workbench, .image-workbench) {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.unified-platform .platform-embedded :is(button, input, select, textarea) {
+  border-radius: 7px;
+  font-size: 13px;
+}
+.unified-platform .platform-embedded .image-workbench button {
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.unified-platform
+  .platform-embedded
+  :is(.workbench-embedded-title h2, .image-panel h2) {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+.unified-platform .platform-embedded .image-panel h3 {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.unified-platform
+  .platform-embedded
+  :is(
+    .image-eyebrow,
+    .image-row-copy span,
+    .image-row-controls label,
+    .image-field-mask,
+    .file-status
+  ) {
+  font-size: 11px;
+  font-weight: 500;
+}
+.unified-platform
+  .platform-embedded
+  :is(.image-row-copy strong, .file-name, .session-copy) {
+  font-size: 13px;
+  font-weight: 500;
+}
+.unified-platform
+  .platform-embedded
+  .image-setting-field
+  > label:not(.image-field-mask) {
+  font-weight: 500;
+}
+.unified-platform
+  .platform-embedded
+  .image-workbench
+  :is(.image-warning, .image-error-state, .image-error) {
+  font-weight: 500;
+}
+.unified-platform .platform-embedded .image-panel > header {
+  position: sticky;
+  top: -20px;
+  z-index: 3;
+  margin: -20px -20px 18px;
+  padding: 20px;
+  background: var(--studio-bg);
+  border-bottom: 1px solid var(--studio-border);
+}
+.unified-platform
+  .platform-embedded
+  .image-workbench
+  :is(
+    .image-intake-target,
+    .image-queue-row,
+    .image-prompt-card,
+    .image-run-card,
+    .image-ocr-review,
+    .image-profile-metadata,
+    .image-package-preview,
+    .image-build-dock
+  ) {
+  border-radius: 9px;
+}
+@media (max-width: 767px) {
+  .unified-platform .platform-embedded .image-panel > header {
+    top: -16px;
+    margin: -16px -16px 18px;
+    padding: 16px;
+  }
+}
+.unified-platform .platform-embedded .workbench-embedded {
+  position: relative;
+}
+.unified-platform .platform-embedded .workbench-embedded-title {
+  display: grid;
+  gap: 4px;
+  padding-left: 24px;
+}
+.unified-platform .platform-embedded .workbench-embedded-title > :is(h2, p) {
+  margin: 0;
+}
+.unified-platform .platform-embedded .workbench-embedded-title > p {
+  color: var(--studio-muted);
+}
+.unified-platform[data-palette][data-appearance]
+  .platform-embedded
+  :is(.workbench, .image-workbench) {
+  --image-action: var(--appearance-accent);
+  --image-action-strong: var(--appearance-accent);
+  --image-review: var(--appearance-warning);
+  --image-panel-tint: color-mix(
+    in srgb,
+    var(--appearance-accent) 4%,
+    var(--appearance-bg)
+  );
+  color-scheme: inherit;
+}
+.unified-platform[data-palette][data-appearance]
+  .platform-embedded
+  :is(
+    .portal-link-image,
+    .portal-link-image:visited,
+    .info-group-links a,
+    .info-group-links a:visited
+  ) {
+  color: var(--studio-mint);
+}
+.unified-platform[data-palette][data-appearance]
+  .platform-embedded
+  :is(
+    .portal-link-image,
+    .image-workbench a,
+    .image-workbench button,
+    .image-workbench input,
+    .image-workbench select,
+    .image-workbench textarea
+  ):focus-visible {
+  outline-color: var(--studio-mint);
+}
+.unified-platform[data-palette][data-appearance]
+  .platform-embedded
+  .image-workbench
+  :is(
+    button[aria-selected="true"],
+    .image-settings-tabs button[aria-pressed="true"],
+    .image-build-button:not(:disabled),
+    .image-package-actions button.image-build-button:not(:disabled):hover
+  ) {
+  color: var(--studio-accent-ink);
+  background-color: var(--studio-mint);
+  border-color: var(--studio-mint);
+}
+
+.appearance-controls {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  font: inherit;
+}
+.appearance-palette {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding-left: 10px;
+  border: 1px solid var(--studio-border);
+  border-radius: 6px;
+  background: var(--studio-panel);
+  color: var(--studio-text);
+}
+.appearance-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--studio-mint);
+  flex: 0 0 auto;
+}
+.appearance-palette select {
+  max-width: 145px;
+  min-height: 32px;
+  padding: 5px 24px 5px 0;
+  color: var(--studio-text);
+  background-color: transparent;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.appearance-palette option {
+  color: var(--studio-text);
+  background: var(--studio-panel);
+}
+.appearance-mode {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--studio-border);
+  border-radius: 6px;
+  color: var(--studio-muted);
+  background: var(--studio-panel);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.appearance-mode:hover {
+  color: var(--studio-text);
+  border-color: var(--studio-mint);
+}
+.appearance-controls :is(button, select):focus-visible {
+  outline: 2px solid var(--studio-mint);
+  outline-offset: 3px;
+}
+.appearance-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -35,7 +35,9 @@ jobs:
           ffprobe -version
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          npm ci
+          npm --prefix preview-app ci
 
       - name: Lint
         run: npm run lint
@@ -46,8 +48,19 @@ jobs:
       - name: Test
         run: npm test -- --run
 
+      - name: Verify the separate preview
+        working-directory: preview-app
+        run: |
+          npm run lint
+          npm run typecheck
+          npm test -- --run
+          node node_modules/vitest/vitest.mjs run --configLoader native --config companion/vitest.config.ts
+          node node_modules/vitest/vitest.mjs run --configLoader native --config image-companion/vitest.config.ts
+          node node_modules/vitest/vitest.mjs run --configLoader native --config local-companion/collections/vitest.config.ts
+          node --test local-companion/host.test.mjs local-companion/server.test.mjs
+
       - name: Build for the repository URL
-        run: npm run build
+        run: node scripts/build-preview.mjs
         env:
           VITE_BASE_PATH: /reword-nerd/
 
@@ -80,10 +93,12 @@ jobs:
           ffprobe -version
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          npm ci
+          npm --prefix preview-app ci
 
       - name: Build for the repository URL
-        run: npm run build
+        run: node scripts/build-preview.mjs
         env:
           VITE_BASE_PATH: /reword-nerd/
 

@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "../output/studio/runner-cache/tsconfig.tsbuildinfo",
+    "types": ["node", "vitest/globals"],
+    "noEmit": true
+  },
+  "include": ["./**/*.ts", "../src/**/*.d.ts"],
+  "exclude": []
+}
