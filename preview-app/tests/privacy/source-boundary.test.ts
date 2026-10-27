@@ -89,7 +89,11 @@ function boundaryFindings(path: string, source: string): string[] {
   );
   // The explicitly authorized companion transport is a single bounded same-origin adapter.
   // All other production modules retain the no-fetch rule.
-  const checkedSource = path.endsWith(join("app", "platform", "collectionClient.ts"))
+  const checkedSource = path.endsWith(join("workspace", "companionStore.ts"))
+    ? source.replace("fetch(WORKSPACE_ENDPOINTS[action],", "APPROVED_WORKSPACE_TRANSPORT(WORKSPACE_ENDPOINTS[action],")
+    : path.endsWith(join("workspace", "store.ts"))
+    ? source.replace("indexedDB.open(WORKSPACE_DATABASE, 1)", "APPROVED_WORKSPACE_STORAGE(WORKSPACE_DATABASE, 1)")
+    : path.endsWith(join("app", "platform", "collectionClient.ts"))
     ? source.replace('fetch(`/api/collections/${action}`', 'APPROVED_LOCAL_TRANSPORT(`/api/collections/${action}`')
     : path.endsWith(join("app", "platform", "localClient.ts"))
     ? source.replace("fetch(LOCAL_ENDPOINTS[action],", "APPROVED_LOCAL_TRANSPORT(LOCAL_ENDPOINTS[action],").replace("fetch(\n    HANDOFF_ENDPOINTS[action]", "APPROVED_LOCAL_TRANSPORT(\n    HANDOFF_ENDPOINTS[action]") : source;
@@ -189,9 +193,11 @@ describe("production privacy boundary", () => {
     });
 
     expect(keys).toEqual([
-      "reword-nerd:appearance:v1",
-      "reword-nerd:preferences:v1",
-      "reword-nerd:image-preferences:v1",
+      "reword-nerd:preview:appearance:v1",
+      "reword-nerd:preview:preferences:v1",
+      "reword-nerd:preview:runtime-preferences:v1",
+      "reword-nerd:preview:image-preferences:v1",
+      "reword-nerd:preview:workspace:v1",
     ]);
   });
 });

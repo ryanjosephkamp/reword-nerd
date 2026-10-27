@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useWorkspaceState } from "../../workspace/Workspace";
 import {
   MAX_IMAGE_OCR_TEXT_LENGTH,
   type ImagePortalItem,
@@ -13,7 +13,7 @@ export function ImageOcrReview({
   onRun(): void;
   onReview(status: "accepted" | "rejected", reviewedText: string | null): void;
 }) {
-  const [draft, setDraft] = useState(item.ocr.detectedText ?? "");
+  const [draft, setDraft] = useWorkspaceState(`images:ocrDraft:${item.id}`, item.ocr.detectedText ?? "", { binding: `${item.sourceHash}:${item.incarnation}:${item.ocr.operationGeneration}` });
   const codePoints = Array.from(draft).length;
   const overLimit = codePoints > MAX_IMAGE_OCR_TEXT_LENGTH;
 

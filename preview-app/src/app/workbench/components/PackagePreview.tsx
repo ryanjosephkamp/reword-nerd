@@ -1,3 +1,4 @@
+import { useWorkspaceState } from "../../../workspace/Workspace";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PromptStage } from "../../../domain";
 import {
@@ -64,8 +65,8 @@ export function PackagePreview({
     () => workbooks.find((candidate) => candidate.documentKey === selectedDocumentKey) ?? workbooks[0],
     [selectedDocumentKey, workbooks],
   );
-  const [progressByDocument, setProgressByDocument] = useState(() => createProgressMap(workbooks));
-  const [activeManualStage, setActiveManualStage] = useState<PromptStage>("decompose");
+  const [progressByDocument, setProgressByDocument] = useWorkspaceState("workbench:progress", () => createProgressMap(workbooks), { binding: JSON.stringify(workbooks.map(w => [w.documentKey, w.promptBundle])) });
+  const [activeManualStage, setActiveManualStage] = useWorkspaceState<PromptStage>("workbench:manualStage", "decompose");
   const [status, setStatus] = useState("");
   const copyOperationRef = useRef(0);
   const viewGenerationRef = useRef(0);

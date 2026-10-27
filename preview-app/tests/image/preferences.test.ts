@@ -183,8 +183,8 @@ describe("Image preferences", () => {
 
   it("leaves the Text preference key and decoder behavior unchanged", () => {
     // Catches accidental reuse or broadening of the protected Text preference namespace.
-    expect(PREFERENCES_STORAGE_KEY).toBe("reword-nerd:preferences:v1");
-    expect(IMAGE_PREFERENCES_STORAGE_KEY).toBe("reword-nerd:image-preferences:v1");
+    expect(PREFERENCES_STORAGE_KEY).toBe("reword-nerd:preview:preferences:v1");
+    expect(IMAGE_PREFERENCES_STORAGE_KEY).toBe("reword-nerd:preview:image-preferences:v1");
     expect(decodeSavedPreferences(JSON.stringify({
       version: 1,
       data: { selectedProfileId: "openai-general", tutorialVersion: "0.5" },

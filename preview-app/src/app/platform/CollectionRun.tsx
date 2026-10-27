@@ -1,3 +1,5 @@
+import { mergeSavedReferences } from "../../workspace/references";
+import { useWorkspaceState } from '../../workspace/Workspace';
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ImagePortalState } from "../../image/reducer";
 import { snapshotConfirmedImagePackage } from "../../image/export/snapshot";
@@ -24,19 +26,20 @@ function FrozenImage({bytes,label}:{bytes:Blob;label:string}) {
   return <img ref={ref} className="collection-reference-preview" alt={label}/>;
 }
 export function CollectionRun({sources,imageState}: {sources:TextCandidate[];imageState:ImagePortalState|null}) {
-  const [operation,setOperation]=useState<"text"|"image">("text"),[selected,setSelected]=useState<Record<string,boolean>>({}),[paths,setPaths]=useState<Record<string,string>>({});
-  const [shared,setShared]=useState(""),[textSettings,setTextSettings]=useState<SettingPatch>({}),[imageSettings,setImageSettings]=useState<SettingPatch>({}),[overrides,setOverrides]=useState<Record<string,SettingPatch>>({});
-  const [runtime,setRuntime]=useState<RuntimeChoice|null>(null),[cap,setCap]=useState<Capability|null>(null),[records,setRecords]=useState<RecordItem[]>([]),[error,setError]=useState(""),[busy,setBusy]=useState(false);
-  const [frozen,setFrozen]=useState<{envelope:CollectionEnvelope;seal:string;prompt:string;fingerprint:string;images:Blob[]}|null>(null),[confirmed,setConfirmed]=useState<string|null>(null),[resendOf,setResendOf]=useState<string|null>(null);
+  const [operation,setOperation]=useWorkspaceState<"text"|"image">("collection:operation", "text"),[selected,setSelected]=useWorkspaceState<Record<string,boolean>>("collection:selected", {}),[paths,setPaths]=useWorkspaceState<Record<string,string>>("collection:paths", {});
+  const [shared,setShared]=useWorkspaceState("collection:shared", ""),[textSettings,setTextSettings]=useWorkspaceState<SettingPatch>("collection:textSettings", {}),[imageSettings,setImageSettings]=useWorkspaceState<SettingPatch>("collection:imageSettings", {}),[overrides,setOverrides]=useWorkspaceState<Record<string,SettingPatch>>("collection:overrides", {});
+  const [runtime,setRuntime]=useWorkspaceState<RuntimeChoice|null>("collection:runtime", null),[cap,setCap]=useState<Capability|null>(null),[records,setRecords]=useWorkspaceState<RecordItem[]>("collection:records", []),[error,setError]=useState(""),[busy,setBusy]=useState(false);
+  const [frozen,setFrozen]=useWorkspaceState<{envelope:CollectionEnvelope;seal:string;prompt:string;fingerprint:string;images:Blob[]}|null>("collection:frozen", null),[confirmed,setConfirmed]=useState<string|null>(null),[resendOf,setResendOf]=useWorkspaceState<string|null>("collection:resendOf", null);
+  const [available, setAvailable] = useState<Set<string>>(() => new Set());
   const candidates=useMemo(()=>operation==="text"?sources.map(s=>({key:`text:${s.id}`,path:s.path,reason:s.reason})):imageState?.items.map(i=>({key:`image:${i.id}`,path:i.provenance.sourcePath??i.provenance.sourceName,reason:i.mimeType!=="image/png"?"Connected images require PNG; keep this item for manual export.":i.ocr.status==="accepted"?"Accepted OCR stays intact; this image adapter cannot transmit it.":undefined}))??[],[operation,sources,imageState]);
   const sharedSettings=operation==="text"?textSettings:imageSettings;
   const fingerprint=JSON.stringify({operation,selected,paths,shared,textSettings,imageSettings,overrides,runtime,resendOf,sources:sources.filter(s=>selected[`text:${s.id}`]).map(s=>s.input),images:imageState?{session:imageState.sessionGeneration,revision:imageState.reviewGeneration,items:imageState.items.filter(i=>selected[`image:${i.id}`]).map(i=>({id:i.id,hash:i.sourceHash,settings:i.settings,ocr:i.ocr,provenance:i.provenance,revision:i.reviewRevision}))}:null});
   const current=useRef(fingerprint);useEffect(()=>{current.current=fingerprint;},[fingerprint]);
   const fresh=frozen?.fingerprint===fingerprint;
   useEffect(()=>{let active=true;void collectionRequest("capabilities").then(v=>{if(active && (v as Capability).kind==="reword-collections")setCap(v as Capability);}).catch(()=>{});return()=>{active=false;};},[]);
-  async function refresh() {const v=await collectionRequest("status") as {records:RecordItem[]};setRecords(v.records);const c=await collectionRequest("capabilities") as Capability;setCap(c);}
+  async function refresh() {const v=await collectionRequest("status") as {records:RecordItem[]};setAvailable(new Set(v.records.map(r => r.id)));setRecords(prior => mergeSavedReferences(prior, v.records));const c=await collectionRequest("capabilities") as Capability;setCap(c);}
   const connected=Boolean(cap);
-  useEffect(()=>{if(!connected)return;let active=true;const update=()=>collectionRequest("status").then(v=>{if(active)setRecords((v as {records:RecordItem[]}).records);}).catch(()=>{});void update();const timer=setInterval(update,2000);return()=>{active=false;clearInterval(timer);};},[connected]);
+  useEffect(()=>{if(!connected)return;let active=true;const update=()=>collectionRequest("status").then(v=>{if(active){const incoming=(v as {records:RecordItem[]}).records;setAvailable(new Set(incoming.map(r => r.id)));setRecords(prior => mergeSavedReferences(prior,incoming));}}).catch(()=>{});void update();const timer=setInterval(update,2000);return()=>{active=false;clearInterval(timer);};},[connected, setRecords]);
   async function catalog() {setBusy(true);setError("");try{const v=await collectionRequest("catalog",cap?.session) as {catalog:RuntimeCatalog};setCap(c=>c?{...c,catalog:v.catalog}:c);setConfirmed(null);}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
   async function build() {
     setBusy(true);setError("");setConfirmed(null);const captured=fingerprint;
@@ -84,6 +87,7 @@ export function CollectionRun({sources,imageState}: {sources:TextCandidate[];ima
   const enabled=operation==="text"?cap?.textEnabled:cap?.imageEnabled;
   return <article className="runs-card collection-run" aria-label="Codex collections">
     <span className="studio-eyebrow">ONE REVIEWED COLLECTION → CODEX</span><h2>Send reviewed sources together</h2>
+    <p className="runs-caption">Image generator: managed by Codex; actual version unknown. Conversation-model choice and prompt-family guidance do not select the image generator.</p>
     {cap?.evidenceLevel === "deterministic-fixture" && <p role="status">DETERMINISTIC OFFLINE FIXTURE · no real model calls or generated images.</p>}
     <p>Select up to {L.textMembers} text documents/projects or {L.imageMembers} PNG references. Text runs Decompose → Rewrite → Verify → Final internally. Images request a separate rendition of every selected reference in one task.</p>
     <div role="group" aria-label="Collection operation"><button aria-pressed={operation==="text"} onClick={()=>setOperation("text")}>Documents & projects</button><button aria-pressed={operation==="image"} onClick={()=>setOperation("image")}>Image renditions</button></div>
@@ -122,7 +126,7 @@ export function CollectionRun({sources,imageState}: {sources:TextCandidate[];ima
     {records.length>0&&<section aria-label="Collection history"><h3>Retained collection history</h3><button onClick={()=>void refresh().catch(e=>setError(e.message))}>Refresh history</button>{records.map(r=><details key={r.id} open><summary>{r.memberPaths.join(", ")} · {r.status}</summary>
       <p>{r.id} · {r.stageRequests}/4 text stage requests · task {r.taskId??"identity not exposed"}</p><p>Requested: {r.runtime?.model??"none"} / {r.runtime?.effort??"none"}. Exposed actual: {r.actualExecutor??"unknown"} / {r.actualModel??"unknown"} / {r.actualEffort??"unknown"}. Acceptance remains yours.</p>
       {r.error&&<p>{r.error}</p>}<ul>{r.expectedOutputs.map(o=><li key={o.id}>{o.id}: {o.status}{o.acknowledgedInTaskText?"; ID mentioned in task text (not generation proof)":""}</li>)}</ul>
-      <div className="local-run-downloads">{r.artifacts.filter(a=>!a.startsWith(".")).map(a=><a key={a} href={`/api/collections/artifact/${r.id}/${a}`} download>{a}</a>)}</div>
+      <div className="local-run-downloads">{r.artifacts.filter(a=>!a.startsWith(".")).map(a=>available.has(r.id) ? <a key={a} href={`/api/collections/artifact/${r.id}/${a}`} download>{a}</a> : <span key={a}>{a} · reconnect its companion to download</span>)}</div>
       <button onClick={()=>void resend(r)}>Prepare explicit resend with lineage</button>
     </details>)}</section>}
   </article>;

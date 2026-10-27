@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 
-if (typeof window.localStorage?.getItem !== "function") {
+if (typeof window !== "undefined" && typeof window.localStorage?.getItem !== "function") {
   const values = new Map<string, string>();
   Object.defineProperty(window, "localStorage", {
     configurable: true,

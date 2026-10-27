@@ -1,5 +1,6 @@
+import { useWorkspaceState } from "../../workspace/Workspace";
 /* eslint-disable react-refresh/only-export-components -- This public module pairs the shared appearance hook with its controls. */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { Moon, Sun } from "@phosphor-icons/react";
 import "./appearance.css";
 
@@ -21,7 +22,7 @@ export interface AppearanceControlsProps extends AppearancePreference {
   setMode: (mode: AppearanceMode) => void;
 }
 
-export const APPEARANCE_STORAGE_KEY = "reword-nerd:appearance:v1";
+export const APPEARANCE_STORAGE_KEY = "reword-nerd:preview:appearance:v1";
 export const DEFAULT_APPEARANCE: Readonly<AppearancePreference> = {
   palette: "graphite",
   mode: "dark",
@@ -61,7 +62,7 @@ function readAppearance(): AppearancePreference {
 /** Persist appearance only; documents, prompts, and job state never enter this key. */
 export function useAppearance(): AppearanceControlsProps {
   const [preference, setPreference] =
-    useState<AppearancePreference>(readAppearance);
+    useWorkspaceState<AppearancePreference>("appearance", readAppearance, { restore(value) { const p = value as AppearancePreference; if (!p || !isPalette(p.palette) || !isMode(p.mode)) throw Error("Invalid saved appearance."); return p; } });
 
   useEffect(() => {
     try {
@@ -81,10 +82,10 @@ export function useAppearance(): AppearanceControlsProps {
   const setPalette = useCallback((palette: AppearancePalette) => {
     if (isPalette(palette))
       setPreference((current) => ({ ...current, palette }));
-  }, []);
+  }, [setPreference]);
   const setMode = useCallback((mode: AppearanceMode) => {
     if (isMode(mode)) setPreference((current) => ({ ...current, mode }));
-  }, []);
+  }, [setPreference]);
 
   return { ...preference, setPalette, setMode };
 }

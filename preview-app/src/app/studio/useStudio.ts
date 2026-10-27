@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useWorkspaceState } from "../../workspace/Workspace";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   assessContext,
   CURATED_MODEL_PROFILES,
@@ -250,9 +251,9 @@ async function sourceIndexFor(
   );
 }
 
-/** Browser-only workspace: no model calls, uploads, or persistent content storage. */
+/** Browser-local workspace; optional recovery is managed by the workspace provider. */
 export function useStudio() {
-  const [state, setState] = useState<StudioState>(initialState);
+  const [state, setState] = useWorkspaceState<StudioState>("studio", initialState);
   const stateRef = useRef(state);
   const revisionRef = useRef(0);
   const intakeQueue = useRef<Promise<void>>(Promise.resolve());
@@ -283,7 +284,7 @@ export function useStudio() {
       stateRef.current = next;
       setState(next);
     },
-    [],
+    [setState],
   );
 
   const clearError = useCallback(

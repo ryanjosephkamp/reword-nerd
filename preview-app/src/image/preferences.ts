@@ -8,7 +8,7 @@ import {
 } from "./contracts";
 import { IMAGE_PROMPT_PROFILES } from "./profiles";
 
-export const IMAGE_PREFERENCES_STORAGE_KEY = "reword-nerd:image-preferences:v1";
+export const IMAGE_PREFERENCES_STORAGE_KEY = "reword-nerd:preview:image-preferences:v1";
 export const CURRENT_IMAGE_TUTORIAL_VERSION = "0.8-image-quick-start";
 export const MAX_IMAGE_PREFERENCE_TEXT_LENGTH = MAX_IMAGE_PROMPT_TEXT_LENGTH;
 export const MAX_IMAGE_PREFERENCES_SERIALIZED_BYTES = 20_000;

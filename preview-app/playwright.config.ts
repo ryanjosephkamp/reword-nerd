@@ -23,6 +23,7 @@ export default defineConfig({
     viewport: { width: 1586, height: 992 },
     colorScheme: "dark",
     trace: "on-first-retry",
+    ...(process.env.PLAYWRIGHT_CHANNEL === "chrome" ? { channel: "chrome" } : {}),
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },

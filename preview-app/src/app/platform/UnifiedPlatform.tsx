@@ -1,3 +1,4 @@
+import { useWorkspaceState } from "../../workspace/Workspace";
 import type { LocalTextSource } from "./LocalTextRun";
 import type { ImagePortalState } from "../../image/reducer";
 import { useEffect, useMemo, useState } from "react";
@@ -29,18 +30,18 @@ const modes = [
 ] as const;
 
 export function UnifiedPlatform({ initialMode }: { initialMode?: PlatformMode }) {
-  const [mode, setMode] = useState<PlatformMode>(() => new URLSearchParams(window.location.search).has("mode") ? readMode() : initialMode ?? readMode());
+  const [mode, setMode] = useWorkspaceState<PlatformMode>("platform:mode", () => new URLSearchParams(window.location.search).has("mode") ? readMode() : initialMode ?? readMode());
   const [localSource,setLocalSource]=useState<LocalTextSource|null>(null);
   const [imageState,setImageState]=useState<ImagePortalState|null>(null);
   const [studioSources,setStudioSources]=useState<StudioCollectionSources|null>(null);
   const [workbenchSources,setWorkbenchSources]=useState<WorkbenchState|null>(null);
   const collectionSources=useMemo(()=>[...studioCandidates(studioSources),...workbenchCandidates(workbenchSources)],[studioSources,workbenchSources]);
-  const [advanced, setAdvanced] = useState(false);
+  const [advanced, setAdvanced] = useWorkspaceState("platform:advanced", false);
   const appearance = useAppearance();
   const imageActive = mode === "images";
   const advancedActive = mode === "projects" || (mode === "text" && advanced);
   const studioActive = mode === "text" && !advanced;
-  const [visited, setVisited] = useState(() => new Set<PlatformMode>([mode]));
+  const [visited, setVisited] = useWorkspaceState("platform:visited", () => new Set<PlatformMode>([mode]));
   const selectMode = (next: PlatformMode) => {
     setMode(next);
     setVisited(current => new Set([...current, next]));
@@ -53,7 +54,7 @@ export function UnifiedPlatform({ initialMode }: { initialMode?: PlatformMode })
     const onPopState = () => { const next = readMode(); setMode(next); setVisited(current => new Set([...current, next])); };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, []);
+  }, [setMode, setVisited]);
   return <div className="unified-platform" data-palette={appearance.palette} data-appearance={appearance.mode}>
     <header className="platform-header">
       <a className="studio-brand platform-brand" href={`${import.meta.env.BASE_URL}?view=welcome`} target="_blank" rel="noreferrer" aria-label="About reword-nerd (opens in a new tab)">
@@ -63,7 +64,7 @@ export function UnifiedPlatform({ initialMode }: { initialMode?: PlatformMode })
       <nav className="platform-modes" aria-label="Workspace modes">{modes.map(item => <button key={item.id} aria-current={mode === item.id ? "page" : undefined} onClick={() => selectMode(item.id)}><item.icon size={18} aria-hidden="true" />{item.label}</button>)}</nav>
       <AppearanceControls {...appearance} />
     </header>
-    <div className="platform-session-note"><span><span className="platform-memory-dot" aria-hidden="true" />Local workspace · edits stay in this tab’s memory</span><span>Export to keep your work</span></div>
+    <div className="platform-session-note"><span><span className="platform-memory-dot" aria-hidden="true" />Local workspace · reviewed sources stay on this device</span><span>Workspace options control saving and recovery</span></div>
     {mode === "text" && <div className="platform-text-tools"><div role="group" aria-label="Text workspace view"><button aria-pressed={!advanced} onClick={() => setAdvanced(false)}>Writing studio</button><button aria-pressed={advanced} onClick={() => { setAdvanced(true); setVisited(current => new Set([...current, "projects"])); }}>Advanced sources & OCR</button></div><span>Documents, code and structured text</span></div>}
     <section hidden={!studioActive} inert={!studioActive} aria-label="Text mode"><WorkspaceActivityProvider active={studioActive}><Studio onLocalSourceChange={setLocalSource} onCollectionSourcesChange={setStudioSources} embedded active={studioActive} appearanceMode={appearance.mode} onToggleAppearance={() => appearance.setMode(appearance.mode === "dark" ? "light" : "dark")} onAdvancedSources={() => {setAdvanced(true);setVisited(current => new Set([...current, "projects"]));}} /></WorkspaceActivityProvider></section>
     {(visited.has("images") || imageActive) && <section hidden={!imageActive} inert={!imageActive} className="platform-embedded" aria-label="Images mode"><ImageWorkbench embedded active={imageActive} onStateChange={setImageState} />{imageState?.builtOutput && <div className="platform-session-note"><span>Package ready. Inspect its exact prompt and attachment before any send.</span><button className="studio-secondary" onClick={() => selectMode("runs")}>Review in Runs</button></div>}</section>}

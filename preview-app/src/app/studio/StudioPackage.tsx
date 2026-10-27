@@ -1,3 +1,4 @@
+import { useWorkspaceState } from "../../workspace/Workspace";
 import { useMemo, useState } from "react";
 import {
   ArrowDown,
@@ -48,6 +49,10 @@ const stages: { id: PromptStage; label: string; description: string }[] = [
   },
 ];
 
+function useWorkbookState<T>(workbook: DocumentWorkbook, field: string, initial: T | (() => T)) {
+  return useWorkspaceState(`package:${workbook.documentKey}:${field}`, initial, { binding: workbook.oneShot.prompt });
+}
+
 export function StudioPackage({
   workbook,
   onDownload,
@@ -59,18 +64,18 @@ export function StudioPackage({
   sourceText: string;
   demoResponse?: string;
 }) {
-  const [mode, setMode] = useState<"oneShot" | "manual">("oneShot");
-  const [active, setActive] = useState<PromptStage>("decompose");
-  const [progress, setProgress] = useState(() =>
+  const [mode, setMode] = useWorkbookState<"oneShot" | "manual">(workbook, "mode", "oneShot");
+  const [active, setActive] = useWorkbookState<PromptStage>(workbook, "active", "decompose");
+  const [progress, setProgress] = useWorkbookState(workbook, "progress", () =>
     createWorkbookProgress(workbook),
   );
   const [feedback, setFeedback] = useState("");
-  const [showPrompt, setShowPrompt] = useState(true);
-  const [reviewResult, setReviewResult] = useState(false);
-  const [illustration, setIllustration] = useState(false);
-  const [responsesToRevisit, setResponsesToRevisit] = useState<
+  const [showPrompt, setShowPrompt] = useWorkbookState(workbook, "showPrompt", true);
+  const [reviewResult, setReviewResult] = useWorkbookState(workbook, "reviewResult", false);
+  const [illustration, setIllustration] = useWorkbookState(workbook, "illustration", false);
+  const [responsesToRevisit, setResponsesToRevisit] = useWorkbookState<
     Set<PromptStage>
-  >(() => new Set());
+  >(workbook, "responsesToRevisit", () => new Set());
   const stage: WorkbookResponseStage = mode === "oneShot" ? "oneShot" : active;
   const prompt =
     mode === "oneShot"
@@ -339,6 +344,7 @@ export function StudioPackage({
           >
             <StudioResultReview
               sourceText={sourceText}
+              workspaceKey={`${workbook.documentKey}:${resultStage}`}
               response={progress.responses[resultStage]}
             />
           </div>

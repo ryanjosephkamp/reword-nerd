@@ -15,7 +15,7 @@ import { copyText } from "../workbench/copyText";
 import { CollectionRun } from "./CollectionRun";
 import type { TextCandidate } from "./collectionSources";
 const command =
-  "Use $reword-nerd to run the reviewed text package at /absolute/path/package.zip through Decompose → Rewrite → Verify → Final. Use the current host, preserve the package profile, and present the exported result for my review.";
+  "Run the reviewed text package at /absolute/path/package.zip through Decompose → Rewrite → Verify → Final. Use the current host, preserve the package profile, and present the exported result for my review.";
 export function Runs({
   imageState = null,
   localSource = null,
@@ -80,7 +80,7 @@ export function Runs({
             </li>
             <li>
               Open this repository in Codex and select the ZIP once with the
-              local skill below.
+              included canonical instructions.
             </li>
             <li>
               Review the final Markdown, raw responses, audit record and
@@ -111,10 +111,10 @@ export function Runs({
             }
           </pre>
           <p>
-            Run these commands from this checkout. The repository skill
-            coordinates prepare, next, record-response and export.
+            Run these commands from this checkout. The package README describes the canonical workflow. The companion
+            provides prepare, next, record-response, and export commands.
           </p>
-          <code>.agents/skills/reword-nerd/SKILL.md</code>
+
         </article>
       </section>
       <aside className="runs-details">

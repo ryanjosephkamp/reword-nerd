@@ -1,3 +1,4 @@
+import { useWorkspaceState } from '../../../workspace/Workspace';
 import {ReviewDecisions} from "./ReviewDecisions";
 import {useEffect,useRef,useState} from 'react';
 import {DownloadSimple,FileZip,ShieldCheck,X,LinkSimple} from '@phosphor-icons/react';
@@ -15,7 +16,7 @@ function ExactImage({bytes,alt}:{bytes:Uint8Array;alt:string}){
 }
 export function ReviewDetail({entry,imageState,onRemove,removeDisabled=false}:{entry:ReviewEntry;imageState:ImagePortalState|null;onRemove:()=>void;removeDisabled?:boolean}){
  const {registration:r,checked,files}=entry.review;
- const [association,setAssociation]=useState<ReviewAssociation|null>(null);
+ const [association,setAssociation]=useWorkspaceState<ReviewAssociation|null>(`review:${entry.review.registration.registrationId}:association`, null);
  const candidate=associationCandidate(entry.review,imageState);
  const linked=association&&associationIsCurrent(association,candidate.binding);
  const raw=files.get('returned.png')!,reference=files.get('reference.png')!;
@@ -35,7 +36,7 @@ export function ReviewDetail({entry,imageState,onRemove,removeDisabled=false}:{e
  </article>;
 }
 export function ReviewImports({imageState}:{imageState:ImagePortalState|null}){
- const [entries,setEntries]=useState<readonly ReviewEntry[]>([]),[message,setMessage]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+ const [entries,setEntries]=useWorkspaceState<readonly ReviewEntry[]>("review:entries", []),[message,setMessage]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  const controller=useRef<AbortController|null>(null),input=useRef<HTMLInputElement>(null);
  useEffect(()=>()=>controller.current?.abort(),[]);
  const select=async(file:File)=>{
@@ -45,5 +46,5 @@ export function ReviewImports({imageState}:{imageState:ImagePortalState|null}){
   catch(e){setMessage('');setError(e instanceof Error?e.message:'Import failed.');}
   finally{controller.current=null;setBusy(false);}
  };
- return <section className="review-imports" aria-labelledby="review-import-heading"><article className="runs-card review-intake"><span className="studio-eyebrow">PORTABLE IMAGE REVIEW</span><h2 id="review-import-heading">Inspect a retained result.</h2><p>Select an exported v1 review ZIP. Validation runs locally in this browser; no CLI directory access or model call is involved.</p><input ref={input} aria-label="Select portable image review ZIP" type="file" accept=".zip,application/zip" disabled={busy} onChange={e=>{const file=e.currentTarget.files?.[0];e.currentTarget.value='';if(file)void select(file);}}/><p className="runs-caption">Up to 64 MiB per ZIP; 96 MiB expanded, 32 entries. At most three imported reviews and 96 MiB of retained ZIP/artifact bytes in this tab. PNG and metadata bounds are unchanged. Refreshing closes this in-memory collection.</p>{busy&&<button className="review-button" onClick={()=>controller.current?.abort()}>Cancel import</button>}<p role="status" aria-live="polite">{message}</p>{error&&<p role="alert" className="review-error">{error}</p>}</article>{entries.map(entry=><ReviewDetail key={entry.review.registration.registrationId} entry={entry} imageState={imageState} removeDisabled={busy} onRemove={()=>{if(busy)return;setEntries(current=>current.filter(e=>e!==entry));setMessage('Imported review removed. Image sources and other workflows are unchanged.');input.current?.focus();}}/>)}</section>;
+ return <section className="review-imports" aria-labelledby="review-import-heading"><article className="runs-card review-intake"><span className="studio-eyebrow">PORTABLE IMAGE REVIEW</span><h2 id="review-import-heading">Inspect a retained result.</h2><p>Select an exported v1 review ZIP. Validation runs locally in this browser; no CLI directory access or model call is involved.</p><input ref={input} aria-label="Select portable image review ZIP" type="file" accept=".zip,application/zip" disabled={busy} onChange={e=>{const file=e.currentTarget.files?.[0];e.currentTarget.value='';if(file)void select(file);}}/><p className="runs-caption">Up to 64 MiB per ZIP; 96 MiB expanded, 32 entries. At most three imported reviews and 96 MiB of retained ZIP/artifact bytes in this tab. PNG and metadata bounds are unchanged. Enable workspace remembering to recover this collection after reload.</p>{busy&&<button className="review-button" onClick={()=>controller.current?.abort()}>Cancel import</button>}<p role="status" aria-live="polite">{message}</p>{error&&<p role="alert" className="review-error">{error}</p>}</article>{entries.map(entry=><ReviewDetail key={entry.review.registration.registrationId} entry={entry} imageState={imageState} removeDisabled={busy} onRemove={()=>{if(busy)return;setEntries(current=>current.filter(e=>e!==entry));setMessage('Imported review removed. Image sources and other workflows are unchanged.');input.current?.focus();}}/>)}</section>;
 }

@@ -359,9 +359,9 @@ export function StudioWelcome() {
             <div>
               <h3>Keep a copy before you go.</h3>
               <p>
-                Your documents stay in this tab. Download your package for the
-                source and prompts, and save response progress before you close
-                the tab.
+                Enable workspace remembering to recover your documents and
+                response progress after reload. Export a workspace file or
+                download your package for a portable copy.
               </p>
             </div>
           </div>

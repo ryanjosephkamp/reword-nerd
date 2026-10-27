@@ -1,3 +1,5 @@
+import { mergeSavedReferences, stableSavedValue } from "../../workspace/references";
+import { useWorkspaceState } from '../../workspace/Workspace';
 import { localRequest, type LocalAction } from "./localClient";
 import { useEffect, useState } from "react";
 import type { StudioDocument } from "../studio/useStudio";
@@ -48,12 +50,15 @@ async function digest(text: string) {
 }
 export function LocalTextRun({ source }: { source: LocalTextSource | null }) {
   const [cap, setCap] = useState<Capability | null>(null),
-    [job, setJob] = useState<Job | null>(null),
+    [job, setJob] = useWorkspaceState<Job | null>("localText:job", null),
     [error, setError] = useState("");
   const [reviewed, setReviewed] = useState<string | null>(null),
     [busy, setBusy] = useState(false),
-    [associated, setAssociated] = useState<string | null>(null),
-    [runBinding, setRunBinding] = useState<string | null>(null);
+    [associated, setAssociated] = useWorkspaceState<string | null>("localText:associated", null),
+    [runBinding, setRunBinding] = useWorkspaceState<string | null>("localText:runBinding", null);
+  const [history, setHistory] = useWorkspaceState<Job[]>("localText:history", []);
+  const [freshJobId, setFreshJobId] = useState<string | null>(null);
+  useEffect(() => { if (job) setHistory(prior => mergeSavedReferences(prior, [job])); }, [job, setHistory]);
   const document = source?.document;
   const fingerprint = source
     ? JSON.stringify([
@@ -83,7 +88,7 @@ export function LocalTextRun({ source }: { source: LocalTextSource | null }) {
       localRequest("status")
         .then((r) => r.json())
         .then((v) => {
-          if (alive) setJob(v.job ?? null);
+          if (alive) { setFreshJobId(v.job?.id ?? null); setJob(prior => v.job ? stableSavedValue(prior, v.job) : prior); }
         })
         .catch(() => {});
     void refresh();
@@ -92,7 +97,7 @@ export function LocalTextRun({ source }: { source: LocalTextSource | null }) {
       alive = false;
       clearInterval(timer);
     };
-  }, [cap]);
+  }, [cap, setJob]);
   const supported = Boolean(
     document &&
     ["text", "markdown"].includes(document.format) &&
@@ -141,7 +146,7 @@ export function LocalTextRun({ source }: { source: LocalTextSource | null }) {
       ]);
       if (!result.ok) throw Error(result.error.message);
       const response = await mutate("run", result.blob);
-      setJob(response.job);
+      setFreshJobId(response.job?.id ?? null); setJob(response.job);
       setRunBinding(fingerprint);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Run failed");
@@ -171,7 +176,7 @@ export function LocalTextRun({ source }: { source: LocalTextSource | null }) {
     }
     setAssociated(fingerprint);
   }
-  if (!cap) return null;
+  if (!cap) return history.length || job ? <article className="runs-card"><h3>Saved text-job references</h3><p>These are recovered records. Reconnect the same companion for current status and artifact downloads. Recovery did not resume execution.</p>{(history.length ? history : [job!]).map(record => <details key={record.id}><summary>{record.documentName} · saved status {record.status}</summary><p>{record.id} · {record.modelTurns}/4 stage requests</p>{record.final !== null && <pre className="local-run-text">{record.final}</pre>}</details>)}</article> : null;
   return (
     <article
       className="runs-card local-text-run"
@@ -268,6 +273,7 @@ export function LocalTextRun({ source }: { source: LocalTextSource | null }) {
           {job.status === "running" && (
             <button
               className="studio-secondary"
+              disabled={freshJobId !== job.id}
               onClick={() => void action("cancel")}
             >
               Cancel this run
@@ -276,6 +282,7 @@ export function LocalTextRun({ source }: { source: LocalTextSource | null }) {
           {["interrupted", "failed"].includes(job.status) && (
             <button
               className="studio-secondary"
+              disabled={freshJobId !== job.id}
               onClick={() => void action("resume")}
             >
               Check safe resume
@@ -308,9 +315,7 @@ export function LocalTextRun({ source }: { source: LocalTextSource | null }) {
           )}
           <div className="local-run-downloads">
             {job.artifacts.map((name) => (
-              <a key={name} href={"/api/artifact/" + name} download>
-                {name}
-              </a>
+              freshJobId === job.id ? <a key={name} href={"/api/artifact/" + name} download>{name}</a> : <span key={name}>{name} · reconnect its companion to download</span>
             ))}
           </div>
           <details>

@@ -145,7 +145,7 @@ describe("saved preference adapter", () => {
     const serialized = encodeSavedPreferences(snapshotPreferences(state));
     const parsed = JSON.parse(serialized) as { version: number; data: Record<string, unknown> };
 
-    expect(PREFERENCES_STORAGE_KEY).toBe("reword-nerd:preferences:v1");
+    expect(PREFERENCES_STORAGE_KEY).toBe("reword-nerd:preview:preferences:v1");
     expect(parsed.version).toBe(1);
     expect(Object.keys(parsed.data).sort()).toEqual([
       "codeRewriteOptions",

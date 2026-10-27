@@ -1,3 +1,5 @@
+import { createWorkspaceRoute } from "./workspace-http.mjs";
+import { decodeWorkspace } from "../src/workspace/codec.ts";
 import { createServer } from "node:http";
 import { randomBytes, randomUUID, createHash } from "node:crypto";
 import {
@@ -152,6 +154,7 @@ export async function createService({
       openTerminal: handoffOpenTerminal,
     });
     const imagePreparation = await createImagePreparation(join(root, "image"));
+    const workspaceRoute = await createWorkspaceRoute(root, decodeWorkspace);
     let execution = null;
     let authority,
       host,
@@ -396,6 +399,7 @@ export async function createService({
         checkRequest(req, authority, token, req.method !== "GET");
         const url = new URL(req.url, `http://${authority}`),
           path = url.pathname;
+        if (await workspaceRoute(req, res, url, token, send)) return;
         if (path.startsWith("/api/")) {
           if (path.startsWith("/api/collections/")) {
             if (url.search) throw Error("Collection endpoints do not accept query parameters");

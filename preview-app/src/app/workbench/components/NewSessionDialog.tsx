@@ -19,7 +19,7 @@ export function NewSessionDialog({ open, onCancel, onConfirm, returnFocusRef }: 
     initialFocus="first"
     initialFocusSelector=".dialog-actions button"
   >
-    <p>Uploaded files, reviewed text, extracted assets and OCR, prompt edits, model responses, progress, and the built package will be lost unless downloaded.</p>
+    <p>This clears uploaded files, reviewed text, extracted assets and OCR, prompt edits, model responses, progress, and the built package from the open session. Export a workspace file first to keep them. Autosave will record the new session.</p>
     <p>Your model, context limit, global rewrite settings, processing settings, and Quick Start preference will be kept.</p>
     <div className="dialog-actions">
       <button type="button" onClick={onCancel}>Cancel</button>

@@ -1,3 +1,4 @@
+import { useWorkspaceState } from '../../workspace/Workspace';
 import type { StudioCollectionSources } from "../platform/collectionSources";
 import type { LocalTextSource } from "../platform/LocalTextRun";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -99,23 +100,23 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 export function Studio({ embedded = false, active = true, appearanceMode, onToggleAppearance, onAdvancedSources, onLocalSourceChange, onCollectionSourcesChange }: { embedded?: boolean; active?: boolean; appearanceMode?: "light" | "dark"; onToggleAppearance?: () => void; onAdvancedSources?: () => void; onLocalSourceChange?: (source: LocalTextSource | null) => void; onCollectionSourcesChange?: (source: StudioCollectionSources) => void }) {
   const studio = useStudio();
-  const [view, setView] = useState<View>("read");
-  const [inspector, setInspector] = useState<"brief" | "insights">("brief");
+  const [view, setView] = useWorkspaceState<View>("studio:view", "read");
+  const [inspector, setInspector] = useWorkspaceState<"brief" | "insights">("studio:inspector", "brief");
   const [modal, setModal] = useState<Modal>(null);
-  const [focused, setFocused] = useState(false);
-  const [localDay, setLocalDay] = useState(false);
+  const [focused, setFocused] = useWorkspaceState("studio:focused", false);
+  const [localDay, setLocalDay] = useWorkspaceState("studio:localDay", false);
   const day = appearanceMode ? appearanceMode === "light" : localDay;
   const toggleAppearance = () => onToggleAppearance ? onToggleAppearance() : setLocalDay((value) => !value);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [mobilePanel, setMobilePanel] = useState<"document" | "brief">(
+  const [mobilePanel, setMobilePanel] = useWorkspaceState<"document" | "brief">("studio:mobilePanel",
     "document",
   );
-  const [newText, setNewText] = useState("");
-  const [newName, setNewName] = useState("Untitled.md");
+  const [newText, setNewText] = useWorkspaceState("studio:newText", "");
+  const [newName, setNewName] = useWorkspaceState("studio:newName", "Untitled.md");
   const [commandQuery, setCommandQuery] = useState("");
   const [toast, setToast] = useState("");
-  const [showPrompt, setShowPrompt] = useState(false);
-  const [packageDocument, setPackageDocument] = useState(0);
+  const [showPrompt, setShowPrompt] = useWorkspaceState("studio:showPrompt", false);
+  const [packageDocument, setPackageDocument] = useWorkspaceState("studio:packageDocument", 0);
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const doc = studio.selectedDocument;
@@ -170,7 +171,7 @@ export function Studio({ embedded = false, active = true, appearanceMode, onTogg
     };
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
-  }, [active]);
+  }, [active, setFocused]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(""), 3500);
@@ -828,8 +829,8 @@ export function Studio({ embedded = false, active = true, appearanceMode, onTogg
           <div className="studio-workspace-footnote">
             <ShieldCheck size={13} />
             <span>
-              Edits stay in this tab. Export to keep them; an explicit local Run
-              also preserves its frozen snapshot in a job folder.
+              Workspace options control saving and recovery. Export for a
+              portable copy; an explicit local Run retains its frozen job snapshot.
             </span>
             <button onClick={() => setModal("help")}>
               How it works <ArrowUpRight size={12} />
@@ -1314,9 +1315,9 @@ export function Studio({ embedded = false, active = true, appearanceMode, onTogg
             <ShieldCheck size={24} />
             <p>
               There are no model calls or document uploads here. Source
-              documents, responses, and drafts live in memory for this tab.
-              Download your ZIP, response progress, and edited Markdown to keep
-              your work.
+              documents, responses, and drafts stay local. Enable workspace
+              remembering to recover them after reload, or export a workspace
+              file for a portable copy.
             </p>
           </div>
           <p className="studio-field-help">

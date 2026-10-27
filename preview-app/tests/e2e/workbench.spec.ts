@@ -21,7 +21,7 @@ const markers = [
   "<<<INSERT_STAGE_2_REWRITE_RESPONSE>>>",
   "<<<INSERT_STAGE_3_VERIFICATION_RESPONSE>>>",
 ] as const;
-const preferencesKey = "reword-nerd:preferences:v1";
+const preferencesKey = "reword-nerd:preview:preferences:v1";
 
 function monitorRuntime(page: Page) {
   const errors: string[] = [];

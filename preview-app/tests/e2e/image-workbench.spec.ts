@@ -127,7 +127,7 @@ test("real PNG workflow stays local, keeps package actions truthful, and release
       return [key, localStorage.getItem(key) ?? ""];
     }),
   ));
-  expect(Object.keys(storage)).toEqual(["reword-nerd:image-preferences:v1"]);
+  expect(Object.keys(storage)).toEqual(["reword-nerd:preview:image-preferences:v1"]);
   const serialized = Object.values(storage).join("\n");
   expect(serialized).not.toContain(PRIVATE_FILENAME);
   expect(serialized).not.toContain(OCR_MARKER);

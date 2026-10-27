@@ -1,3 +1,4 @@
+import { useWorkspaceInitial, useWorkspaceCapture, useWorkspaceState } from "../../workspace/Workspace";
 import {
   useCallback,
   useEffect,
@@ -106,11 +107,12 @@ export function useImageSession(
   services: ImageWorkbenchServices = defaultImageWorkbenchServices,
   persistPreferences = true,
 ): ImageSessionController {
-  const [initialState] = useState<ImagePortalState>(() => createInitialImagePortalState(persistPreferences ? loadImagePreferences() : null));
+  const initialState = useWorkspaceInitial<ImagePortalState>("images", () => createInitialImagePortalState(persistPreferences ? loadImagePreferences() : null));
   const [state, rawDispatch] = useReducer(imagePortalReducer, initialState);
+  useWorkspaceCapture("images", state);
   const [stateRef] = useState(() => ({ current: initialState }));
   const [intakeBusy, setIntakeBusy] = useState(false);
-  const [ledger, setLedger] = useState<ImageIntakeResult["ledger"]>([]);
+  const [ledger, setLedger] = useWorkspaceState<ImageIntakeResult["ledger"]>("images:ledger", []);
   const [pdfCapture, setPdfCapture] = useState<ImagePdfCaptureRequestView | null>(null);
   const [activeIntakeRef] = useState<{ current: ActiveIntakeRun | null }>(() => ({ current: null }));
   const [nextIntakeIdRef] = useState(() => ({ current: 0 }));
@@ -257,7 +259,7 @@ export function useImageSession(
         if (mountedRef.current) setIntakeBusy(false);
       }
     }
-  }, [activeIntakeRef, dispatch, intakeRef, mountedRef, nextIntakeIdRef, stateRef]);
+  }, [activeIntakeRef, dispatch, intakeRef, mountedRef, nextIntakeIdRef, setLedger, stateRef]);
 
   const resetSession = useCallback(() => {
     activeBuildRef.current?.controller.abort();
@@ -276,7 +278,7 @@ export function useImageSession(
     setLedger([]);
     setIntakeBusy(false);
     dispatch({ type: "session/reset" });
-  }, [activeBuildRef, activeIntakeRef, dispatch, intakeRef, objectUrls, ocrRef, pendingPdfRef]);
+  }, [activeBuildRef, activeIntakeRef, dispatch, intakeRef, objectUrls, ocrRef, pendingPdfRef, setLedger]);
 
   const discardItem = useCallback((item: Readonly<ImagePortalItem>) => {
     void ocrRef.current?.cancelItem(item.id, item.sourceHash);

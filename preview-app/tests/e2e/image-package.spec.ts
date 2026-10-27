@@ -178,7 +178,7 @@ test("real local Image package is deterministic, portable, stale-safe, and side-
       return [key, localStorage.getItem(key) ?? ""];
     }),
   ));
-  expect(Object.keys(storage).sort()).toEqual(["reword-nerd:appearance:v1", "reword-nerd:image-preferences:v1"]);
+  expect(Object.keys(storage).sort()).toEqual(["reword-nerd:preview:appearance:v1", "reword-nerd:preview:image-preferences:v1"]);
   const persisted = Object.values(storage).join("\n");
   expect(persisted).not.toMatch(/one\.png|two\.png|Faithful rendition|manifest|PK/u);
 

@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useWorkspaceState } from "../../../workspace/Workspace";
 import type { OcrCandidate, OcrReviewStatus } from "../../../domain";
 
-export function OcrReview({ candidates, busyId, onReview }: {
+export function OcrReview({ candidates, busyId, onReview, documentId = "standalone" }: {
+  documentId?: string;
   candidates: readonly OcrCandidate[];
   busyId: string | null;
   onReview(candidateId: string, status: OcrReviewStatus, text: string): void;
@@ -9,16 +10,17 @@ export function OcrReview({ candidates, busyId, onReview }: {
   if (candidates.length === 0) return null;
   return <section className="ocr-review" aria-label="OCR review candidates">
     <header><h3>OCR REVIEW [{candidates.filter((candidate) => candidate.status === "pending").length} PENDING]</h3><p>OCR text is never merged automatically. Edit it, then accept or omit each candidate.</p></header>
-    {candidates.map((candidate) => <OcrCandidateEditor candidate={candidate} busy={busyId !== null} onReview={onReview} key={`${candidate.id}:${candidate.status}`} />)}
+    {candidates.map((candidate) => <OcrCandidateEditor documentId={documentId} candidate={candidate} busy={busyId !== null} onReview={onReview} key={`${candidate.id}:${candidate.status}`} />)}
   </section>;
 }
 
-function OcrCandidateEditor({ candidate, busy, onReview }: {
+function OcrCandidateEditor({ candidate, busy, onReview, documentId }: {
+  documentId: string;
   candidate: OcrCandidate;
   busy: boolean;
   onReview(candidateId: string, status: OcrReviewStatus, text: string): void;
 }) {
-  const [draft, setDraft] = useState(candidate.reviewedText);
+  const [draft, setDraft] = useWorkspaceState(`workbench:ocrDraft:${documentId}:${candidate.id}`, candidate.reviewedText, { binding: JSON.stringify([candidate.text, candidate.languageHash, candidate.engineVersion]) });
   const label = candidate.source.kind === "page" ? `Page ${candidate.source.pageNumber}` : `Asset ${candidate.source.assetId}`;
   return <article className={`ocr-candidate status-${candidate.status}`}>
     <div><strong>{label}</strong><span>{Math.round(candidate.confidence)}% confidence · {candidate.status}</span></div>

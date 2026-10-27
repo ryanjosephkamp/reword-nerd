@@ -1,3 +1,4 @@
+import { useWorkspaceState } from "../../workspace/Workspace";
 import { useId, useMemo, useState } from "react";
 import {
   ArrowRight,
@@ -23,6 +24,7 @@ import {
 export interface StudioResultReviewProps {
   sourceText: string;
   response: string;
+  workspaceKey?: string;
 }
 
 const resultStyles = `
@@ -52,6 +54,7 @@ const resultStyles = `
 export function StudioResultReview({
   sourceText,
   response,
+  workspaceKey,
 }: StudioResultReviewProps) {
   const parsed = useMemo(() => parseStudioResult(response), [response]);
   return (
@@ -60,19 +63,23 @@ export function StudioResultReview({
       sourceText={sourceText}
       parsed={parsed}
       response={response}
+      workspaceKey={workspaceKey}
     />
   );
 }
+
+function useResultState<T>(key: string, response: string, field: string, initial: T) { return useWorkspaceState(`result:${key}:${field}`, initial, { binding: response }); }
 
 function ResultReviewDocument({
   sourceText,
   response,
   parsed,
+  workspaceKey = "standalone",
 }: StudioResultReviewProps & { parsed: ParsedStudioResult }) {
   const editorId = useId();
-  const [text, setText] = useState(parsed.text);
-  const [view, setView] = useState<"read" | "compare" | "edit">("read");
-  const [origin, setOrigin] = useState(parsed.mode);
+  const [text, setText] = useResultState(workspaceKey, response, "text", parsed.text);
+  const [view, setView] = useResultState<"read" | "compare" | "edit">(workspaceKey, response, "view", "read");
+  const [origin, setOrigin] = useResultState(workspaceKey, response, "origin", parsed.mode);
   const [feedback, setFeedback] = useState("");
   const sampled =
     sourceText.length > RESULT_PREVIEW_LIMIT ||
@@ -324,8 +331,8 @@ function ResultReviewDocument({
         )}
         <p className="studio-result-review-footnote">
           Counts and highlights describe text changes; they do not verify
-          meaning. Edits here stay in this tab. Copy or download your result to
-          keep them.
+          meaning. Enable workspace remembering or export a workspace file
+          to retain edits. Copy or download your result for a separate copy.
         </p>
         {parsed.audit !== null && (
           <details>

@@ -381,3 +381,12 @@ Built by [Ryan Kamp](https://ryanjosephkamp.github.io). See the
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+
+## Separate workspace preview
+
+The [workspace preview](https://ryanjosephkamp.github.io/reword-nerd/preview/) provides Text, Images, Projects, and Runs in one workspace. The classic Text, Image, and Updates routes remain available at their existing addresses.
+
+The preview can remember work locally after an explicit choice, including original files, reviewed content, settings, prompt workbooks, responses, imported reviews, decisions, and job references. It uses its own storage namespace and never resumes execution during recovery. Export a workspace file for a portable backup. Connected execution requires the companion's own approved local UI and a verified runtime; the public preview supports manual preparation and exports.
+
+See [preview-app/README.md](preview-app/README.md) for local use and storage limits. `node scripts/build-preview.mjs` builds the classic site and preview separately and verifies that adding the preview preserves every classic publication artifact.

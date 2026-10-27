@@ -1,5 +1,5 @@
 import { EFFORT_ID, RUNTIME_ID, type RuntimeChoice } from "./runtime.mjs";
-export const RUNTIME_PREFERENCE_KEY = "reword-nerd-runtime-preferences-v1";
+export const RUNTIME_PREFERENCE_KEY = "reword-nerd:preview:runtime-preferences:v1";
 const valid = (x: unknown): x is RuntimeChoice => typeof x === "object" && x !== null
   && Object.keys(x).sort().join(",") === "effort,model"
   && typeof (x as RuntimeChoice).model === "string" && RUNTIME_ID.test((x as RuntimeChoice).model)

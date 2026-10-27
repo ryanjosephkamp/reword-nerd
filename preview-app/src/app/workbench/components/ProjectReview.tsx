@@ -1,3 +1,4 @@
+import { useWorkspaceState } from "../../../workspace/Workspace";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProjectClassification, ProjectEntry, WorkspaceProject } from "../../../domain";
 import { previewObjectUrls } from "../objectUrlRegistry";
@@ -43,15 +44,17 @@ function StaticAssetPreview({ entry }: { entry: ProjectEntry }) {
   return lease ? <img className="project-static-asset" src={lease.url} alt={`Static preview of ${entry.path}`} /> : null;
 }
 
-function ProjectTextEditor({ entry, onEdit, onDirtyChange }: {
+function ProjectTextEditor({ entry, onEdit, onDirtyChange, projectId }: {
+  projectId: string;
   entry: ProjectEntry;
   onEdit(path: string, text: string, mutationTicket?: number): void | Promise<void>;
   onDirtyChange(dirty: boolean, mutationTicket?: number): number | undefined;
 }) {
-  const [draft, setDraft] = useState(entry.reviewedText ?? "");
+  const [draft, setDraft] = useWorkspaceState(`workbench:projectDraft:${projectId}:${entry.path}`, entry.reviewedText ?? "", { binding: entry.originalHash });
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const submittedRef = useRef(entry.reviewedText ?? "");
-  const draftRef = useRef(entry.reviewedText ?? "");
+  const draftRef = useRef(draft);
+  const userEditedRef = useRef(false);
   const pathRef = useRef(entry.path);
   const onEditRef = useRef(onEdit);
   const onDirtyChangeRef = useRef(onDirtyChange);
@@ -60,6 +63,7 @@ function ProjectTextEditor({ entry, onEdit, onDirtyChange }: {
   const retryRequiredRef = useRef(false);
   useEffect(() => { onEditRef.current = onEdit; }, [onEdit]);
   useEffect(() => { onDirtyChangeRef.current = onDirtyChange; }, [onDirtyChange]);
+  useEffect(() => { if (draftRef.current !== submittedRef.current) { latestTicketRef.current = onDirtyChangeRef.current(true); retryRequiredRef.current = true; } }, []);
   const submitDraft = useCallback((value: string, mutationTicket = latestTicketRef.current) => {
     if (timerRef.current !== null) clearTimeout(timerRef.current);
     timerRef.current = null;
@@ -101,7 +105,7 @@ function ProjectTextEditor({ entry, onEdit, onDirtyChange }: {
   }, [submitDraft]);
   useEffect(() => () => {
     if (timerRef.current !== null) clearTimeout(timerRef.current);
-    submitDraft(draftRef.current);
+    if (userEditedRef.current) submitDraft(draftRef.current);
   }, [submitDraft]);
   return <textarea
     aria-label={`Reviewed text for ${entry.path}`}
@@ -110,6 +114,7 @@ function ProjectTextEditor({ entry, onEdit, onDirtyChange }: {
     onBlur={() => submit(draft)}
     onChange={(event) => {
       const value = event.currentTarget.value;
+      userEditedRef.current = true;
       draftRef.current = value;
       setDraft(value);
       retryRequiredRef.current = false;
@@ -181,7 +186,7 @@ function ProjectReviewContent({ project, onSelect, onMutationIntent, onEdit, onI
         <label><input type="checkbox" checked={selected.promptIncluded} disabled={selected.contentKind !== "text"} onChange={(event) => onInclusion(selected.path, event.currentTarget.checked, event.currentTarget.checked || selected.packageIncluded, mutationTicket())} />Include in prompt</label>
         <label><input type="checkbox" checked={selected.packageIncluded} onChange={(event) => onInclusion(selected.path, selected.promptIncluded && event.currentTarget.checked, event.currentTarget.checked, mutationTicket())} />Include in package</label>
       </div>
-      {selected.contentKind === "text" ? <ProjectTextEditor key={selected.path} entry={selected} onEdit={onEdit} onDirtyChange={handleEditorDirty} /> : <div className="project-asset-preview"><p>Safe static asset. It can be retained in the package but is never prompt text or executable content.</p><StaticAssetPreview key={selected.originalHash} entry={selected} /></div>}
+      {selected.contentKind === "text" ? <ProjectTextEditor key={selected.path} projectId={project.id} entry={selected} onEdit={onEdit} onDirtyChange={handleEditorDirty} /> : <div className="project-asset-preview"><p>Safe static asset. It can be retained in the package but is never prompt text or executable content.</p><StaticAssetPreview key={selected.originalHash} entry={selected} /></div>}
       <button type="button" className="confirm-project-review" disabled={!canConfirm} onClick={() => onConfirm(mutationTicket())}>Confirm project review</button>
     </section> : null}
   </div>;

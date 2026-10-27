@@ -1,3 +1,4 @@
+import { useWorkspaceState } from '../../workspace/Workspace';
 import { useEffect, useState } from "react";
 import type { ImagePortalState } from "../../image/reducer";
 import { localRequest } from "./localClient";
@@ -37,7 +38,7 @@ export function LocalImagePreparation({
   imageState: ImagePortalState | null;
 }) {
   const [cap, setCap] = useState<Capability | null>(null),
-    [job, setJob] = useState<ImageJob | null>(null),
+    [job, setJob] = useWorkspaceState<ImageJob | null>("imagePreparation:job", null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [confirmed, setConfirmed] = useState<string | null>(null);
@@ -63,7 +64,7 @@ export function LocalImagePreparation({
     return () => {
       alive = false;
     };
-  }, []);
+  }, [setJob]);
   async function prepare() {
     if (!built || !cap || confirmed !== built.packageSha256) return;
     setBusy(true);
@@ -83,7 +84,7 @@ export function LocalImagePreparation({
       setBusy(false);
     }
   }
-  if (!cap) return null;
+  if (!cap) return job ? <article className="runs-card"><h3>Saved image-preparation reference</h3><p>{job.jobId} · saved status {job.status}</p><p>Reconnect its companion for current records and downloads. No image generation was resumed.</p></article> : null;
   return (
     <article
       className="runs-card local-image-preparation"
@@ -201,7 +202,7 @@ export function LocalImagePreparation({
       <p className="runs-caption">
         Explicit preparation writes a local folder under {cap.location}. It
         persists until you remove it after closing its companion. Browser image
-        queues remain in memory. No credentials are requested; checksums
+        queues can be saved through workspace options. No credentials are requested; checksums
         establish consistency, not authorship.
       </p>
       {error && <p role="alert">{error}</p>}

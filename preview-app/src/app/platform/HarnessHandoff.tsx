@@ -1,3 +1,5 @@
+import { mergeSavedReferences } from "../../workspace/references";
+import { useWorkspaceState } from '../../workspace/Workspace';
 import { useEffect, useRef, useState } from "react";
 import type { ImagePortalState } from "../../image/reducer";
 import type { LocalTextSource } from "./LocalTextRun";
@@ -50,13 +52,13 @@ export function HarnessHandoff({
   source: LocalTextSource | null;
 }) {
   const [cap, setCap] = useState<Capability | null>(null),
-    [kind, setKind] = useState<"text" | "image">("image"),
+    [kind, setKind] = useWorkspaceState<"text" | "image">("handoff:kind", "image"),
     [reviewed, setReviewed] = useState<string | null>(null),
-    [records, setRecords] = useState<Handoff[]>([]),
-    [selected, setSelected] = useState<string | null>(null),
+    [records, setRecords] = useWorkspaceState<Handoff[]>("handoff:records", []),
+    [selected, setSelected] = useWorkspaceState<string | null>("handoff:selected", null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [preparedBinding, setPreparedBinding] = useState<Record<string, string>>(
+    [preparedBinding, setPreparedBinding] = useWorkspaceState<Record<string, string>>("handoff:preparedBinding",
       {},
     ),
     [outgoingReview, setOutgoingReview] = useState<string | null>(null);
@@ -107,7 +109,7 @@ export function HarnessHandoff({
           if (alive && Array.isArray(s.handoffs))
             setRecords((prev) => {
               const incoming = s.handoffs as Handoff[];
-              return [
+              return mergeSavedReferences(prev, [
                 ...incoming.map((next) => {
                   const old = prev.find((x) => x.id === next.id);
                   return old &&
@@ -117,7 +119,7 @@ export function HarnessHandoff({
                     : next;
                 }),
                 ...prev.filter((x) => !incoming.some((n) => n.id === x.id)),
-              ];
+              ]);
             });
         })
         .catch(() => {});
@@ -149,7 +151,7 @@ export function HarnessHandoff({
       alive = false;
       clearInterval(timer);
     };
-  }, [capabilitySession]);
+  }, [capabilitySession, setRecords]);
   async function prepare(resendOf?: string) {
     if (!cap || !supported || reviewed !== fingerprint) return;
     setBusy(true);

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useWorkspaceReducer } from "../../workspace/Workspace";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { assessContext, chooseProjectClassification, composeExtractionWithOcr, confirmProjectReview, editProjectEntryText, setProjectEntryInclusion, type OcrReviewStatus, type RewriteSettings, type WorkspaceProject } from "../../domain";
 import type { MobileTab, WorkbenchServices, WorkbenchState } from "./contracts";
 import { createInitialWorkbenchState, workbenchReducer } from "./reducer";
@@ -124,9 +125,8 @@ export function Workbench({ services = defaultWorkbenchServices, embedded = fals
   const active = activeProp && inheritedActivity;
   const activeRef = useRef(active);
   useLayoutEffect(() => { activeRef.current = active; }, [active]);
-  const [state, dispatch] = useReducer(
-    workbenchReducer,
-    undefined,
+  const [state, dispatch] = useWorkspaceReducer(
+    "workbench", workbenchReducer,
     () => {
       const initial = createInitialWorkbenchState(embedded ? null : loadSavedPreferences());
       return embedded ? { ...initial, activeOverlay: null } : initial;
@@ -195,7 +195,7 @@ export function Workbench({ services = defaultWorkbenchServices, embedded = fals
       ticket,
     });
     return ticket;
-  }, []);
+  }, [dispatch]);
   const selectedItem = selectSelectedItem(state);
   const selected = selectedItem?.kind === "document" ? selectedItem : selectSelectedDocument(state);
   const selectedProject = selectedItem?.kind === "project" ? selectedItem : undefined;
@@ -236,22 +236,22 @@ export function Workbench({ services = defaultWorkbenchServices, embedded = fals
     if (state.focusTarget) dispatch({ type: "focus/consumed" });
     if (state.activeOverlay) dispatch({ type: "overlay/closed" });
     if (state.intake.dragging) dispatch({ type: "intake/drag-changed", dragging: false });
-  }, [active, state.activeOverlay, state.focusTarget, state.intake.dragging]);
+  }, [active, dispatch, state.activeOverlay, state.focusTarget, state.intake.dragging]);
   useEffect(() => {
     if (!active || state.focusTarget !== "upload") return;
     intake.addButtonRef.current?.focus();
     dispatch({ type: "focus/consumed" });
-  }, [active, intake.addButtonRef, state.focusTarget]);
+  }, [active, dispatch, intake.addButtonRef, state.focusTarget]);
   useEffect(() => {
     if (!active || state.focusTarget !== "package-preview") return;
     packageHeadingRef.current?.focus();
     dispatch({ type: "focus/consumed" });
-  }, [active, state.focusTarget]);
+  }, [active, dispatch, state.focusTarget]);
   useEffect(() => {
     if (!active || state.focusTarget !== "parameters") return;
     parametersHeadingRef.current?.focus();
     dispatch({ type: "focus/consumed" });
-  }, [active, state.focusTarget]);
+  }, [active, dispatch, state.focusTarget]);
   useEffect(() => {
     const changed = previousMobileTabRef.current !== state.mobileTab;
     previousMobileTabRef.current = state.mobileTab;
@@ -571,7 +571,7 @@ export function Workbench({ services = defaultWorkbenchServices, embedded = fals
             onLatexMainFile={(mainFile) => dispatch({ type: "latex/main-file-selected", documentId: selected.id, mainFile })}
             onAddFiles={intake.openFilePicker}
           />
-          <OcrReview candidates={selected.ocrCandidates ?? []} busyId={busyOcrCandidate} onReview={(candidateId, status, text) => void reviewOcrCandidate(candidateId, status, text)} />
+          <OcrReview documentId={selected.id} candidates={selected.ocrCandidates ?? []} busyId={busyOcrCandidate} onReview={(candidateId, status, text) => void reviewOcrCandidate(candidateId, status, text)} />
           </>} /> : state.previewMode === "source" && selectedProject ? <ProjectReview
             project={selectedProject}
             onSelect={(path) => dispatch({ type: "project/selected-entry", itemId: selectedProject.id, path })}

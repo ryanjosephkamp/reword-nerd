@@ -171,3 +171,12 @@ downloaded progress workbook.
 Opening or pasting a workbook into a model, or applying its suggested changed
 files to a project, is a separate user action governed
 by that provider's terms, privacy settings, and account controls.
+
+
+## Separate preview storage
+
+The classic portals retain the preference policy described above. The separate `/preview/` application has its own namespace: `reword-nerd:preview:appearance:v1`, `reword-nerd:preview:preferences:v1`, `reword-nerd:preview:image-preferences:v1`, and `reword-nerd:preview:runtime-preferences:v1`. After an explicit remembering choice, its IndexedDB database `reword-nerd:preview:workspace:v1` can retain workspace content locally. It does not read, migrate, or overwrite classic preference keys.
+
+A preview workspace can include original files, reviewed text and OCR, image/project data, prompts, responses, packages, imported reviews, user decisions, and job references. Recovery restores inert data, invalidates outgoing confirmations, and preserves uncertainty; it never starts, resumes, or cancels a model job. The loopback companion can retain bounded snapshots in its own state directory across port changes. Clearing workspace snapshots leaves dispatch claims and job records intact. Authentication remains with the official execution harness.
+
+Each save is limited to 512 MiB, including up to 32 MiB of structured metadata/text. One previous copy is retained. Storage denial, quota failures, corruption, unsupported versions, and conflicting tabs stop autosave visibly. Export/import provides a portable backup; browser storage can still be cleared or evicted. The static Pages preview never probes a local daemon.
