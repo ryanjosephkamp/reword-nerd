@@ -1,32 +1,20 @@
-# Dependency and build output
+# Dependencies and build output
 node_modules/
-.npm/
 dist/
 coverage/
 playwright-report/
 test-results/
-output/playwright/
-.vite/
 *.tsbuildinfo
 
-# Local environment and secrets
+# Local environment
 .env
 .env.*
 !.env.example
-.secrets/
-credentials/
 
-# IDE and operating-system files
+# Editor and operating-system files
 .idea/
 .vscode/
 *.swp
-*.swo
 *~
 .DS_Store
 Thumbs.db
-
-# Project-local generated output
-outputs/
-*.rewrite.md
-*.decomp.json
-.superpowers/

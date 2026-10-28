@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>reword_nerd</title>
+    <meta
+      name="description"
+      content="Rewrite documents and regenerate images with the AI model you already use. Everything stays in your browser."
+    />
+    <meta name="color-scheme" content="dark light" />
+    <link rel="icon" href="/brand/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
+    <script>
+      try {
+        var theme = localStorage.getItem("reword-nerd:theme");
+        if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+      } catch (error) {}
+    </script>
+  </head>
+  <body>
+    <noscript
+      >reword_nerd needs JavaScript. Everything runs in your browser; nothing is uploaded.</noscript
+    >
+    <div id="root"></div>
+    <script type="module" src="/src/app/main.tsx"></script>
+  </body>
+</html>

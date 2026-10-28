@@ -1,1 +1,0 @@
-{"extends":"../tsconfig.app.json","compilerOptions":{"tsBuildInfoFile":"../output/studio/image-companion-cache/tsconfig.tsbuildinfo","types":["node","vitest/globals"],"noEmit":true},"include":["./**/*.ts","../src/**/*.d.ts"],"exclude":[]}
