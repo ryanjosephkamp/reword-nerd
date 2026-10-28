@@ -194,13 +194,12 @@ export function ResultView({ result }: { result: TextResult }) {
       )}
 
       {items.length > 1 && (
-        <div className="tabs result-tabs" role="tablist" aria-label="Files">
+        <div className="tabs result-tabs" role="group" aria-label="Files">
           {items.map((entry, index) => (
             <button
               key={entry.path}
               type="button"
-              role="tab"
-              aria-selected={index === active}
+              aria-pressed={index === active}
               onClick={() => setActive(index)}
             >
               {baseName(entry.path)}

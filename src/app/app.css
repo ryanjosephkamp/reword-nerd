@@ -241,7 +241,7 @@
   border-radius: 8px;
   font-family: var(--serif);
   font-style: italic;
-  font-size: 1rem;
+  font-size: var(--text-md);
   color: var(--accent);
 }
 
@@ -653,8 +653,10 @@ input[type="radio"] {
 
 .pane-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
+  gap: 0 var(--space-2);
 }
 
 .pane-head h2 {
@@ -810,7 +812,7 @@ input[type="radio"] {
   font-weight: 550;
 }
 
-.tabs button[aria-selected="true"] {
+.tabs button[aria-pressed="true"] {
   border-bottom-color: var(--accent);
   color: var(--text);
 }
@@ -832,7 +834,7 @@ input[type="radio"] {
 
 .prose {
   font-family: var(--serif);
-  font-size: 1.125rem;
+  font-size: var(--text-reading);
   line-height: 1.7;
 }
 
@@ -850,11 +852,11 @@ input[type="radio"] {
 
 .prose h1 {
   margin-top: 0;
-  font-size: 2rem;
+  font-size: var(--text-2xl);
 }
 
 .prose h2 {
-  font-size: 1.5rem;
+  font-size: var(--text-xl);
 }
 
 .prose a {
@@ -934,7 +936,6 @@ input[type="radio"] {
 .pdf-page {
   width: min(100%, 46rem);
   border-radius: var(--radius-sm);
-  background: #fff;
   box-shadow: var(--shadow);
 }
 
@@ -1262,7 +1263,7 @@ input[type="radio"] {
   max-width: 46rem;
   margin: 0 auto;
   font-family: var(--serif);
-  font-size: 1.0625rem;
+  font-size: var(--text-lg);
   line-height: 1.75;
   white-space: pre-wrap;
   overflow-wrap: anywhere;

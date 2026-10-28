@@ -1,5 +1,5 @@
 import { X } from "@phosphor-icons/react";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 
 interface DialogProps {
   open: boolean;
@@ -12,6 +12,7 @@ interface DialogProps {
 /** A modal built on <dialog>, which handles focus trapping and Escape natively. */
 export function Dialog({ open, title, onClose, children, wide }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
 
   useEffect(() => {
     const dialog = ref.current;
@@ -28,11 +29,11 @@ export function Dialog({ open, title, onClose, children, wide }: DialogProps) {
       onClick={(event) => {
         if (event.target === ref.current) onClose();
       }}
-      aria-labelledby="dialog-title"
+      aria-labelledby={titleId}
     >
       <div className="dialog-body">
         <header className="dialog-header">
-          <h2 id="dialog-title">{title}</h2>
+          <h2 id={titleId}>{title}</h2>
           <button type="button" className="btn-icon" onClick={onClose} aria-label="Close">
             <X aria-hidden />
           </button>

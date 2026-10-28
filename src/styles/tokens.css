@@ -35,6 +35,7 @@
   --text-sm: 0.8125rem;
   --text-md: 0.9375rem;
   --text-lg: 1.0625rem;
+  --text-reading: 1.125rem;
   --text-xl: 1.375rem;
   --text-2xl: 1.875rem;
   --text-3xl: 2.625rem;
@@ -63,7 +64,7 @@
   --line-strong: #b9c7cf;
   --text: #17232b;
   --muted: #4f616c;
-  --faint: #6c7d87;
+  --faint: #5f707a;
   --accent: #1e6784;
   --accent-strong: #154d64;
   --accent-ink: #ffffff;
@@ -88,7 +89,7 @@
     --line-strong: #b9c7cf;
     --text: #17232b;
     --muted: #4f616c;
-    --faint: #6c7d87;
+    --faint: #5f707a;
     --accent: #1e6784;
     --accent-strong: #154d64;
     --accent-ink: #ffffff;

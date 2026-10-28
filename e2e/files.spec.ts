@@ -41,7 +41,7 @@ test.describe("real files", () => {
       .setInputFiles(fixture("garden-proposal.pdf"));
     await expect(page.getByRole("heading", { name: "garden-proposal.pdf" })).toBeVisible();
     await expect(page.locator(".paper")).toContainText("unused land behind the community library");
-    await page.getByRole("tab", { name: "Original" }).click();
+    await page.getByRole("button", { name: "Original" }).click();
     await expect(page.locator(".pdf-page").first()).toBeVisible();
   });
 
@@ -52,10 +52,10 @@ test.describe("real files", () => {
     await expect(page.getByRole("heading", { name: "scanned-poster.pdf" })).toBeVisible({
       timeout: 90_000,
     });
-    await page.getByRole("tab", { name: /Scanned text/ }).click();
+    await page.getByRole("button", { name: /Scanned text/ }).click();
     await expect(page.locator(".ocr-item")).toContainText("Garden Day");
     await page.getByRole("button", { name: "Accept all" }).click();
-    await page.getByRole("tab", { name: "Read" }).click();
+    await page.getByRole("button", { name: "Read" }).click();
     await expect(page.locator(".paper")).toContainText("Garden Day");
   });
 

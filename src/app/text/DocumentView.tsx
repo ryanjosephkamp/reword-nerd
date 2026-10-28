@@ -116,13 +116,12 @@ export function DocumentView({ source }: { source: TextSource }) {
             {edited && " · edited"}
           </p>
         </div>
-        <div className="tabs" role="tablist" aria-label="Document view">
+        <div className="tabs" role="group" aria-label="Document view">
           {tabs.map((item) => (
             <button
               key={item.id}
               type="button"
-              role="tab"
-              aria-selected={tab === item.id}
+              aria-pressed={tab === item.id}
               onClick={() => setTab(item.id)}
             >
               {item.label}
@@ -139,7 +138,7 @@ export function DocumentView({ source }: { source: TextSource }) {
         </ul>
       )}
 
-      <div className="document-body" role="tabpanel">
+      <div className="document-body">
         {tab === "read" &&
           (prose ? (
             <div className="paper">
