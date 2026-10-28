@@ -1,6 +1,7 @@
 // Word documents become Markdown: mammoth turns the .docx into HTML, and turndown turns that HTML
 // into GitHub-flavored Markdown. Pictures become assets that the text refers to as `asset:<id>`.
 import type { DocumentAsset } from "../types";
+import { createZipBudget, listZip, ZipReadError, type ZipOpener } from "../zip";
 import { hasZipSignature } from "./formats";
 import { AssetCollector, assetReference } from "./assets";
 import { plural, ReadProblem } from "./util";
@@ -119,6 +120,50 @@ function hasLayoutWarnings(messages: readonly DocxMessage[]): boolean {
   );
 }
 
+/** The most a Word document may unpack to, all parts together. */
+export const MAX_DOCX_UNPACKED_BYTES = 100 * 1024 * 1024;
+const MAX_DOCX_PARTS = 5_000;
+
+const UNSAFE_DOCX =
+  "This Word document unpacks to far more than its own size, or part of it is damaged, so it wasn't opened.";
+
+/**
+ * mammoth unpacks every part it needs in full, trusting the sizes the file states. So every
+ * part is unpacked here first, counting the real bytes against the size limits, and dropped.
+ */
+export async function checkDocxParts(
+  source: Blob,
+  options: { open?: ZipOpener; signal?: AbortSignal } = {},
+): Promise<void> {
+  let zip: Awaited<ReturnType<typeof listZip>>;
+  try {
+    zip = await listZip(source, {
+      label: "Word document",
+      maxEntries: MAX_DOCX_PARTS,
+      open: options.open,
+      signal: options.signal,
+    });
+  } catch (error) {
+    if (error instanceof ZipReadError) throw new ReadProblem(error.message);
+    throw error;
+  }
+  try {
+    try {
+      zip.checkExpansion(zip.files);
+    } catch (error) {
+      if (error instanceof ZipReadError) throw new ReadProblem(error.message);
+      throw error;
+    }
+    const budget = createZipBudget(MAX_DOCX_UNPACKED_BYTES);
+    for (const part of zip.files) {
+      const unpacked = await zip.unpack(part, MAX_DOCX_UNPACKED_BYTES, budget);
+      if (!(unpacked instanceof Uint8Array)) throw new ReadProblem(UNSAFE_DOCX);
+    }
+  } finally {
+    await zip.close();
+  }
+}
+
 export interface DocxText {
   markdown: string;
   assets: DocumentAsset[];
@@ -128,10 +173,12 @@ export interface DocxText {
 export async function readDocx(
   bytes: Uint8Array<ArrayBuffer>,
   toHtml: DocxToHtml = mammothToHtml,
+  options: { open?: ZipOpener; signal?: AbortSignal } = {},
 ): Promise<DocxText> {
   if (!hasZipSignature(bytes)) {
     throw new ReadProblem("This file is named .docx, but it isn't a Word document.");
   }
+  await checkDocxParts(new Blob([bytes]), options);
   const collector = new AssetCollector();
   let converted: Awaited<ReturnType<DocxToHtml>>;
   try {
@@ -149,6 +196,8 @@ export async function readDocx(
     );
   }
 
+  // mammoth can't be stopped partway, so a cancel takes effect as soon as it finishes.
+  options.signal?.throwIfAborted();
   const markdown = await htmlToMarkdown(converted.html);
   if (!markdown) throw new ReadProblem("This Word document has no text to rewrite.");
 

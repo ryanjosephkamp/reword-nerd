@@ -83,6 +83,7 @@ export type ProjectExclusion =
   | "credentials"
   | "ignored-by-gitignore"
   | "unreadable-text"
+  | "link-or-locked"
   | "nested-archive";
 
 /** A folder or ZIP of files added together. */

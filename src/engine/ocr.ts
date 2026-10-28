@@ -24,7 +24,22 @@ async function createWorker(): Promise<Worker> {
     corePath: core.default,
     langPath: parentUrl(language.default),
     cacheMethod: "none",
+    // Without a handler, Tesseract throws a failed job's error from its message listener,
+    // where nothing can catch it. The job's own promise still rejects with the error.
+    errorHandler: () => undefined,
   });
+}
+
+/** The running worker, or a new one. A worker that fails to start isn't kept. */
+function startedWorker(): Promise<Worker> {
+  if (!workerPromise) {
+    const starting = createWorker();
+    workerPromise = starting;
+    starting.catch(() => {
+      if (workerPromise === starting) workerPromise = undefined;
+    });
+  }
+  return workerPromise;
 }
 
 function scheduleIdleStop() {
@@ -43,8 +58,7 @@ export function recognizeText(image: Blob, signal?: AbortSignal): Promise<OcrRes
   const run = async (): Promise<OcrResult> => {
     signal?.throwIfAborted();
     clearTimeout(idleTimer);
-    workerPromise ??= createWorker();
-    const worker = await workerPromise;
+    const worker = await startedWorker();
     signal?.throwIfAborted();
     const result = await worker.recognize(image);
     signal?.throwIfAborted();
@@ -55,10 +69,15 @@ export function recognizeText(image: Blob, signal?: AbortSignal): Promise<OcrRes
   return next;
 }
 
-/** Stops the OCR worker now. The next recognizeText call starts a fresh one. */
+/** Stops the OCR worker now. The next recognizeText call starts a fresh one. Never throws. */
 export async function disposeOcr(): Promise<void> {
   clearTimeout(idleTimer);
   const active = workerPromise;
   workerPromise = undefined;
-  if (active) await (await active).terminate();
+  if (!active) return;
+  try {
+    await (await active).terminate();
+  } catch {
+    // A worker that never started, or one that's already gone, needs no stopping.
+  }
 }

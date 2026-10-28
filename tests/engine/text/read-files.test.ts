@@ -253,6 +253,7 @@ describe("PDF admission", () => {
   const openPdf = async () => ({
     pageCount: 1,
     pageText: async () => "Text",
+    pageSize: async () => ({ width: 612, height: 792 }),
     renderPage: async () => new Blob(),
     close: async () => undefined,
   });

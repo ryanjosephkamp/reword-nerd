@@ -1,13 +1,8 @@
 // Turns a batch of files into images: plain images, the pictures inside Word files and PDFs,
 // and the contents of ZIPs, each checked, deduplicated, and kept within the batch limits.
 import type { ImageMimeType, ImageSource, Progress, Rejection } from "../types";
-import {
-  compareText,
-  createUnpackBudget,
-  readArchive,
-  type UnpackBudget,
-  type ZipOpener,
-} from "./archive";
+import { compareText, type ZipBudget, type ZipOpener } from "../zip";
+import { createUnpackBudget, readImageArchive } from "./archive";
 import { readDocxPictures } from "./docx";
 import { ImageReadError, reasonFor, rethrowIfAborted } from "./errors";
 import {
@@ -258,8 +253,8 @@ async function readInput({ name, file }: ImageInput, context: Context): Promise<
   if (file.size > limit) {
     throw new ImageReadError(tooLargeFileReason(file.size, limit), "too-large");
   }
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  await readBytes(kind, bytes, { name, container: null }, context, createUnpackBudget());
+  // ZIP and Word files are read from the file a piece at a time, never loaded whole.
+  await readBytes(kind, file, { name, container: null }, context, createUnpackBudget());
 }
 
 interface Placement {
@@ -271,35 +266,43 @@ interface Placement {
 
 async function readBytes(
   kind: InputKind,
-  bytes: Uint8Array<ArrayBuffer>,
+  data: Blob | Uint8Array<ArrayBuffer>,
   placement: Placement,
   context: Context,
-  budget: UnpackBudget,
+  budget: ZipBudget,
 ): Promise<void> {
-  const { batch } = context;
+  const { batch, options } = context;
   if (batch.fullReason) throw new ImageReadError(batch.notAddedReason());
+  options.signal?.throwIfAborted();
   // Pictures inside a PDF or Word file are named after the file's full location.
   const location = placement.container
     ? `${placement.container}/${placement.name}`
     : placement.name;
-  if (kind === "image") {
-    const { adapters, options } = context;
+  if (kind === "image" || kind === "pdf") {
+    const bytes = data instanceof Blob ? new Uint8Array(await data.arrayBuffer()) : data;
+    if (kind === "pdf") {
+      if (!hasPdfSignature(bytes)) throw new ImageReadError("This file isn't a valid PDF.");
+      await readPdf(bytes, location, context);
+      return;
+    }
+    const { adapters } = context;
     const valid = await validateImage(bytes, placement.name, adapters.decode, options.signal);
     const from = placement.container ? { container: placement.container } : null;
     if (batch.add({ ...valid, name: placement.name, from }) === "full") {
       throw new ImageReadError(batch.notAddedReason());
     }
-  } else if (kind === "pdf") {
-    if (!hasPdfSignature(bytes)) throw new ImageReadError("This file isn't a valid PDF.");
-    await readPdf(bytes, location, context);
-  } else if (kind === "docx") {
-    if (!hasZipSignature(bytes)) {
+    return;
+  }
+  const source = data instanceof Blob ? data : new Blob([data]);
+  const head = new Uint8Array(await source.slice(0, 4).arrayBuffer());
+  if (kind === "docx") {
+    if (!hasZipSignature(head)) {
       throw new ImageReadError("This file isn't a valid Word (.docx) file.");
     }
-    await readDocx(bytes, location, context, budget);
+    await readDocx(source, location, context, budget);
   } else {
-    if (!hasZipSignature(bytes)) throw new ImageReadError("This file isn't a valid ZIP file.");
-    await readZip(bytes, location, context, budget);
+    if (!hasZipSignature(head)) throw new ImageReadError("This file isn't a valid ZIP file.");
+    await readZipContents(source, location, context, budget);
   }
 }
 
@@ -351,13 +354,13 @@ async function readPdf(
 }
 
 async function readDocx(
-  bytes: Uint8Array<ArrayBuffer>,
+  source: Blob,
   container: string,
   context: Context,
-  budget: UnpackBudget,
+  budget: ZipBudget,
 ): Promise<void> {
   const { batch, adapters, options } = context;
-  const { pictures, skipped } = await readDocxPictures(new Blob([bytes]), {
+  const { pictures, skipped } = await readDocxPictures(source, {
     open: adapters.openZip,
     budget,
     signal: options.signal,
@@ -408,26 +411,44 @@ async function readDocx(
   finishContainer(tally, phrases, nothingFound, batch);
 }
 
-async function readZip(
-  bytes: Uint8Array<ArrayBuffer>,
+async function readZipContents(
+  source: Blob,
   container: string,
   context: Context,
-  budget: UnpackBudget,
+  budget: ZipBudget,
 ): Promise<void> {
   const { batch, adapters, options } = context;
-  const contents = await readArchive(new Blob([bytes]), {
-    open: adapters.openZip,
-    budget,
-    signal: options.signal,
-    label: "ZIP file",
-    limitFor: (path) => {
-      const kind = inputKind(path);
-      if (isSystemFile(path) || !kind || kind === "zip") return null;
-      return kind === "image" ? IMAGE_LIMITS.maxImageBytes : IMAGE_LIMITS.maxContainerBytes;
-    },
-  });
   const rejected: Rejection[] = [];
   const nameOf = (path: string) => `${container}/${path}`;
+  let unpacked = 0;
+  // Each file is read as soon as it's unpacked and then let go, so only one is held at a time.
+  const contents = await readImageArchive(
+    source,
+    {
+      open: adapters.openZip,
+      budget,
+      signal: options.signal,
+      label: "ZIP file",
+      limitFor: (path) => {
+        const kind = inputKind(path);
+        if (isSystemFile(path) || !kind || kind === "zip") return null;
+        return kind === "image" ? IMAGE_LIMITS.maxImageBytes : IMAGE_LIMITS.maxContainerBytes;
+      },
+    },
+    async (file) => {
+      unpacked += 1;
+      // Only files with a known kind were unpacked.
+      const kind = inputKind(file.path);
+      if (!kind) return;
+      context.report(`Reading ${nameOf(file.path)}`);
+      try {
+        await readBytes(kind, file.bytes, { name: file.path, container }, context, budget);
+      } catch (error) {
+        rethrowIfAborted(error, options.signal);
+        rejected.push({ name: nameOf(file.path), reason: reasonFor(error, couldNotRead) });
+      }
+    },
+  );
   for (const path of contents.others) {
     if (isSystemFile(path)) continue;
     const reason =
@@ -436,21 +457,10 @@ async function readZip(
         : unsupportedReason(path);
     rejected.push({ name: nameOf(path), reason });
   }
-  for (const skip of contents.skipped)
+  for (const skip of contents.skipped) {
     rejected.push({ name: nameOf(skip.path), reason: skip.reason });
-  for (const file of contents.files) {
-    // Only files with a known kind were unpacked.
-    const kind = inputKind(file.path);
-    if (!kind) continue;
-    context.report(`Reading ${nameOf(file.path)}`);
-    try {
-      await readBytes(kind, file.bytes, { name: file.path, container }, context, budget);
-    } catch (error) {
-      rethrowIfAborted(error, options.signal);
-      rejected.push({ name: nameOf(file.path), reason: reasonFor(error, couldNotRead) });
-    }
   }
-  if (contents.files.length === 0 && rejected.length === 0) {
+  if (unpacked === 0 && rejected.length === 0) {
     throw new ImageReadError("This ZIP file has no files in it that can be added.");
   }
   batch.rejected.push(...rejected.sort((left, right) => compareText(left.name, right.name)));

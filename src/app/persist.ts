@@ -1,6 +1,6 @@
 // Saving the workspace on this device (IndexedDB, opt-in) and as a portable file.
 // The browser can store Blobs directly, so a save is one structured-clone write.
-import { makeZip, readZip } from "../engine/handoff/zip";
+import { isWorkspacePart, makeZip, readZip } from "../engine/handoff/zip";
 import { EMPTY_WORKSPACE, type WorkspaceData } from "./store";
 
 const DB_NAME = "reword-nerd";
@@ -118,7 +118,7 @@ export async function exportWorkspace(data: WorkspaceData): Promise<Blob> {
 }
 
 export async function importWorkspace(file: Blob): Promise<WorkspaceData> {
-  const entries = await readZip(file);
+  const entries = await readZip(file, { want: isWorkspacePart });
   const index = entries.find((entry) => entry.path === "workspace.json");
   if (!index) throw new Error("This file isn't a reword_nerd workspace.");
   const parsed = JSON.parse(await index.data.text()) as {

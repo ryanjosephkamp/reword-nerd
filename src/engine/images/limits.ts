@@ -19,8 +19,6 @@ export const IMAGE_LIMITS = {
   maxArchiveEntries: 500,
   /** Most bytes one ZIP (including any Word file inside it) may unpack to. */
   maxArchiveExpandedBytes: 100 * MB,
-  /** Largest unpacked-to-stored size ratio for a file inside a ZIP. */
-  maxCompressionRatio: 100,
   /** Most PDF pages read from one file. */
   maxPdfPages: 500,
   /** Pictures inside a PDF smaller than this on either side are icons, rules, or dots. */

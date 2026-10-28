@@ -1,6 +1,7 @@
 // Reads the files and folders the user adds into TextSources and TextProjects. The heavy
 // libraries each format needs load only when a file of that format shows up.
 import type { Progress, Rejection, TextProject, TextSource } from "../types";
+import { createZipBudget, type ZipBudget, type ZipOpener } from "../zip";
 import { readDocx, type DocxToHtml } from "./docx";
 import {
   DECODE_PROBLEM_REASONS,
@@ -36,6 +37,9 @@ export interface ReadDependencies {
   docxToHtml?: DocxToHtml;
   openPdf?: OpenPdfPages;
   recognize?: RecognizeText;
+  openZip?: ZipOpener;
+  /** Bytes one call may read in all, counting what ZIPs unpack to; MAX_TOTAL_BYTES by default. */
+  budgetBytes?: number;
 }
 
 export const MAX_FILE_COUNT = 20;
@@ -65,14 +69,15 @@ function isZipName(name: string): boolean {
   return extensionOf(name) === ".zip";
 }
 
-function sizeProblem(file: File, count: number, bytes: number): string | null {
+function sizeProblem(file: File, count: number, budget: ZipBudget): string | null {
   if (count >= MAX_FILE_COUNT) {
     return `Only ${MAX_FILE_COUNT} files can be added at a time, so this one was left out.`;
   }
   if (file.size === 0) return "This file is empty.";
   const limit = isZipName(file.name) ? MAX_ZIP_BYTES : MAX_FILE_BYTES;
   if (file.size > limit) return `This file is larger than ${limit / 1024 / 1024} MB.`;
-  if (bytes + file.size > MAX_TOTAL_BYTES) {
+  // A ZIP is read in place; what it unpacks to is counted as it's read.
+  if (!isZipName(file.name) && file.size > budget.remaining) {
     return "These files add up to more than 100 MB, so this one was left out.";
   }
   return null;
@@ -100,7 +105,10 @@ async function readStandalone(
   const extension = extensionOf(file.name);
 
   if (extension === ".docx") {
-    const docx = await readDocx(bytes, dependencies.docxToHtml);
+    const docx = await readDocx(bytes, dependencies.docxToHtml, {
+      open: dependencies.openZip,
+      signal: options.signal,
+    });
     return makeTextSource({
       ...base,
       kind: DOCX_KIND,
@@ -141,30 +149,35 @@ async function readStandalone(
   return makeTextSource({ ...base, kind, text: decoded.text, notes });
 }
 
+function callBudget(dependencies: ReadDependencies): ZipBudget {
+  return createZipBudget(dependencies.budgetBytes ?? MAX_TOTAL_BYTES);
+}
+
 export async function readFiles(
   files: readonly File[],
   options: ReadTextOptions,
   dependencies: ReadDependencies = {},
+  budget: ZipBudget = callBudget(dependencies),
 ): Promise<ReadTextResult> {
   const result = emptyResult();
+  const projectOptions = { ...options, budget, openZip: dependencies.openZip };
   let count = 0;
-  let bytes = 0;
   for (const [index, file] of files.entries()) {
     options.signal?.throwIfAborted();
     options.onProgress?.({ label: `Reading ${file.name}`, completed: index, total: files.length });
-    const problem = sizeProblem(file, count, bytes);
+    const problem = sizeProblem(file, count, budget);
     if (problem) {
       result.rejected.push({ name: file.name, reason: problem });
       continue;
     }
     try {
       if (isZipName(file.name)) {
-        addProject(result, await readZipProject(file, options));
+        addProject(result, await readZipProject(file, projectOptions));
       } else {
         result.sources.push(await readStandalone(file, options, dependencies));
+        budget.remaining -= file.size;
       }
       count += 1;
-      bytes += file.size;
     } catch (error) {
       result.rejected.push(rejectionFor(file.name, error, options.signal));
     }
@@ -183,6 +196,7 @@ export async function readFolder(
   dependencies: ReadDependencies = {},
 ): Promise<ReadTextResult> {
   const result = emptyResult();
+  const budget = callBudget(dependencies);
   const folders = new Map<string, { file: File; path: string }[]>();
   const loose: File[] = [];
   for (const { file, path } of entries) {
@@ -202,13 +216,13 @@ export async function readFolder(
   for (const [root, group] of folders) {
     options.signal?.throwIfAborted();
     try {
-      addProject(result, await readFolderProject(root, group, options));
+      addProject(result, await readFolderProject(root, group, { ...options, budget }));
     } catch (error) {
       result.rejected.push(rejectionFor(root, error, options.signal));
     }
   }
   if (loose.length > 0) {
-    const standalone = await readFiles(loose, options, dependencies);
+    const standalone = await readFiles(loose, options, dependencies, budget);
     result.sources.push(...standalone.sources);
     result.projects.push(...standalone.projects);
     result.rejected.push(...standalone.rejected);

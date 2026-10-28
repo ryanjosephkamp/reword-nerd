@@ -1,11 +1,6 @@
 // Takes the pictures out of a Word (.docx) file, in the order they appear in the document.
-import {
-  readArchive,
-  compareText,
-  type ArchiveSkip,
-  type UnpackBudget,
-  type ZipOpener,
-} from "./archive";
+import { compareText, type ZipBudget, type ZipOpener } from "../zip";
+import { readImageArchive, type ArchiveSkip } from "./archive";
 import { ImageReadError } from "./errors";
 import { IMAGE_LIMITS } from "./limits";
 
@@ -23,7 +18,7 @@ export interface DocxContents {
 
 export interface ReadDocxOptions {
   open: ZipOpener;
-  budget: UnpackBudget;
+  budget: ZipBudget;
   signal?: AbortSignal;
 }
 
@@ -37,7 +32,7 @@ export async function readDocxPictures(
   source: Blob,
   { open, budget, signal }: ReadDocxOptions,
 ): Promise<DocxContents> {
-  const contents = await readArchive(source, {
+  const contents = await readImageArchive(source, {
     open,
     budget,
     signal,

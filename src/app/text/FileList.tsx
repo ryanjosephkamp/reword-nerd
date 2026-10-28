@@ -20,6 +20,7 @@ const EXCLUSION_LABELS: Record<TextProject["excluded"][number]["reason"], string
   credentials: "may contain passwords or keys",
   "ignored-by-gitignore": "listed in .gitignore",
   "unreadable-text": "couldn't be read as text",
+  "link-or-locked": "a link or a password-protected file",
   "nested-archive": "archive inside the project",
 };
 

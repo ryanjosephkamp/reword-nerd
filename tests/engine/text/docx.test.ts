@@ -136,3 +136,37 @@ describe("Word conversion", () => {
     ).rejects.toThrow(/couldn't be opened/);
   });
 });
+
+describe("Word file safety", () => {
+  it("refuses a Word file whose parts expand hugely, before mammoth unpacks them", async () => {
+    // Catches mammoth inflating a 1000:1 part in full because the .docx itself looked small.
+    const toHtml = vi.fn<DocxToHtml>();
+    const bomb = await makeZip({
+      "[Content_Types].xml": "<Types />",
+      "word/document.xml": "x".repeat(2 * 1024 * 1024),
+    });
+    await expect(readDocx(bomb, toHtml)).rejects.toThrow(/unpacks to far more/);
+    expect(toHtml).not.toHaveBeenCalled();
+  });
+
+  it("refuses many small parts that add up to far more than the file", async () => {
+    const toHtml = vi.fn<DocxToHtml>();
+    const parts = Object.fromEntries(
+      Array.from({ length: 30 }, (_, i) => [`word/media/${i}.bin`, new Uint8Array(1024 * 1024)]),
+    );
+    const bomb = await makeZip({ "[Content_Types].xml": "<Types />", ...parts });
+    await expect(readDocx(bomb, toHtml)).rejects.toThrow(/unpacks to far more than its own size/);
+    expect(toHtml).not.toHaveBeenCalled();
+  });
+
+  it("stops when canceled during a conversion that can't be interrupted", async () => {
+    const controller = new AbortController();
+    const toHtml: DocxToHtml = async () => {
+      controller.abort();
+      return { html: "<p>Text</p>", messages: [] };
+    };
+    await expect(
+      readDocx(await docxBytes(), toHtml, { signal: controller.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+  });
+});

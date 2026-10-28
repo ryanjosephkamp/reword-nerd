@@ -52,6 +52,8 @@ describe("input names", () => {
     expect(isSystemFile("Album/.hidden/photo.png")).toBe(true);
     expect(isSystemFile("__MACOSX/Album/._photo.png")).toBe(true);
     expect(isSystemFile("Album/Thumbs.db")).toBe(true);
+    // macOS folder icons, which would otherwise be rejected as an unsupported type.
+    expect(isSystemFile("Album/Icon\r")).toBe(true);
     expect(isSystemFile("Album/photo.png")).toBe(false);
   });
 });

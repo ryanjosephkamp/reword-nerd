@@ -69,3 +69,68 @@ describe("encodePdfImageAsPng", () => {
     ).rejects.toThrow("This browser can't draw pictures.");
   });
 });
+
+describe("encoder worker lifetime", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** A worker that replies only when told to, and records whether it was stopped. */
+  function heldWorker() {
+    const state = { terminated: 0, reply: (): void => undefined };
+    class HeldWorker {
+      onmessage: ((event: { data: unknown }) => void) | null = null;
+      onerror: (() => void) | null = null;
+      postMessage(message: { id: number }) {
+        state.reply = () => this.onmessage?.({ data: { id: message.id, blob: new Blob(["png"]) } });
+      }
+      terminate() {
+        state.terminated += 1;
+      }
+    }
+    vi.stubGlobal("Worker", HeldWorker);
+    vi.stubGlobal("OffscreenCanvas", class {});
+    return state;
+  }
+
+  const pixels = () => ({ width: 1, height: 1, kind: 2, data: Uint8Array.of(1, 2, 3) });
+
+  it("gives up on a picture the worker never saves, instead of hanging", async () => {
+    // Catches an encode waiting forever on a stuck or crashed worker.
+    vi.useFakeTimers();
+    const state = heldWorker();
+    const encode = await encoder();
+    const job = encode(pixels());
+    const outcome = job.then(
+      () => "saved",
+      (error: Error) => error.message,
+    );
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(await outcome).toBe("Saving the picture took too long.");
+    expect(state.terminated).toBe(1);
+  });
+
+  it("doesn't let the idle stop end the worker while a picture is being prepared", async () => {
+    // Catches the idle timer terminating the worker during createImageBitmap, leaving the job
+    // posted to a dead worker forever.
+    vi.useFakeTimers();
+    const state = heldWorker();
+    let release: (bitmap: unknown) => void = () => undefined;
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(() => new Promise((resolve) => (release = resolve))),
+    );
+    const encode = await encoder();
+    const first = encode(pixels());
+    await vi.advanceTimersByTimeAsync(0);
+    state.reply();
+    await first;
+    const second = encode({ width: 1, height: 1, bitmap: {} as ImageBitmap });
+    await vi.advanceTimersByTimeAsync(31_000);
+    release({ copy: true });
+    await vi.advanceTimersByTimeAsync(0);
+    state.reply();
+    expect(await (await second).text()).toBe("png");
+    expect(state.terminated).toBe(0);
+  });
+});

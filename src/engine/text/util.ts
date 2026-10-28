@@ -46,23 +46,6 @@ export function plural(count: number, one: string, many: string): string {
   return `${count.toLocaleString("en-US")} ${count === 1 ? one : many}`;
 }
 
-/** A path made safe to quote in a message: no control characters, and not too long. */
-export function quotePath(path: string): string {
-  // eslint-disable-next-line no-control-regex
-  const clean = path.replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
-  return `"${clean.length > 120 ? `${clean.slice(0, 117)}...` : clean}"`;
-}
-
-export function concatBytes(chunks: readonly Uint8Array[], total: number): Uint8Array<ArrayBuffer> {
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
-}
-
 export function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);

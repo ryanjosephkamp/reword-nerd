@@ -110,3 +110,62 @@ describe("validateImage", () => {
     );
   });
 });
+
+describe("sizes from image headers", () => {
+  function jpegWithSize(width: number, height: number): Uint8Array<ArrayBuffer> {
+    const bytes = new Uint8Array(32);
+    bytes.set([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00]);
+    bytes.set(
+      [0xff, 0xc0, 0x00, 0x11, 0x08, height >> 8, height & 0xff, width >> 8, width & 0xff],
+      8,
+    );
+    return bytes;
+  }
+
+  function webpWithSize(width: number, height: number): Uint8Array<ArrayBuffer> {
+    const bytes = new Uint8Array(40);
+    const view = new DataView(bytes.buffer);
+    bytes.set(new TextEncoder().encode("RIFF"), 0);
+    view.setUint32(4, 32, true);
+    bytes.set(new TextEncoder().encode("WEBPVP8X"), 8);
+    view.setUint32(24, (width - 1) & 0xffffff, true);
+    view.setUint32(27, (height - 1) & 0xffffff, true);
+    return bytes;
+  }
+
+  function avifWithSize(width: number, height: number): Uint8Array<ArrayBuffer> {
+    const header = avifBytes();
+    const box = new Uint8Array(20);
+    const view = new DataView(box.buffer);
+    view.setUint32(0, 20);
+    box.set(new TextEncoder().encode("ispe"), 4);
+    view.setUint32(12, width);
+    view.setUint32(16, height);
+    const bytes = new Uint8Array(header.byteLength + box.byteLength);
+    bytes.set(header);
+    bytes.set(box, header.byteLength);
+    return bytes;
+  }
+
+  it.each([
+    ["PNG", "a.png", pngBytes({ width: 100_000, height: 100_000 })],
+    ["JPEG", "a.jpg", jpegWithSize(60_000, 60_000)],
+    ["WebP", "a.webp", webpWithSize(20_000, 20_000)],
+    ["AVIF", "a.avif", avifWithSize(30_000, 30_000)],
+  ] as const)(
+    "refuses a %s whose header promises a huge image, without decoding it",
+    async (_, name, bytes) => {
+      // Catches a small file that decodes into gigabytes of pixels before its size is checked.
+      const decode = vi.fn(fakeDecoder);
+      const error = await failure(validateImage(bytes, name, decode));
+      expect(error.problem).toBe("too-large");
+      expect(decode).not.toHaveBeenCalled();
+    },
+  );
+
+  it("still decodes images whose header size is within the limits", async () => {
+    const decode = vi.fn(fakeDecoder);
+    await validateImage(jpegWithSize(800, 600), "a.jpg", decode);
+    expect(decode).toHaveBeenCalledTimes(1);
+  });
+});

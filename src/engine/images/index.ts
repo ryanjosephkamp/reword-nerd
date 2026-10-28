@@ -2,7 +2,7 @@
 // regenerate. Heavy libraries (zip.js, pdf.js, Tesseract) load only when a file needs them.
 import { recognizeText } from "../ocr";
 import type { ImageSettings, ImageSource, Rejection } from "../types";
-import { openZipArchive } from "./archive";
+import { openZipArchive } from "../zip";
 import { ImageReadError, rethrowIfAborted } from "./errors";
 import { IMAGE_LIMITS } from "./limits";
 import { openPdfFile } from "./pdfImages";

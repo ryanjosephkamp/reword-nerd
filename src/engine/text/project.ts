@@ -1,15 +1,24 @@
 // A folder or ZIP read as one project. Text files become TextSources that share the project's
 // id, files the project needs but nobody rewrites (pictures, fonts, PDFs, bibliographies) become
 // assets, and everything left out is listed with the reason.
+import { clashReason, findClash, isSystemClutter, nameProblem } from "../paths";
 import type { ProjectExclusion, Progress, TextProject, TextSource } from "../types";
+import {
+  createZipBudget,
+  expandsTooMuch,
+  listZip,
+  ZipReadError,
+  type ZipBudget,
+  type ZipFile,
+  type ZipOpener,
+  type ZipSkip,
+} from "../zip";
 import { hasCredentialContent, isCredentialName } from "./credentials";
 import { baseName, decodeText, extensionOf, PLAIN_TEXT, textKindForName } from "./formats";
 import { findMainFile, missingReferenceNotes } from "./latex";
-import { assertDistinctPaths, folderEntryPath, portabilityProblem, zipEntryPath } from "./paths";
+import { folderEntryPath } from "./paths";
 import { makeTextSource } from "./source";
-import { concatBytes, newId, quotePath, ReadProblem } from "./util";
-
-type FileEntry = import("@zip.js/zip.js").FileEntry;
+import { newId, ReadProblem } from "./util";
 
 export const MAX_ZIP_BYTES = 100 * 1024 * 1024;
 export const MAX_ZIP_ENTRIES = 20_000;
@@ -17,39 +26,63 @@ export const MAX_ZIP_ENTRIES = 20_000;
 export const MAX_PROJECT_FILES = 500;
 export const MAX_PROJECT_FILE_BYTES = 25 * 1024 * 1024;
 export const MAX_PROJECT_BYTES = 100 * 1024 * 1024;
-export const MAX_COMPRESSION_RATIO = 100;
-/** Small files can compress extremely well without being a threat, so the ratio check starts here. */
-const RATIO_CHECK_MIN_BYTES = 1024 * 1024;
 /** Beyond these, text files start out left out of the job so the hand-off stays a usable size. */
 export const MAX_INCLUDED_TEXT_FILES = 250;
 export const MAX_INCLUDED_TEXT_BYTES = 5 * 1024 * 1024;
 const MAX_GITIGNORE_BYTES = 1024 * 1024;
 
-const EXCLUDED_FOLDERS = new Set([
+/** Folders that only ever hold dependencies, caches, or tool state, skipped at any depth. */
+const ALWAYS_SKIPPED_FOLDERS = new Set([
+  "node_modules",
+  "bower_components",
   ".git",
   ".hg",
   ".svn",
-  "node_modules",
-  "bower_components",
-  "vendor",
-  "vendors",
-  ".cache",
-  "cache",
   "__pycache__",
   ".pytest_cache",
   ".mypy_cache",
   ".ruff_cache",
-  "dist",
-  "build",
-  "out",
-  "target",
-  "coverage",
+  ".venv",
+  "venv",
+  ".tox",
+  ".gradle",
+  "Pods",
+  ".terraform",
   ".next",
   ".nuxt",
   ".svelte-kit",
   ".turbo",
-  "generated",
+  ".cache",
+]);
+
+/**
+ * Names that are build output beside a project's manifest but can be ordinary source folders
+ * elsewhere (src/cache/, app/gen/), so they're skipped only at the root or next to a manifest.
+ */
+const BUILD_FOLDERS = new Set([
+  "build",
+  "dist",
+  "out",
+  "target",
+  "coverage",
+  "vendor",
+  "vendors",
+  "cache",
   "gen",
+  "generated",
+]);
+
+const MANIFESTS = new Set([
+  "package.json",
+  "Cargo.toml",
+  "pyproject.toml",
+  "setup.py",
+  "go.mod",
+  "pom.xml",
+  "build.gradle",
+  "build.gradle.kts",
+  "composer.json",
+  "Gemfile",
 ]);
 
 const LOCK_FILES = new Set([
@@ -115,19 +148,23 @@ const ASSET_TYPES: Readonly<Record<string, string>> = {
 /** LaTeX class and style files; in other projects these extensions can be ordinary code. */
 const LATEX_SUPPORT_EXTENSIONS = new Set([".cls", ".sty"]);
 
-const EXPANDS_TOO_MUCH =
-  "This ZIP contains a file that expands to far more than its stored size, so it wasn't opened.";
-
-/** One file in a folder or ZIP, read only if it survives the path-based checks. */
+/** One file in a folder or ZIP. Only files that survive the path-based checks are read. */
 export interface ProjectFile {
   path: string;
   size: number;
-  read(limit: number): Promise<Uint8Array<ArrayBuffer>>;
+  /** True for a ZIP entry that would unpack to far more than its stored size. */
+  expands: boolean;
+  /** Reads the file, or says why it can't be (too large, locked, a link, or damaged). */
+  read(limit: number, budget: ZipBudget): Promise<Uint8Array<ArrayBuffer> | ZipSkip>;
 }
 
 export interface ProjectReadOptions {
+  /** Bytes still allowed to be read in this call, shared by every file and project in it. */
+  budget: ZipBudget;
   signal?: AbortSignal;
   onProgress?: (progress: Progress) => void;
+  /** Stand-in for zip.js in tests. */
+  openZip?: ZipOpener;
 }
 
 export interface ProjectRead {
@@ -135,24 +172,30 @@ export interface ProjectRead {
   sources: TextSource[];
 }
 
-function isSystemJunk(path: string): boolean {
-  const name = baseName(path);
-  return (
-    path.split("/").includes("__MACOSX") ||
-    name.startsWith("._") ||
-    name === ".DS_Store" ||
-    name === "Thumbs.db" ||
-    name === "desktop.ini"
+function folderOf(path: string): string {
+  const slash = path.lastIndexOf("/");
+  return slash < 0 ? "" : path.slice(0, slash);
+}
+
+/** Folders holding a project manifest; "" stands for the root. */
+function manifestFolders(files: readonly ProjectFile[]): Set<string> {
+  return new Set(
+    files.filter((file) => MANIFESTS.has(baseName(file.path))).map((file) => folderOf(file.path)),
   );
 }
 
-/** The first dependency or build folder in the path, such as "src/node_modules/". */
-function excludedFolder(path: string): string | null {
+/** The first dependency or build folder in the path, such as "packages/app/dist/". */
+function skippedFolder(path: string, manifests: ReadonlySet<string>): string | null {
   const segments = path.split("/");
-  const index = segments
-    .slice(0, -1)
-    .findIndex((segment) => EXCLUDED_FOLDERS.has(segment.toLowerCase()));
-  return index < 0 ? null : `${segments.slice(0, index + 1).join("/")}/`;
+  for (let depth = 0; depth < segments.length - 1; depth += 1) {
+    const name = segments[depth];
+    const parent = segments.slice(0, depth).join("/");
+    const skipped =
+      ALWAYS_SKIPPED_FOLDERS.has(name) ||
+      (BUILD_FOLDERS.has(name.toLowerCase()) && (depth === 0 || manifests.has(parent)));
+    if (skipped) return `${segments.slice(0, depth + 1).join("/")}/`;
+  }
+  return null;
 }
 
 function exclusionByName(path: string): ProjectExclusion | null {
@@ -221,10 +264,11 @@ async function loadGitignore(text: string): Promise<(path: string) => string | n
 
 /** Skips system clutter and anything whose path alone rules it out. */
 function screenPaths(files: readonly ProjectFile[], excluded: ExclusionList): ProjectFile[] {
+  const manifests = manifestFolders(files);
   const candidates: ProjectFile[] = [];
   for (const file of files) {
-    if (isSystemJunk(file.path)) continue;
-    const folder = excludedFolder(file.path);
+    if (isSystemClutter(file.path)) continue;
+    const folder = skippedFolder(file.path, manifests);
     const reason = folder ? "dependency-or-build-output" : exclusionByName(file.path);
     if (reason) excluded.add(folder ?? file.path, reason);
     else candidates.push(file);
@@ -238,9 +282,10 @@ async function applyGitignore(
   excluded: ExclusionList,
 ): Promise<ProjectFile[]> {
   const gitignore = files.find((file) => file.path === ".gitignore");
-  if (!gitignore || gitignore.size > MAX_GITIGNORE_BYTES) return files;
-  const decoded = decodeText(await gitignore.read(MAX_GITIGNORE_BYTES));
-  if (!decoded.ok) return files;
+  if (!gitignore) return files;
+  const bytes = await gitignore.read(MAX_GITIGNORE_BYTES, createZipBudget(MAX_GITIGNORE_BYTES));
+  const decoded = bytes instanceof Uint8Array ? decodeText(bytes) : null;
+  if (!decoded?.ok) return files;
   const ignored = await loadGitignore(decoded.text);
   return files.filter((file) => {
     const match = file === gitignore ? null : ignored(file.path);
@@ -254,9 +299,11 @@ function applySizeLimits(
   files: ProjectFile[],
   excluded: ExclusionList,
   noun: string,
+  budget: ZipBudget,
 ): ProjectFile[] {
   const readable = files.filter((file) => {
-    if (file.size <= MAX_PROJECT_FILE_BYTES) return true;
+    // One file that unpacks suspiciously is left out; the rest of the project still loads.
+    if (file.size <= MAX_PROJECT_FILE_BYTES && !file.expands) return true;
     excluded.add(file.path, "too-large");
     return false;
   });
@@ -265,12 +312,25 @@ function applySizeLimits(
       `This ${noun} has more than ${MAX_PROJECT_FILES} files to read, even after skipping dependency and build folders. Add a smaller part of it.`,
     );
   }
-  if (readable.reduce((total, file) => total + file.size, 0) > MAX_PROJECT_BYTES) {
+  const total = readable.reduce((sum, file) => sum + file.size, 0);
+  if (total > MAX_PROJECT_BYTES) {
     throw new ReadProblem(
       `The files in this ${noun} add up to more than 100 MB. Add a smaller part of it.`,
     );
   }
+  if (total > budget.remaining) {
+    throw new ReadProblem(
+      `Together with the other files added at the same time, this ${noun} would pass the ${Math.round(budget.total / (1024 * 1024))} MB that can be read at once. Add it on its own.`,
+    );
+  }
   return readable;
+}
+
+function exclusionForSkip({ problem }: ZipSkip): ProjectExclusion {
+  if (problem === "too-large" || problem === "expands" || problem === "over-budget") {
+    return "too-large";
+  }
+  return problem === "link" || problem === "encrypted" ? "link-or-locked" : "unreadable-text";
 }
 
 interface DecodedFile {
@@ -298,7 +358,6 @@ async function readContents(
     latexSupport: [],
     assets: [],
   };
-  let bytesRead = 0;
   for (const [index, file] of files.entries()) {
     options.signal?.throwIfAborted();
     options.onProgress?.({
@@ -306,8 +365,12 @@ async function readContents(
       completed: index,
       total: files.length,
     });
-    const bytes = await file.read(Math.min(MAX_PROJECT_FILE_BYTES, MAX_PROJECT_BYTES - bytesRead));
-    bytesRead += bytes.byteLength;
+    const bytes = await file.read(MAX_PROJECT_FILE_BYTES, options.budget);
+    if (!(bytes instanceof Uint8Array)) {
+      // A password-protected file, a link, or a damaged entry is left out, not the project.
+      excluded.add(file.path, exclusionForSkip(bytes));
+      continue;
+    }
     if (hasCredentialContent(bytes)) {
       excluded.add(file.path, "credentials");
       continue;
@@ -360,19 +423,19 @@ async function buildProject(
   from: TextProject["from"],
   files: readonly ProjectFile[],
   options: ProjectReadOptions,
+  checkExpansion: (files: readonly ProjectFile[]) => void = () => undefined,
 ): Promise<ProjectRead> {
   const noun = from === "zip" ? "ZIP" : "folder";
   const excluded = new ExclusionList();
   const kept = await applyGitignore(screenPaths(files, excluded), excluded);
   for (const file of kept) {
-    const problem = portabilityProblem(file.path);
+    const problem = nameProblem(file.path);
     if (problem) throw new ReadProblem(problem);
   }
-  assertDistinctPaths(
-    kept.map((file) => file.path),
-    noun,
-  );
-  const readable = applySizeLimits(kept, excluded, noun);
+  const clash = findClash(kept.map((file) => file.path));
+  if (clash) throw new ReadProblem(clashReason(clash, noun));
+  const readable = applySizeLimits(kept, excluded, noun, options.budget);
+  checkExpansion(readable);
   const { textFiles, latexSupport, assets } = await readContents(readable, excluded, name, options);
 
   const choice = findMainFile(textFiles);
@@ -428,48 +491,11 @@ async function buildProject(
   return { project, sources };
 }
 
-/** Drops the single top-level folder many ZIP tools wrap around everything. */
-function withoutWrapperFolder(files: ProjectFile[]): ProjectFile[] {
-  const visible = files.filter((file) => !isSystemJunk(file.path));
-  const root = visible[0]?.path.split("/")[0];
-  if (!root || !visible.every((file) => file.path.startsWith(`${root}/`))) return files;
-  return visible.map((file) => ({ ...file, path: file.path.slice(root.length + 1) }));
-}
-
-function isSymbolicLink(entry: FileEntry): boolean {
-  const mode = entry.unixMode ?? entry.unixExternalUpper;
-  return mode !== undefined && (mode & 0o170000) === 0o120000;
-}
-
-async function readZipEntry(
-  entry: FileEntry,
-  limit: number,
-  signal: AbortSignal | undefined,
-): Promise<Uint8Array<ArrayBuffer>> {
-  if (
-    entry.uncompressedSize > RATIO_CHECK_MIN_BYTES &&
-    entry.uncompressedSize / Math.max(1, entry.compressedSize) > MAX_COMPRESSION_RATIO
-  ) {
-    throw new ReadProblem(EXPANDS_TOO_MUCH);
-  }
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  // Counting the real output guards against entries whose stated size is a lie.
-  const sink = new WritableStream<Uint8Array>({
-    write(chunk) {
-      total += chunk.byteLength;
-      if (total > limit) throw new ReadProblem(EXPANDS_TOO_MUCH);
-      chunks.push(chunk);
-    },
-  });
-  try {
-    await entry.getData(sink, { signal, checkOverlappingEntry: true });
-  } catch (error) {
-    if (signal?.aborted) throw error;
-    if (error instanceof ReadProblem) throw error;
-    throw new ReadProblem("This ZIP file is damaged, so it couldn't be opened.");
-  }
-  return concatBytes(chunks, total);
+/** The single top-level folder many ZIP tools wrap around everything, if there is one. */
+function wrapperFolder(paths: readonly string[]): string | null {
+  const root = paths[0]?.split("/")[0];
+  if (!root || !paths.every((path) => path.startsWith(`${root}/`))) return null;
+  return root;
 }
 
 export async function readZipProject(
@@ -481,44 +507,35 @@ export async function readZipProject(
       "This ZIP is larger than 100 MB. Unzip it and add a smaller part, or make a smaller ZIP.",
     );
   }
-  const { BlobReader, ZipReader } = await import("@zip.js/zip.js");
-  const reader = new ZipReader(new BlobReader(file), { useWebWorkers: false });
   try {
-    let entries: Awaited<ReturnType<typeof reader.getEntries>>;
+    const zip = await listZip(file, {
+      label: "ZIP",
+      maxEntries: MAX_ZIP_ENTRIES,
+      open: options.openZip,
+      signal: options.signal,
+    });
     try {
-      entries = await reader.getEntries();
-    } catch {
-      throw new ReadProblem("This ZIP file is damaged or isn't really a ZIP file.");
-    }
-    if (entries.length > MAX_ZIP_ENTRIES) {
-      throw new ReadProblem(
-        `This ZIP has more than ${MAX_ZIP_ENTRIES.toLocaleString("en-US")} entries, which is too many to open.`,
+      const root = wrapperFolder(zip.files.map((entry) => entry.path));
+      const entries = new Map<ProjectFile, ZipFile>();
+      for (const entry of zip.files) {
+        const projectFile: ProjectFile = {
+          path: root ? entry.path.slice(root.length + 1) : entry.path,
+          size: entry.size,
+          expands: expandsTooMuch(entry),
+          read: (limit, budget) => zip.unpack(entry, limit, budget),
+        };
+        entries.set(projectFile, entry);
+      }
+      const name = file.name.replace(/\.zip$/i, "") || file.name;
+      return await buildProject(name, "zip", [...entries.keys()], options, (readable) =>
+        zip.checkExpansion(readable.map((projectFile) => entries.get(projectFile)!)),
       );
+    } finally {
+      await zip.close();
     }
-    const files: ProjectFile[] = [];
-    for (const entry of entries) {
-      if (entry.directory) continue;
-      const path = zipEntryPath(entry.filename);
-      if (entry.encrypted) {
-        throw new ReadProblem(
-          "This ZIP is password-protected. Unzip it, then add the folder or a new ZIP without a password.",
-        );
-      }
-      if (isSymbolicLink(entry)) {
-        throw new ReadProblem(
-          `This ZIP contains a shortcut (a symbolic link) at ${quotePath(path)}, which can't be opened safely.`,
-        );
-      }
-      files.push({
-        path,
-        size: entry.uncompressedSize,
-        read: (limit) => readZipEntry(entry, limit, options.signal),
-      });
-    }
-    const name = file.name.replace(/\.zip$/i, "") || file.name;
-    return await buildProject(name, "zip", withoutWrapperFolder(files), options);
-  } finally {
-    await reader.close().catch(() => undefined);
+  } catch (error) {
+    if (error instanceof ZipReadError) throw new ReadProblem(error.message);
+    throw error;
   }
 }
 
@@ -533,14 +550,20 @@ export async function readFolderProject(
     return {
       path: projectPath,
       size: file.size,
-      read: async (limit) => {
-        if (file.size > limit) throw new ReadProblem(`${quotePath(projectPath)} is too large.`);
+      expands: false,
+      read: async (limit, budget) => {
+        if (file.size > limit) {
+          return { path: projectPath, problem: "too-large", reason: "This file is too large." };
+        }
+        if (file.size > budget.remaining) {
+          return { path: projectPath, problem: "over-budget", reason: "Too much to read at once." };
+        }
         try {
-          return new Uint8Array(await file.arrayBuffer());
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          budget.remaining -= bytes.byteLength;
+          return bytes;
         } catch {
-          throw new ReadProblem(
-            `${quotePath(projectPath)} couldn't be read. Make sure the folder is still there and try again.`,
-          );
+          return { path: projectPath, problem: "damaged", reason: "This file couldn't be read." };
         }
       },
     };

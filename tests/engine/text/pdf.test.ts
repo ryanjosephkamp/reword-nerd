@@ -5,6 +5,7 @@ import { PdfPasswordError } from "../../../src/engine/pdf";
 import { readFiles } from "../../../src/engine/text/read";
 import {
   MAX_OCR_PAGES,
+  MAX_OCR_PIXELS,
   readPdf,
   type OpenPdfPages,
   type RecognizeText,
@@ -14,13 +15,18 @@ import { encoder, OFF, textFile } from "./helpers";
 
 const pdfBytes = () => encoder.encode("%PDF-1.7\n");
 
-/** A fake PDF whose pages have the given text layers. */
-function fakePdf(pages: string[], events: string[] = []): OpenPdfPages {
+/** A fake PDF whose pages have the given text layers; pages are letter-sized by default. */
+function fakePdf(
+  pages: string[],
+  events: string[] = [],
+  size = { width: 612, height: 792 },
+): OpenPdfPages {
   return async () => ({
     pageCount: pages.length,
     pageText: async (pageNumber) => pages[pageNumber - 1],
-    renderPage: async (pageNumber) => {
-      events.push(`render ${pageNumber}`);
+    pageSize: async () => size,
+    renderPage: async (pageNumber, scale) => {
+      events.push(`render ${pageNumber}${scale === 200 / 72 ? "" : ` at ${scale.toFixed(3)}`}`);
       return new Blob([`page ${pageNumber}`]);
     },
     close: async () => {
@@ -196,9 +202,7 @@ describe("PDF text recognition", () => {
       { open: fakePdf(["Native", ""]), recognize: broken },
     );
     expect(partial.ocr).toEqual([]);
-    expect(partial.notes).toContain(
-      "Text recognition didn't finish, so some pages weren't checked.",
-    );
+    expect(partial.notes).toContain("Text recognition failed on page 2.");
 
     await expect(
       readPdf(
@@ -214,6 +218,53 @@ describe("PDF text recognition", () => {
         { open: fakePdf([""]), recognize: recognizeAs("  ") },
       ),
     ).rejects.toThrow("No text was found in this PDF, even with text recognition.");
+  });
+
+  it("keeps recognizing the other pages when one page fails", async () => {
+    // Catches one bad page ending recognition for the rest of the document.
+    const recognize: RecognizeText = async (image) => {
+      if ((await image.text()) === "page 2") throw new Error("couldn't read page 2");
+      return { text: "Words", confidence: 90 };
+    };
+    const result = await readPdf(
+      pdfBytes(),
+      { name: "a.pdf", ocr: "all-pages" },
+      { open: fakePdf(["", "", ""]), recognize },
+    );
+    expect(result.ocr.map((passage) => passage.pageNumber)).toEqual([1, 3]);
+    expect(result.notes).toContain("Text recognition failed on page 2.");
+  });
+
+  it("gives up after three failures in a row", async () => {
+    let calls = 0;
+    const recognize: RecognizeText = async () => {
+      calls += 1;
+      throw new Error("worker failed to load");
+    };
+    const result = await readPdf(
+      pdfBytes(),
+      { name: "a.pdf", ocr: "all-pages" },
+      { open: fakePdf(["a", "b", "c", "d", "e"]), recognize },
+    );
+    expect(calls).toBe(3);
+    expect(result.notes).toContain(
+      "Text recognition kept failing, so the remaining pages weren't checked.",
+    );
+  });
+
+  it("draws poster-sized pages smaller for recognition", async () => {
+    // Catches a huge page being rendered at 200 dpi into a canvas of hundreds of megapixels.
+    const events: string[] = [];
+    await readPdf(
+      pdfBytes(),
+      { name: "poster.pdf", ocr: "all-pages" },
+      {
+        open: fakePdf(["x"], events, { width: 72 * 48, height: 72 * 36 }),
+        recognize: recognizeAs("x"),
+      },
+    );
+    const scale = Number(events[0].split(" at ")[1]);
+    expect(72 * 48 * scale * 72 * 36 * scale).toBeLessThanOrEqual(MAX_OCR_PIXELS * 1.001);
   });
 
   it("stops when canceled and still closes the PDF", async () => {

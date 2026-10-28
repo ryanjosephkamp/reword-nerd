@@ -76,7 +76,7 @@ describe("buildTaskMarkdown", () => {
 describe("buildTextTaskZip", () => {
   it("packs one top-level folder with the task, pointers, sources, and text copies", async () => {
     const zip = await buildTextTaskZip(input(), DEFAULT_JOB, "rn-report-1028-0905");
-    const paths = (await readZip(zip)).map((file) => file.path).sort();
+    const paths = (await readZip(zip, { want: () => true })).map((file) => file.path).sort();
     expect(paths).toEqual([
       "rn-report-1028-0905/AGENTS.md",
       "rn-report-1028-0905/CLAUDE.md",

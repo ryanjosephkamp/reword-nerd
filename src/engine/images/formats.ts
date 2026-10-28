@@ -1,4 +1,5 @@
 // Recognizes inputs by name and images by their first bytes.
+import { isSystemClutter } from "../paths";
 import type { ImageMimeType } from "../types";
 
 export type InputKind = "image" | "pdf" | "docx" | "zip";
@@ -85,13 +86,7 @@ export function unsupportedFormatReason(format: string): string {
  * silently: people never see them, so listing them as rejected would only confuse.
  */
 export function isSystemFile(path: string): boolean {
-  const segments = path.split("/");
-  const name = segments.at(-1) ?? "";
-  return (
-    segments.some((segment) => segment.startsWith(".") || segment === "__MACOSX") ||
-    name === "Thumbs.db" ||
-    name === "desktop.ini"
-  );
+  return isSystemClutter(path) || path.split("/").some((segment) => segment.startsWith("."));
 }
 
 function bytesEqual(bytes: Uint8Array, offset: number, expected: readonly number[]): boolean {

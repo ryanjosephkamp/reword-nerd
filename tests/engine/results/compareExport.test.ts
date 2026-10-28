@@ -29,7 +29,7 @@ describe("export", () => {
       "# Title\n\nSome **bold** text.\n\n- one\n- two\n\n| A | B |\n| - | - |\n| 1 | 2 |",
     );
     expect(file.name).toBe("paper.docx");
-    const parts = await readZip(file.blob);
+    const parts = await readZip(file.blob, { want: () => true });
     const body = await parts.find((part) => part.path === "word/document.xml")!.data.text();
     expect(body).toContain("Title");
     expect(body).toContain("bold");
@@ -40,7 +40,7 @@ describe("export", () => {
     const blob = await markdownToDocx(
       "1. First\n   - inner [site](https://example.com)\n2. Second",
     );
-    const parts = await readZip(blob);
+    const parts = await readZip(blob, { want: () => true });
     const body = await parts.find((part) => part.path === "word/document.xml")!.data.text();
     expect(body).toContain("inner");
     expect(body).toContain("Second");

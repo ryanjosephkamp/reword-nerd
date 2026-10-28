@@ -1,5 +1,6 @@
 // One place that loads pdf.js, so the worker is configured once for text and images alike.
 import type { PDFDocumentProxy } from "pdfjs-dist";
+import { loadOnce } from "./lazy";
 
 export class PdfPasswordError extends Error {
   constructor() {
@@ -8,25 +9,33 @@ export class PdfPasswordError extends Error {
   }
 }
 
-let pdfjsPromise: Promise<typeof import("pdfjs-dist")> | undefined;
-
-function loadPdfjs() {
-  pdfjsPromise ??= Promise.all([
+const loadPdfjs = loadOnce(async () => {
+  const [pdfjs, worker] = await Promise.all([
     import("pdfjs-dist"),
     import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
-  ]).then(([pdfjs, worker]) => {
-    pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
-    return pdfjs;
-  });
-  return pdfjsPromise;
+  ]);
+  pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+  return pdfjs;
+});
+
+export interface OpenPdfOptions {
+  /**
+   * Hands the bytes to pdf.js instead of copying them, which empties the caller's array.
+   * For callers that don't need the bytes again, this saves a copy of the whole file.
+   */
+  transfer?: boolean;
 }
 
 /** Opens a PDF without running its scripts or loading its fonts into the page. */
-export async function openPdf(bytes: Uint8Array): Promise<PDFDocumentProxy> {
+export async function openPdf(
+  bytes: Uint8Array,
+  { transfer = false }: OpenPdfOptions = {},
+): Promise<PDFDocumentProxy> {
   const pdfjs = await loadPdfjs();
   const support = `${import.meta.env.BASE_URL}pdfjs/`;
   const task = pdfjs.getDocument({
-    data: bytes.slice(),
+    // pdf.js moves the data to its worker, emptying the array it was given.
+    data: transfer ? bytes : bytes.slice(),
     isEvalSupported: false,
     disableFontFace: true,
     stopAtErrors: false,
@@ -53,9 +62,9 @@ export async function renderPdfPage(
   scale: number,
 ): Promise<Blob> {
   const page = await pdf.getPage(pageNumber);
+  const canvas = document.createElement("canvas");
   try {
     const viewport = page.getViewport({ scale });
-    const canvas = document.createElement("canvas");
     canvas.width = Math.ceil(viewport.width);
     canvas.height = Math.ceil(viewport.height);
     const context = canvas.getContext("2d");
@@ -68,6 +77,9 @@ export async function renderPdfPage(
       ),
     );
   } finally {
+    // Releases the canvas memory right away; Safari otherwise holds it until collection.
+    canvas.width = 0;
+    canvas.height = 0;
     page.cleanup();
   }
 }

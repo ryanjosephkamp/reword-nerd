@@ -78,7 +78,7 @@ describe("imageFileNames", () => {
 describe("buildImageTaskZip", () => {
   it("pairs each image with its prompt and an output path", async () => {
     const zip = await buildImageTaskZip([image()], defaults, "codex-images", "rn-images-1028-0905");
-    const files = await readZip(zip);
+    const files = await readZip(zip, { want: () => true });
     const paths = files.map((file) => file.path).sort();
     expect(paths).toEqual([
       "rn-images-1028-0905/AGENTS.md",

@@ -1,5 +1,5 @@
 import { PdfPasswordError } from "../../../src/engine/pdf";
-import { openZipArchive } from "../../../src/engine/images/archive";
+import { openZipArchive } from "../../../src/engine/zip";
 import { IMAGE_LIMITS } from "../../../src/engine/images/limits";
 import type { PdfImageData, PdfOpener, PdfPage } from "../../../src/engine/images/pdfImages";
 import {
@@ -342,6 +342,74 @@ describe("readImages", () => {
       },
     });
     await expect(reading).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("stops between the files of a ZIP when cancelled", async () => {
+    const controller = new AbortController();
+    const zip = await zipBytes([
+      ["a.png", pngBytes({ seed: 1 })],
+      ["b.png", pngBytes({ seed: 2 })],
+    ]);
+    const decode = vi.fn(async (image: Blob) => {
+      controller.abort();
+      return fakeDecoder(image);
+    });
+    const reading = read([input("album.zip", zip)], { signal: controller.signal }, { decode });
+    await expect(reading).rejects.toMatchObject({ name: "AbortError" });
+    expect(decode).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("memory with large inputs", () => {
+  it("reads a ZIP from the file in pieces instead of loading it whole", async () => {
+    // Catches the container's bytes, a Blob copy, and every unpacked file all held at once.
+    // Random bytes don't compress, so the ZIP is larger than zip.js reads in one go.
+    const noise = crypto.getRandomValues(new Uint8Array(60_000));
+    const picture = new Uint8Array([
+      ...pngBytes(),
+      ...noise,
+      ...noise,
+      ...noise,
+      ...noise,
+      ...noise,
+    ]);
+    const zip = new File([await zipBytes([["a.png", picture]])], "album.zip");
+    expect(zip.size).toBeGreaterThan(250_000);
+    const whole = vi.spyOn(zip, "arrayBuffer");
+    const { images } = await read([{ name: "album.zip", file: zip }]);
+    expect(images).toHaveLength(1);
+    expect(whole).not.toHaveBeenCalled();
+  });
+
+  it("checks each unpacked picture before unpacking the next", async () => {
+    const events: string[] = [];
+    const zip = await zipBytes([
+      ["a.png", pngBytes({ seed: 1 })],
+      ["b.png", pngBytes({ seed: 2 })],
+    ]);
+    const openZip: ImageReaderAdapters["openZip"] = async (source) => {
+      const real = await openZipArchive(source);
+      return {
+        async *entries(signal) {
+          for await (const entry of real.entries(signal)) {
+            yield {
+              ...entry,
+              read: (writable, abort) => {
+                events.push(`unpack ${entry.path}`);
+                return entry.read(writable, abort);
+              },
+            };
+          }
+        },
+        close: () => real.close(),
+      };
+    };
+    const decode = vi.fn(async (image: Blob) => {
+      events.push("decode");
+      return fakeDecoder(image);
+    });
+    await read([input("album.zip", zip)], {}, { openZip, decode });
+    expect(events).toEqual(["unpack a.png", "decode", "unpack b.png", "decode"]);
   });
 });
 

@@ -1,6 +1,6 @@
 import { FolderOpen, FileZip } from "@phosphor-icons/react";
 import { useRef } from "react";
-import { readZip } from "../../engine/handoff/zip";
+import { isAgentResultPath, readZip, ZipReadError } from "../../engine/handoff/zip";
 import { DropZone } from "../../ui/DropZone";
 import { readFolderInput, type Picked } from "../../ui/picked";
 import { scopedSources } from "../batch";
@@ -37,9 +37,12 @@ export function BringBack({ kind }: { kind: "agent" | "chat" }) {
     const zip = picked.files.find((file) => file.name.toLowerCase().endsWith(".zip"));
     if (zip) {
       try {
-        await takeAgentFiles(await readZip(zip));
-      } catch {
-        notify("That ZIP couldn't be opened.", "error");
+        await takeAgentFiles(await readZip(zip, { want: isAgentResultPath }));
+      } catch (error) {
+        notify(
+          error instanceof ZipReadError ? error.message : "That ZIP couldn't be opened.",
+          "error",
+        );
       }
       return;
     }

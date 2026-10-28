@@ -1,4 +1,5 @@
-import { createUnpackBudget, openZipArchive } from "../../../src/engine/images/archive";
+import { createUnpackBudget } from "../../../src/engine/images/archive";
+import { openZipArchive } from "../../../src/engine/zip";
 import { readDocxPictures } from "../../../src/engine/images/docx";
 import { IMAGE_LIMITS } from "../../../src/engine/images/limits";
 import { docxBytes, pngBytes, zipBytes, type DocxOptions } from "../../fixtures/images/samples";

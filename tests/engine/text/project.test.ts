@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { readTextFiles, readTextFolder } from "../../../src/engine/text";
+import { readFiles } from "../../../src/engine/text/read";
 import {
   MAX_INCLUDED_TEXT_BYTES,
   MAX_INCLUDED_TEXT_FILES,
@@ -189,18 +190,18 @@ describe("folder projects", () => {
 
 describe("credentials", () => {
   it("skips files with secrets in them, by name or by content, and never keeps their text", async () => {
-    // Catches common credential syntax or private-key headers reaching any kept material.
+    // Catches common credential syntax, service keys, or private-key headers reaching the job.
     const secrets = {
-      "config.json": '{ "api_key": "actual-secret-value" }\n',
-      "launch.sh": "export TOKEN=actual-secret-value\n",
-      "aws.txt": "AWS_SECRET_ACCESS_KEY=actual-secret-value\n",
-      "settings.yaml": "database:\n  password: actual-secret-value\n",
-      "innocent-notes.txt": "-----BEGIN ENCRYPTED PRIVATE KEY-----\nactual-secret-value\n",
-      "ordinary-readme.md": "-----BEGIN DSA PRIVATE KEY-----\nactual-secret-value\n",
+      "config.json": '{ "api_key": "a1b2c3d4e5f6g7h8" }\n',
+      "launch.sh": "export TOKEN=s3cr3t-Value-91\n",
+      "aws.txt": "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYz9\n",
+      "settings.yaml": "database:\n  password: hunter2-Prod-7\n",
+      "innocent-notes.txt": "-----BEGIN ENCRYPTED PRIVATE KEY-----\nMIIFHDBOBgkq\n",
+      "ordinary-readme.md": "-----BEGIN DSA PRIVATE KEY-----\nMIIBuwIBAAKB\n",
       "keys/server.pem": "anything",
       ".env.production": "X=1\n",
-      "control.txt": new Uint8Array([0, ...encoder.encode("API_TOKEN=actual-secret-value\n")]),
-      "broken.txt": new Uint8Array([0xff, ...encoder.encode("PASSWORD=actual-secret-value\n")]),
+      "control.txt": new Uint8Array([0, ...encoder.encode("API_TOKEN=s3cr3t-Value-91\n")]),
+      "broken.txt": new Uint8Array([0xff, ...encoder.encode("PASSWORD=s3cr3t-Value-91\n")]),
     };
     const result = await readOneFolder({
       "safe.txt": "safe text\n",
@@ -214,19 +215,122 @@ describe("credentials", () => {
       Object.keys(secrets).sort(),
     );
     expect(result.projects[0].excluded.every((item) => item.reason === "credentials")).toBe(true);
-    expect(await everything(result)).not.toContain("actual-secret-value");
+    expect(await everything(result)).not.toMatch(/s3cr3t|hunter2|a1b2c3d4/);
   });
 
-  it("doesn't mistake ordinary code and config for secrets", async () => {
-    const result = await readOneFolder({
+  it("finds secrets assigned in code, service keys, bearer tokens, and credential files", async () => {
+    // Catches the misses from review: declarations, object fields, bare key ids, and key files.
+    const secrets = {
+      "keys.ts": 'const API_KEY = "sk-proj-4fJ9xQ2LmN8pR7sT1vW3yZ5a";\n',
+      "config.mjs": 'export const stripeSecret = "rk_live_51Hx9Lm2Q8pZ";\n',
+      "client.py": 'openai.api_key = "a8f3k2m9q7w1e5r4"\n',
+      "user.py": 'self.password = "Tr0ub4dor&3"\n',
+      "auth.js": "let token = 'eyJhbGciOiJIUzI1NiJ9.e30.abc123';\n",
+      "aws-notes.txt": "The key id AKIAQ3EGUZ7YXJ4KD2PL is for staging.\n",
+      "github.txt": "Use ghp_a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8 to push.\n",
+      "slack.md": "Bot token: xoxb-2468013579-abcdefghij\n",
+      "request.http": "GET /me\nAuthorization: Bearer 9f8e7d6c5b4a39281706f5e4d3c2b1a0\n",
+      "deploy-notes.txt": "Clone https://deploy:S3cr3tPass9@git.internal.org/repo.git\n",
+      "kubeconfig.yaml":
+        "users:\n- name: ci\n  user:\n    client-key-data: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQo3aGJ\n",
+      ".git-credentials": "https://ada:token@github.com\n",
+      ".pgpass": "localhost:5432:*:ada:pw\n",
+      ".htpasswd": "ada:$apr1$abc$def\n",
+      "server.ppk": "PuTTY-User-Key-File-3: ssh-ed25519\n",
+    };
+    const result = await readOneFolder({ "safe.txt": "safe\n", ...secrets });
+
+    expect(result.sources.map((source) => source.path)).toEqual(["safe.txt"]);
+    expect(result.projects[0].excluded.map((item) => item.path).sort()).toEqual(
+      Object.keys(secrets).sort(),
+    );
+  });
+
+  it("doesn't mistake names, types, translations, or templates for secrets", async () => {
+    // Catches the false positives from review, which left ordinary code out of the job.
+    const files = {
       "config.ts": "export default {\n  apiKey: process.env.API_KEY,\n  token: getToken(),\n};\n",
-      "settings.py": 'API_KEY = os.getenv("API_KEY")\ntoken = os.environ["TOKEN"]\n',
+      "login.ts": "const body = {\n  accessToken: AccessToken,\n  password: userPassword\n};\n",
+      "settings.py": 'api_key=settings.OPENAI_KEY\nAPI_KEY = os.getenv("API_KEY")\n',
+      "models.py": "class Settings(BaseSettings):\n    api_key: SecretStr\n    token: AuthToken\n",
+      "session.py": "token = defaultToken\n",
+      "de.json": '{ "password": "Passwort", "token": "Zugangsschlüssel" }\n',
       "model.yaml": "tokenizer: bert-base-uncased\nmax_tokens: 4096\n",
+      "docker-compose.yml": "  DATABASE_URL: postgres://postgres:postgres@db:5432/app\n",
+      "README.md": "Set `API_KEY=sk-live-123456789` and use AKIAIOSFODNN7EXAMPLE as in the docs.\n",
       ".env.example": "API_KEY=your-api-key-here\nSECRET=changeme-please\n",
-      "README.md": "Set `API_KEY=sk-live-123456789` in your shell.\n",
-    });
+      ".env.template": "TOKEN=\n",
+      ".env.dist": "PASSWORD=\n",
+      ".env.sample": "API_KEY=<your key>\n",
+      "public.pem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkq\n-----END PUBLIC KEY-----\n",
+    };
+    const result = await readOneFolder(files);
     expect(result.projects[0].excluded).toEqual([]);
-    expect(result.sources).toHaveLength(5);
+    expect(result.sources).toHaveLength(Object.keys(files).length);
+  });
+});
+
+describe("skipped folders", () => {
+  it("skips dependency and tool folders at any depth", async () => {
+    const result = await readOneFolder({
+      "a.txt": "a",
+      "server/.venv/lib/site.py": "x",
+      "venv/bin/activate": "x",
+      "ios/Pods/Lib/a.h": "x",
+      "infra/.terraform/state": "x",
+      "android/.gradle/cache.txt": "x",
+      "py/.tox/log.txt": "x",
+      "deep/node_modules/x/index.js": "x",
+    });
+    expect(result.projects[0].excluded.map((item) => item.path)).toEqual([
+      "android/.gradle/",
+      "deep/node_modules/",
+      "infra/.terraform/",
+      "ios/Pods/",
+      "py/.tox/",
+      "server/.venv/",
+      "venv/",
+    ]);
+  });
+
+  it("skips build folders only at the root or beside a project manifest", async () => {
+    // Catches src/cache/, src/build/, and app/gen/ (ordinary source) being dropped.
+    const result = await readOneFolder({
+      "dist/app.js": "x",
+      "src/cache/store.ts": "export {};\n",
+      "src/build/steps.ts": "export {};\n",
+      "app/gen/names.ts": "export {};\n",
+      "packages/web/package.json": "{}\n",
+      "packages/web/dist/app.js": "x",
+      "packages/web/src/gen/a.ts": "export {};\n",
+      "crates/core/Cargo.toml": "[package]\n",
+      "crates/core/target/debug.txt": "x",
+    });
+    expect(result.projects[0].excluded.map((item) => item.path)).toEqual([
+      "crates/core/target/",
+      "dist/",
+      "packages/web/dist/",
+    ]);
+    expect(result.sources.map((source) => source.path)).toEqual([
+      "app/gen/names.ts",
+      "crates/core/Cargo.toml",
+      "packages/web/package.json",
+      "packages/web/src/gen/a.ts",
+      "src/build/steps.ts",
+      "src/cache/store.ts",
+    ]);
+  });
+
+  it("ignores macOS folder icons instead of refusing the folder", async () => {
+    // Catches "Icon\r" failing the control-character check and sinking the whole folder.
+    const result = await readOneFolder({ "a.txt": "a", "Icon\r": "", "docs/Icon\r": "" });
+    expect(result.rejected).toEqual([]);
+    expect(result.projects[0]).toMatchObject({ excluded: [], assets: [] });
+  });
+
+  it("refuses a file and a folder with the same name", async () => {
+    const result = await readOneFolder({ notes: "a", "Notes/today.md": "b" });
+    expect(result.rejected[0].reason).toMatch(/a file and a folder with the same name/);
   });
 });
 
@@ -237,6 +341,7 @@ describe("ZIP projects", () => {
       "paper/src/a.ts": "export {};\n",
       "__MACOSX/paper/._notes.md": new Uint8Array([0, 5, 22, 7]),
       "paper/.DS_Store": new Uint8Array([0, 0, 0, 1]),
+      "paper/Icon\r": "",
     });
     const result = await readTextFiles([zip], OFF);
 
@@ -256,14 +361,20 @@ describe("ZIP projects", () => {
       const zip = await zipFile("unsafe.zip", { [path]: "outside\n", "ok.txt": "ok\n" });
       const result = await readTextFiles([zip], OFF);
       expect(result.projects).toEqual([]);
-      expect(result.rejected[0].reason).toMatch(/unsafe file path/);
+      expect(result.rejected[0].reason).toMatch(/unsafe name/);
     }
   });
 
-  it("refuses ZIPs that expand far beyond their stored size", async () => {
-    const zip = await zipFile("compressed.zip", { "repeat.txt": "x".repeat(2 * 1024 * 1024) });
+  it("leaves out one file that expands far beyond its stored size, keeping the rest", async () => {
+    // Catches one suspicious file refusing the whole project.
+    const zip = await zipFile("compressed.zip", {
+      "repeat.txt": "x".repeat(2 * 1024 * 1024),
+      "notes.md": "# Notes\n",
+    });
     const result = await readTextFiles([zip], OFF);
-    expect(result.rejected[0].reason).toMatch(/expands to far more/);
+    expect(result.rejected).toEqual([]);
+    expect(result.projects[0].excluded).toEqual([{ path: "repeat.txt", reason: "too-large" }]);
+    expect(result.sources.map((source) => source.path)).toEqual(["notes.md"]);
   });
 
   it("allows small files that happen to compress well", async () => {
@@ -272,26 +383,67 @@ describe("ZIP projects", () => {
     expect(result.rejected).toEqual([]);
   });
 
-  it("refuses password-protected ZIPs and symbolic links", async () => {
-    const locked = await zipFile("locked.zip", { "a.txt": "a" }, { password: "pass-1234" });
+  it("leaves out locked files and links, even inside skipped folders, instead of the project", async () => {
+    // Catches node_modules/.bin links or one locked file refusing everything else.
     const linked = await zipFile(
       "linked.zip",
-      { "a.txt": "a", link: "/etc" },
-      {
-        modes: { link: 0o120777 },
-      },
+      { "a.txt": "a", "node_modules/.bin/eslint": "../eslint/bin.js", "docs/link.md": "/etc" },
+      { modes: { "node_modules/.bin/eslint": 0o120777, "docs/link.md": 0o120777 } },
     );
-    const result = await readTextFiles([locked, linked], OFF);
-
-    expect(result.rejected.map((rejection) => rejection.reason)).toEqual([
-      expect.stringMatching(/password-protected/),
-      expect.stringMatching(/symbolic link/),
+    const result = await readTextFiles([linked], OFF);
+    expect(result.rejected).toEqual([]);
+    expect(result.projects[0].excluded).toEqual([
+      { path: "docs/link.md", reason: "link-or-locked" },
+      { path: "node_modules/", reason: "dependency-or-build-output" },
     ]);
+
+    const locked = await zipFile("locked.zip", { "a.txt": "a" }, { password: "pass-1234" });
+    const nothing = await readTextFiles([locked], OFF);
+    expect(nothing.rejected[0].reason).toMatch(/no text files that can be read/);
   });
 
   it("refuses files that aren't ZIPs", async () => {
     const result = await readTextFiles([textFile("fake.zip", "not a zip at all")], OFF);
-    expect(result.rejected[0].reason).toMatch(/damaged or isn't really a ZIP/);
+    expect(result.rejected[0].reason).toMatch(/damaged/);
+  });
+
+  it("stops listing a ZIP with too many entries instead of reading them all", async () => {
+    // Catches getEntries() reading 65,535 entries (and hundreds of MB) before the count check.
+    let listed = 0;
+    const openZip = async () => ({
+      async *entries() {
+        for (let index = 0; index < 65_535; index += 1) {
+          listed += 1;
+          yield {
+            path: `f${index}.txt`,
+            directory: false,
+            encrypted: false,
+            compressedSize: 1,
+            uncompressedSize: 1,
+            unixMode: null,
+            read: async () => undefined,
+          };
+        }
+      },
+      close: async () => undefined,
+    });
+    const result = await readFiles([await zipFile("many.zip", { "a.txt": "a" })], OFF, {
+      openZip,
+    });
+    expect(result.rejected[0].reason).toMatch(/more than 20,000 files/);
+    expect(listed).toBe(20_001);
+  });
+
+  it("counts what ZIPs unpack to against one budget for the whole call", async () => {
+    // Catches 20 small ZIPs each expanding toward 100 MB in one call.
+    const zips = await Promise.all(
+      ["a", "b", "c"].map((name) => zipFile(`${name}.zip`, { "notes.txt": "x".repeat(400) })),
+    );
+    const result = await readFiles(zips, OFF, { budgetBytes: 1_000 });
+    expect(result.projects.map((project) => project.name)).toEqual(["a", "b"]);
+    expect(result.rejected).toEqual([
+      { name: "c.zip", reason: expect.stringMatching(/can be read at once/) },
+    ]);
   });
 
   it("honors a root .gitignore inside the wrapper folder", async () => {

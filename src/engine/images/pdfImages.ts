@@ -414,9 +414,12 @@ export function toRgba(image: PdfImageData): Uint8ClampedArray<ArrayBuffer> {
   throw new Error("The picture's pixel layout isn't recognized.");
 }
 
-/** Opens a PDF through the app's shared pdf.js loader. */
+/**
+ * Opens a PDF through the app's shared pdf.js loader. pdf.js takes the bytes rather than a
+ * copy, so the caller's array is empty afterward.
+ */
 export async function openPdfFile(bytes: Uint8Array<ArrayBuffer>): Promise<PdfFile> {
-  const pdf = await openPdf(bytes);
+  const pdf = await openPdf(bytes, { transfer: true });
   return {
     numPages: pdf.numPages,
     getPage: (pageNumber) => pdf.getPage(pageNumber),

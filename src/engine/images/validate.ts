@@ -57,6 +57,83 @@ export function checkDimensions({ width, height }: ImageSize): void {
   }
 }
 
+function readSize(width: number, height: number): ImageSize | null {
+  return width > 0 && height > 0 ? { width, height } : null;
+}
+
+function pngSize(view: DataView): ImageSize | null {
+  // The IHDR chunk always comes first: width and height at bytes 16 and 20.
+  if (view.byteLength < 24) return null;
+  return readSize(view.getUint32(16), view.getUint32(20));
+}
+
+function jpegSize(bytes: Uint8Array, view: DataView): ImageSize | null {
+  let offset = 2;
+  while (offset + 9 <= bytes.byteLength) {
+    if (bytes[offset] !== 0xff) return null;
+    const marker = bytes[offset + 1];
+    if (marker === 0xff) {
+      offset += 1;
+      continue;
+    }
+    // Start-of-frame markers carry the size; C4, C8, and CC share the range but don't.
+    if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
+      return readSize(view.getUint16(offset + 7), view.getUint16(offset + 5));
+    }
+    if (marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7)) {
+      offset += 2;
+      continue;
+    }
+    offset += 2 + view.getUint16(offset + 2);
+  }
+  return null;
+}
+
+function webpSize(bytes: Uint8Array, view: DataView): ImageSize | null {
+  if (bytes.byteLength < 30) return null;
+  const chunk = new TextDecoder().decode(bytes.subarray(12, 16));
+  if (chunk === "VP8X") {
+    const width = 1 + (view.getUint32(24, true) & 0xffffff);
+    const height = 1 + (view.getUint32(27, true) & 0xffffff);
+    return readSize(width, height);
+  }
+  if (chunk === "VP8L" && bytes[20] === 0x2f) {
+    const bits = view.getUint32(21, true);
+    return readSize(1 + (bits & 0x3fff), 1 + ((bits >> 14) & 0x3fff));
+  }
+  if (chunk === "VP8 ") {
+    return readSize(view.getUint16(26, true) & 0x3fff, view.getUint16(28, true) & 0x3fff);
+  }
+  return null;
+}
+
+function avifSize(bytes: Uint8Array, view: DataView): ImageSize | null {
+  // The image's size is in its "ispe" property box, near the start of the file.
+  const end = Math.min(bytes.byteLength, 64 * 1024) - 16;
+  for (let offset = 4; offset <= end; offset += 1) {
+    if (
+      bytes[offset] === 0x69 &&
+      new TextDecoder().decode(bytes.subarray(offset, offset + 4)) === "ispe"
+    ) {
+      return readSize(view.getUint32(offset + 8), view.getUint32(offset + 12));
+    }
+  }
+  return null;
+}
+
+/** The size an image's header states, read without decoding it; null when it can't be read. */
+export function headerSize(bytes: Uint8Array, mimeType: ImageMimeType): ImageSize | null {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  try {
+    if (mimeType === "image/png") return pngSize(view);
+    if (mimeType === "image/jpeg") return jpegSize(bytes, view);
+    if (mimeType === "image/webp") return webpSize(bytes, view);
+    return avifSize(bytes, view);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Accepts PNG, JPEG, WebP, and AVIF by content rather than by name, decodes the image to
  * prove it opens, and checks the size limits.
@@ -97,6 +174,9 @@ export async function validateImage(
         `.${extensionOf(name)}.`,
     );
   }
+  // A header promising a huge image is refused before decoding allocates its pixels.
+  const declared = headerSize(bytes, mimeType);
+  if (declared) checkDimensions(declared);
   const original = new Blob([bytes], { type: mimeType });
   let size: ImageSize;
   try {

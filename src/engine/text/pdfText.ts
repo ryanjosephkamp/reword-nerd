@@ -8,6 +8,11 @@ import { pagesHave, pagesPhrase, plural, ReadProblem } from "./util";
 export const MAX_OCR_PAGES = 150;
 /** About 200 dpi, which Tesseract reads well without huge page images. */
 const OCR_SCALE = 200 / 72;
+/** Poster-sized pages are drawn smaller so one page can't take gigabytes of memory. */
+export const MAX_OCR_PIXELS = 12_000_000;
+const MAX_OCR_SIDE = 8_000;
+/** Recognition that fails this many pages in a row is broken, not just stuck on one page. */
+const MAX_OCR_FAILURES_IN_A_ROW = 3;
 
 export type OcrMode = "off" | "pages-without-text" | "all-pages";
 
@@ -15,6 +20,8 @@ export type OcrMode = "off" | "pages-without-text" | "all-pages";
 export interface PdfPages {
   pageCount: number;
   pageText(pageNumber: number): Promise<string>;
+  /** The page's size in points (1/72 inch). */
+  pageSize(pageNumber: number): Promise<{ width: number; height: number }>;
   renderPage(pageNumber: number, scale: number): Promise<Blob>;
   close(): Promise<void>;
 }
@@ -41,10 +48,25 @@ export const openPdfPages: OpenPdfPages = async (bytes) => {
         page.cleanup();
       }
     },
+    async pageSize(pageNumber) {
+      const page = await pdf.getPage(pageNumber);
+      const { width, height } = page.getViewport({ scale: 1 });
+      return { width, height };
+    },
     renderPage: (pageNumber, scale) => renderPdfPage(pdf, pageNumber, scale),
     close: () => pdf.destroy(),
   };
 };
+
+/** The OCR scale for a page: about 200 dpi, reduced for very large pages. */
+export function ocrScale(width: number, height: number): number {
+  if (!(width > 0 && height > 0)) return OCR_SCALE;
+  return Math.min(
+    OCR_SCALE,
+    Math.sqrt(MAX_OCR_PIXELS / (width * height)),
+    MAX_OCR_SIDE / Math.max(width, height),
+  );
+}
 
 export function pageMarker(pageNumber: number): string {
   return `--- Page ${pageNumber} ---`;
@@ -96,8 +118,11 @@ interface OcrRun {
   recognized: number[];
   /** Pages that went through OCR and came back empty. */
   empty: number[];
+  /** Pages recognition failed on. */
+  failedPages: number[];
   skipped: number;
-  failed: boolean;
+  /** True when recognition kept failing and the rest of the pages weren't tried. */
+  stopped: boolean;
 }
 
 async function recognizePages(
@@ -106,7 +131,15 @@ async function recognizePages(
   options: PdfReadOptions,
   recognize: RecognizeText,
 ): Promise<OcrRun> {
-  const run: OcrRun = { passages: [], recognized: [], empty: [], skipped: 0, failed: false };
+  const run: OcrRun = {
+    passages: [],
+    recognized: [],
+    empty: [],
+    failedPages: [],
+    skipped: 0,
+    stopped: false,
+  };
+  let failuresInARow = 0;
   const selected = pages.slice(0, MAX_OCR_PAGES);
   run.skipped = pages.length - selected.length;
   for (const [index, pageNumber] of selected.entries()) {
@@ -118,12 +151,20 @@ async function recognizePages(
     });
     let result: { text: string; confidence: number };
     try {
-      const image = await pdf.renderPage(pageNumber, OCR_SCALE);
+      const { width, height } = await pdf.pageSize(pageNumber);
+      const image = await pdf.renderPage(pageNumber, ocrScale(width, height));
       result = await recognize(image, options.signal);
+      failuresInARow = 0;
     } catch (error) {
       if (options.signal?.aborted) throw error;
-      run.failed = true;
-      break;
+      // One page that can't be drawn or read shouldn't stop the others.
+      run.failedPages.push(pageNumber);
+      failuresInARow += 1;
+      if (failuresInARow >= MAX_OCR_FAILURES_IN_A_ROW && index < selected.length - 1) {
+        run.stopped = true;
+        break;
+      }
+      continue;
     }
     const text = result.text.trim();
     if (!text) {
@@ -161,8 +202,11 @@ function pdfNotes(textless: number[], run: OcrRun | null): string[] {
         `Text recognition stops after ${MAX_OCR_PAGES} pages, so ${plural(run.skipped, "page wasn't", "pages weren't")} checked.`,
       );
     }
-    if (run.failed) {
-      notes.push("Text recognition didn't finish, so some pages weren't checked.");
+    if (run.failedPages.length > 0) {
+      notes.push(`Text recognition failed on ${pagesPhrase(run.failedPages)}.`);
+    }
+    if (run.stopped) {
+      notes.push("Text recognition kept failing, so the remaining pages weren't checked.");
     }
   }
   return notes;
@@ -224,7 +268,7 @@ export async function readPdf(
         );
       }
       throw new ReadProblem(
-        run?.failed
+        run && run.failedPages.length > 0
           ? "This PDF has no selectable text, and text recognition didn't work in this browser."
           : "No text was found in this PDF, even with text recognition.",
       );
