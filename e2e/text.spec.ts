@@ -71,6 +71,7 @@ test("a pasted reply is compared and exported", async ({ page, isMobile }) => {
   if (isMobile) await page.getByRole("button", { name: "Result", exact: true }).click();
   await expect(page.getByRole("heading", { name: "The rewrite", exact: true })).toBeVisible();
   await expect(page.getByText("The model flagged something to review.")).toBeVisible();
+  await page.getByRole("radio", { name: "Word changes" }).check();
   await expect(page.locator(".diff ins").first()).toBeVisible();
   const downloading = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();

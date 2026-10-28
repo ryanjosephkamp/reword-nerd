@@ -7,6 +7,7 @@ import { auditVerdict, parseReply } from "../../engine/results/parse";
 import { readTextFiles } from "../../engine/text";
 import type { TextSource } from "../../engine/types";
 import { CopyButton } from "../../ui/CopyButton";
+import { MarkdownView } from "../../ui/MarkdownView";
 import { downloadBlob } from "../../ui/download";
 import { Segmented } from "../../ui/Segmented";
 import { baseName, buildTaskInput } from "../batch";
@@ -83,6 +84,79 @@ function Diff({ parts }: { parts: DiffPart[] }) {
   );
 }
 
+function isProse(source: TextSource): boolean {
+  return (
+    source.previewKind === "markdown" ||
+    source.previewKind === "plain-text" ||
+    source.format === "docx" ||
+    source.format === "pdf"
+  );
+}
+
+function SideBySide({ before, after, prose }: { before: string; after: string; prose: boolean }) {
+  const show = (text: string, label: string) =>
+    prose ? (
+      <div className="paper">
+        <MarkdownView markdown={text} />
+      </div>
+    ) : (
+      <pre className="code-view code-view-wrap" tabIndex={0} aria-label={label}>
+        {text}
+      </pre>
+    );
+  return (
+    <div className="side-by-side">
+      <section aria-label="Original">
+        <p className="eyebrow">Original</p>
+        {show(before, "Original text")}
+      </section>
+      <section aria-label="Rewrite">
+        <p className="eyebrow">Rewrite</p>
+        {show(after, "Rewritten text")}
+      </section>
+    </div>
+  );
+}
+
+const LINE = /^([^:]{1,40}):\s*(.*)$/;
+const VERDICT = /^(PASS|REVIEW|NOT APPLICABLE)\b\s*[—–-]?\s*(.*)$/;
+
+/** Shows the model's check as labeled rows when it follows the requested "Label: note" format. */
+function AuditRows({ audit }: { audit: string }) {
+  const lines = audit
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => LINE.exec(line));
+  if (lines.some((line) => line === null)) return <pre className="audit">{audit}</pre>;
+  return (
+    <dl className="audit-rows">
+      {lines.map((line) => {
+        const [, label, rest] = line!;
+        const verdict = VERDICT.exec(rest);
+        const note = verdict ? verdict[2] : rest;
+        return (
+          <div key={label} className="audit-row">
+            <dt>{label}</dt>
+            <dd>
+              {verdict && (
+                <span className={`verdict verdict-${verdict[1].split(" ")[0].toLowerCase()}`}>
+                  {verdict[1] === "NOT APPLICABLE"
+                    ? "N/A"
+                    : verdict[1] === "PASS"
+                      ? "Pass"
+                      : "Review"}
+                </span>
+              )}
+              {note && <span>{note}</span>}
+            </dd>
+          </div>
+        );
+      })}
+    </dl>
+  );
+}
+
 async function exportItem(item: ResultItem): Promise<ExportFile | null> {
   if (item.agentFile) return { name: baseName(item.agentFile.path), blob: item.agentFile.data };
   if (item.after === null) return null;
@@ -96,7 +170,7 @@ export function ResultView({ result }: { result: TextResult }) {
   const notify = useWorkspace((state) => state.notify);
   const [items, setItems] = useState<ResultItem[] | null>(null);
   const [active, setActive] = useState(0);
-  const [view, setView] = useState<"compare" | "rewrite">("compare");
+  const [view, setView] = useState<"side" | "changes">("side");
   const [diff, setDiff] = useState<{ item: ResultItem; parts: DiffPart[] } | null>(null);
 
   const scoped = useMemo(
@@ -189,7 +263,7 @@ export function ResultView({ result }: { result: TextResult }) {
                   : "The model's check"}
             </strong>
           </p>
-          <pre className="audit">{audit}</pre>
+          <AuditRows audit={audit} />
         </div>
       )}
 
@@ -224,15 +298,15 @@ export function ResultView({ result }: { result: TextResult }) {
                 hideLabel
                 value={view}
                 options={[
-                  { value: "compare", label: "Compare" },
-                  { value: "rewrite", label: "Rewrite only" },
+                  { value: "side", label: "Side by side" },
+                  { value: "changes", label: "Word changes" },
                 ]}
                 onChange={setView}
               />
               <span className="muted small">
                 {wordCount(item.source.text).toLocaleString("en-US")} →{" "}
                 {wordCount(item.after ?? "").toLocaleString("en-US")} words
-                {parts && ` · ${Math.round(overlapShare(parts) * 100)}% of words kept in place`}
+                {parts && ` · ${Math.round(overlapShare(parts) * 100)}% of words unchanged`}
               </span>
               <div className="button-row">
                 <CopyButton text={item.after ?? ""} label="Copy" />
@@ -247,16 +321,16 @@ export function ResultView({ result }: { result: TextResult }) {
               </div>
             </div>
             <div className="document-body">
-              {view === "compare" ? (
-                parts ? (
-                  <Diff parts={parts} />
-                ) : (
-                  <p className="loading">Comparing…</p>
-                )
+              {view === "side" ? (
+                <SideBySide
+                  before={item.source.text}
+                  after={item.after ?? ""}
+                  prose={isProse(item.source)}
+                />
+              ) : parts ? (
+                <Diff parts={parts} />
               ) : (
-                <pre className="code-view code-view-wrap" tabIndex={0} aria-label="Rewritten text">
-                  {item.after}
-                </pre>
+                <p className="loading">Comparing…</p>
               )}
             </div>
           </>
