@@ -55,7 +55,7 @@ test.describe("real files", () => {
     await page.getByRole("button", { name: /Scanned text/ }).click();
     await expect(page.locator(".ocr-item")).toContainText("Garden Day");
     await page.getByRole("button", { name: "Accept all" }).click();
-    await page.getByRole("button", { name: "Read" }).click();
+    await page.getByRole("button", { name: "Page", exact: true }).click();
     await expect(page.locator(".paper")).toContainText("Garden Day");
   });
 

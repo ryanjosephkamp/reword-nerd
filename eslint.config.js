@@ -22,6 +22,11 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
+    // The demo recorder runs code inside the page it records.
+    files: ["scripts/demo/*.{js,mjs}"],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+  },
+  {
     files: ["**/*.{ts,tsx}"],
     languageOptions: { globals: globals.browser },
     plugins: { "react-hooks": reactHooks, "react-refresh": reactRefresh },

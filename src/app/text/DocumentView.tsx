@@ -1,13 +1,19 @@
+import { ArrowCounterClockwise } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { estimateTokens } from "../../engine/text";
 import type { TextSource } from "../../engine/types";
 import { wordCount } from "../../engine/results/compare";
-import { MarkdownView } from "../../ui/MarkdownView";
+import { AutoTextarea } from "../../ui/AutoTextarea";
+import { LineDiff } from "../../ui/LineDiff";
 import { PdfPages } from "../../ui/PdfPages";
 import { baseName, textWithOcr } from "../batch";
+import { pageAttributes, usePageStyle } from "../pageStyle";
 import { useWorkspace } from "../store";
+import { DownloadMenu, PageStyleMenu } from "./DocumentTools";
+import { isPageText } from "./exportDocument";
+import { PageEditor } from "./PageEditor";
 
-type Tab = "read" | "edit" | "original" | "found";
+type Tab = "page" | "source" | "changes" | "original" | "found";
 
 const FORMAT_LABELS: Partial<Record<TextSource["format"], string>> = {
   docx: "Word",
@@ -23,7 +29,7 @@ function Original({ source }: { source: TextSource }) {
   if (source.format === "pdf") return <PdfPages file={source.original} />;
   return (
     <p className="muted pane-pad">
-      Word files can't be shown in the browser. The Read tab shows the text reword_nerd took from
+      Word files can't be shown in the browser. The Page tab shows the text reword_nerd took from
       it; the task folder includes the original file.
     </p>
   );
@@ -84,17 +90,63 @@ function FoundText({ source }: { source: TextSource }) {
   );
 }
 
+type ConfirmState = "idle" | "confirming";
+
+function UndoEdits({ source }: { source: TextSource }) {
+  const update = useWorkspace((state) => state.updateSource);
+  const [state, setState] = useState<ConfirmState>("idle");
+  if (state === "idle") {
+    return (
+      <button type="button" className="btn btn-quiet" onClick={() => setState("confirming")}>
+        <ArrowCounterClockwise aria-hidden />
+        <span>Undo all edits</span>
+      </button>
+    );
+  }
+  return (
+    <span className="confirm-inline" role="group" aria-label="Undo all edits?">
+      <span className="small">Go back to the original text?</span>
+      <button
+        type="button"
+        className="btn btn-danger"
+        onClick={() => {
+          update(source.id, { text: textWithOcr(source) });
+          setState("idle");
+        }}
+      >
+        Undo all edits
+      </button>
+      <button type="button" className="btn btn-quiet" onClick={() => setState("idle")}>
+        Keep them
+      </button>
+    </span>
+  );
+}
+
 export function DocumentView({ source }: { source: TextSource }) {
   const update = useWorkspace((state) => state.updateSource);
-  const [tab, setTab] = useState<Tab>("read");
+  const style = usePageStyle();
+  const pageText = isPageText(source);
+  const markdown =
+    source.previewKind === "markdown" || source.format === "docx" || source.format === "pdf";
+  const [tab, setTab] = useState<Tab>(pageText ? "page" : "source");
   const words = useMemo(() => wordCount(source.text), [source.text]);
   const tokens = useMemo(() => estimateTokens(source.text), [source.text]);
-  const prose =
-    source.previewKind === "markdown" || source.format === "docx" || source.format === "pdf";
-  const edited = source.text !== textWithOcr(source);
+  const original = textWithOcr(source);
+  const edited = source.text !== original;
+  const name = baseName(source.path);
+  const setText = (text: string) => update(source.id, { text });
   const tabs: { id: Tab; label: string }[] = [
-    { id: "read", label: "Read" },
-    { id: "edit", label: "Edit" },
+    ...(pageText ? [{ id: "page" as const, label: "Page" }] : []),
+    ...(!pageText || markdown
+      ? [
+          {
+            id: "source" as const,
+            label: markdown ? "Markdown" : source.previewKind === "code" ? "Code" : "Source",
+          },
+        ]
+      : []),
+    { id: "changes", label: "Changes" },
     ...(source.format === "pdf" || source.format === "docx"
       ? [{ id: "original" as const, label: "Original" }]
       : []),
@@ -108,27 +160,45 @@ export function DocumentView({ source }: { source: TextSource }) {
       <header className="document-head">
         <div className="document-title">
           <h2 id="document-heading" title={source.path}>
-            {baseName(source.path)}
+            {name}
           </h2>
           <p className="muted small">
             {FORMAT_LABELS[source.format] ?? source.languageId} · {words.toLocaleString("en-US")}{" "}
             words · about {tokens.toLocaleString("en-US")} tokens
-            {edited && " · edited"}
+            {edited && (
+              <>
+                {" · "}
+                <button type="button" className="link-button" onClick={() => setTab("changes")}>
+                  edited
+                </button>
+              </>
+            )}
           </p>
         </div>
-        <div className="tabs" role="group" aria-label="Document view">
-          {tabs.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              aria-pressed={tab === item.id}
-              onClick={() => setTab(item.id)}
-            >
-              {item.label}
-            </button>
-          ))}
+        <div className="document-actions">
+          {pageText && tab === "page" && <PageStyleMenu />}
+          <DownloadMenu source={source} text={source.text} />
         </div>
       </header>
+
+      <div className="tabs document-tabs" role="group" aria-label="Document view">
+        {tabs.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            aria-pressed={tab === item.id}
+            onClick={() => setTab(item.id)}
+          >
+            {item.label}
+            {item.id === "changes" && edited && (
+              <>
+                <span className="tab-dot" aria-hidden />
+                <span className="visually-hidden"> (edited)</span>
+              </>
+            )}
+          </button>
+        ))}
+      </div>
 
       {source.notes.length > 0 && (
         <ul className="callout callout-warn notes-list">
@@ -139,53 +209,60 @@ export function DocumentView({ source }: { source: TextSource }) {
       )}
 
       <div className="document-body">
-        {tab === "read" &&
-          (prose ? (
-            <div className="paper">
-              <MarkdownView markdown={source.text} />
-            </div>
+        {tab === "page" &&
+          (markdown ? (
+            <PageEditor
+              markdown={source.text}
+              label={`Page: ${name}`}
+              onChange={setText}
+              pageProps={pageAttributes(style)}
+            />
           ) : (
-            <pre
-              className={`code-view ${source.previewKind === "code" ? "" : "code-view-wrap"}`}
-              tabIndex={0}
-              aria-label="File text"
-            >
-              {source.text}
-            </pre>
+            <div className="paper page" {...pageAttributes(style)}>
+              <label className="visually-hidden" htmlFor="plain-page">
+                Page: {name}
+              </label>
+              <AutoTextarea
+                id="plain-page"
+                className="page-plain"
+                value={source.text}
+                spellCheck
+                onChange={(event) => setText(event.target.value)}
+              />
+            </div>
           ))}
-        {tab === "edit" && (
+        {tab === "source" && (
           <div className="edit-view">
             <label className="visually-hidden" htmlFor="source-editor">
-              Edit the text of {baseName(source.path)}
+              Edit the text of {name}
             </label>
-            <textarea
+            <AutoTextarea
               id="source-editor"
               className="editor"
               value={source.text}
-              spellCheck={prose}
-              onChange={(event) => update(source.id, { text: event.target.value })}
+              spellCheck={pageText}
+              wrap={source.previewKind === "code" ? "off" : "soft"}
+              onChange={(event) => setText(event.target.value)}
             />
-            <div className="edit-foot">
-              <span className="muted small">
-                Your edits are what gets rewritten. The original file is kept.
-              </span>
-              {edited && (
-                <button
-                  type="button"
-                  className="link-button"
-                  onClick={() => update(source.id, { text: textWithOcr(source) })}
-                >
-                  Undo all edits
-                </button>
-              )}
-            </div>
+            <p className="muted small">
+              Your edits are what gets rewritten and downloaded. The original file is kept.
+            </p>
           </div>
+        )}
+        {tab === "changes" && (
+          <LineDiff
+            before={original}
+            after={source.text}
+            beforeLabel="Original"
+            afterLabel="Edited text"
+            actions={edited ? <UndoEdits source={source} /> : null}
+          />
         )}
         {tab === "original" && <Original source={source} />}
         {tab === "found" && <FoundText source={source} />}
       </div>
 
-      {source.assets.length > 0 && tab === "read" && (
+      {source.assets.length > 0 && tab === "page" && (
         <details className="figures">
           <summary>
             {source.assets.length} {source.assets.length === 1 ? "figure" : "figures"} found in this

@@ -1,29 +1,32 @@
-/* One set of design tokens for the landing page and the app. Dark is the graphite look;
-   light mirrors it. The user's choice sets data-theme; otherwise the system decides. */
+/* One set of design tokens for every page. The palette (data-palette) supplies a dark and a
+   light version of each color in palettes.css; the mode (data-theme, or the system setting
+   when it's absent) picks which one is used. */
+@import "./palettes.css";
+
 :root {
   color-scheme: dark;
-  --bg: #131b23;
-  --panel: #18232b;
-  --raised: #20303a;
-  --line: #2c3e49;
-  --line-strong: #3d5664;
-  --text: #eaf0f3;
-  --muted: #a6b7c1;
-  --faint: #7f929d;
-  --accent: #9bd7ed;
-  --accent-strong: #c2e8f5;
-  --accent-ink: #10242e;
-  --accent-soft: rgb(155 215 237 / 0.12);
-  --paper: #f0efe5;
-  --paper-line: #dcd9cb;
-  --ink: #26333c;
-  --ink-muted: #5f6c74;
-  --ink-accent: #24607a;
+  --bg: var(--d-bg);
+  --panel: var(--d-panel);
+  --raised: var(--d-raised);
+  --line: var(--d-line);
+  --line-strong: var(--d-line-strong);
+  --text: var(--d-text);
+  --muted: var(--d-muted);
+  --faint: var(--d-faint);
+  --accent: var(--d-accent);
+  --accent-strong: var(--d-accent-strong);
+  --accent-ink: var(--d-accent-ink);
+  --accent-soft: color-mix(in srgb, var(--d-accent) 12%, transparent);
   --ok: #9fd8ac;
   --warn: #e7bd82;
   --danger: #efa69d;
-  --diff-add: rgb(98 186 120 / 0.28);
-  --diff-remove: rgb(226 112 100 / 0.24);
+  --diff-add-bg: rgb(46 160 67 / 0.15);
+  --diff-add-word: rgb(46 160 67 / 0.4);
+  --diff-add-num: rgb(63 185 80 / 0.3);
+  --diff-del-bg: rgb(248 81 73 / 0.1);
+  --diff-del-word: rgb(248 81 73 / 0.4);
+  --diff-del-num: rgb(248 81 73 / 0.3);
+  --diff-hunk-bg: color-mix(in srgb, var(--d-accent) 10%, transparent);
   --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.25);
   --focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
 
@@ -57,50 +60,56 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #f2f4f5;
-  --panel: #ffffff;
-  --raised: #eaeff2;
-  --line: #d6dee3;
-  --line-strong: #b9c7cf;
-  --text: #17232b;
-  --muted: #4f616c;
-  --faint: #5f707a;
-  --accent: #1e6784;
-  --accent-strong: #154d64;
-  --accent-ink: #ffffff;
-  --accent-soft: rgb(30 103 132 / 0.1);
-  --paper: #fbfaf5;
-  --paper-line: #e3e0d3;
+  --bg: var(--l-bg);
+  --panel: var(--l-panel);
+  --raised: var(--l-raised);
+  --line: var(--l-line);
+  --line-strong: var(--l-line-strong);
+  --text: var(--l-text);
+  --muted: var(--l-muted);
+  --faint: var(--l-faint);
+  --accent: var(--l-accent);
+  --accent-strong: var(--l-accent-strong);
+  --accent-ink: var(--l-accent-ink);
+  --accent-soft: color-mix(in srgb, var(--l-accent) 10%, transparent);
   --ok: #2e7a45;
   --warn: #8c5a0d;
   --danger: #b03a2e;
-  --diff-add: rgb(46 140 70 / 0.18);
-  --diff-remove: rgb(196 64 52 / 0.16);
+  --diff-add-bg: #e6ffec;
+  --diff-add-word: #abf2bc;
+  --diff-add-num: #ccffd8;
+  --diff-del-bg: #ffebe9;
+  --diff-del-word: #ffcecb;
+  --diff-del-num: #ffd7d5;
+  --diff-hunk-bg: color-mix(in srgb, var(--l-accent) 8%, white);
   --shadow: 0 1px 2px rgb(16 32 40 / 0.08), 0 8px 24px rgb(16 32 40 / 0.08);
 }
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
     color-scheme: light;
-    --bg: #f2f4f5;
-    --panel: #ffffff;
-    --raised: #eaeff2;
-    --line: #d6dee3;
-    --line-strong: #b9c7cf;
-    --text: #17232b;
-    --muted: #4f616c;
-    --faint: #5f707a;
-    --accent: #1e6784;
-    --accent-strong: #154d64;
-    --accent-ink: #ffffff;
-    --accent-soft: rgb(30 103 132 / 0.1);
-    --paper: #fbfaf5;
-    --paper-line: #e3e0d3;
+    --bg: var(--l-bg);
+    --panel: var(--l-panel);
+    --raised: var(--l-raised);
+    --line: var(--l-line);
+    --line-strong: var(--l-line-strong);
+    --text: var(--l-text);
+    --muted: var(--l-muted);
+    --faint: var(--l-faint);
+    --accent: var(--l-accent);
+    --accent-strong: var(--l-accent-strong);
+    --accent-ink: var(--l-accent-ink);
+    --accent-soft: color-mix(in srgb, var(--l-accent) 10%, transparent);
     --ok: #2e7a45;
     --warn: #8c5a0d;
     --danger: #b03a2e;
-    --diff-add: rgb(46 140 70 / 0.18);
-    --diff-remove: rgb(196 64 52 / 0.16);
+    --diff-add-bg: #e6ffec;
+    --diff-add-word: #abf2bc;
+    --diff-add-num: #ccffd8;
+    --diff-del-bg: #ffebe9;
+    --diff-del-word: #ffcecb;
+    --diff-del-num: #ffd7d5;
+    --diff-hunk-bg: color-mix(in srgb, var(--l-accent) 8%, white);
     --shadow: 0 1px 2px rgb(16 32 40 / 0.08), 0 8px 24px rgb(16 32 40 / 0.08);
   }
 }

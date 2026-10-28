@@ -45,4 +45,21 @@ describe("export", () => {
     expect(body).toContain("inner");
     expect(body).toContain("Second");
   });
+
+  it("carries the page look: paper color, typeface, size, and link color", async () => {
+    const blob = await markdownToDocx("# Title\n\nBody with a [link](https://example.com).", {
+      paper: "sepia",
+      font: "serif",
+      size: "large",
+      link: "#1e6784",
+    });
+    const parts = await readZip(blob, { want: () => true });
+    const text = (path: string) => parts.find((part) => part.path === path)!.data.text();
+    expect(await text("word/document.xml")).toContain('w:background w:color="F1E7D3"');
+    const styles = await text("word/styles.xml");
+    expect(styles).toContain('w:ascii="Georgia"');
+    expect(styles).toContain('w:sz w:val="28"');
+    expect(styles).toContain('w:color w:val="1E6784"');
+    expect(await text("word/settings.xml")).toContain("w:displayBackgroundShape");
+  });
 });

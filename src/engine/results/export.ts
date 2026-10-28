@@ -1,6 +1,7 @@
 // Turns a rewrite back into a file: the original format for text files, and Word for
 // documents that started as Word or PDF. The Word writer loads only when it's needed.
 import type { Token, Tokens } from "marked";
+import { PAPER_COLORS, POINT_SIZES, WORD_FONTS, type PageLook } from "../page/look";
 import type { DocumentFormat } from "../types";
 
 export interface ExportFile {
@@ -55,6 +56,7 @@ interface RunStyle {
   italics?: boolean;
   strike?: boolean;
   code?: boolean;
+  link?: boolean;
 }
 
 function inlineRuns(docx: Docx, tokens: readonly Token[] | undefined, style: RunStyle = {}): Run[] {
@@ -81,7 +83,7 @@ function inlineRuns(docx: Docx, tokens: readonly Token[] | undefined, style: Run
         runs.push(
           new docx.ExternalHyperlink({
             link: link.href,
-            children: inlineRuns(docx, link.tokens, style).filter(
+            children: inlineRuns(docx, link.tokens, { ...style, link: true }).filter(
               (run): run is InstanceType<Docx["TextRun"]> => run instanceof docx.TextRun,
             ),
           }),
@@ -115,6 +117,7 @@ function textRun(docx: Docx, text: string, style: RunStyle) {
     italics: style.italics,
     strike: style.strike,
     font: style.code ? "Consolas" : undefined,
+    style: style.link ? "Hyperlink" : undefined,
   });
 }
 
@@ -232,7 +235,42 @@ function tableBlock(docx: Docx, table: Tokens.Table) {
   });
 }
 
-export async function markdownToDocx(markdown: string): Promise<Blob> {
+const hex = (color: string) => color.replace("#", "").toUpperCase();
+
+/** Word styles that match a page look: paper color, typeface, size, and link color. */
+function lookStyles(docx: Docx, look: PageLook) {
+  const colors = PAPER_COLORS[look.paper];
+  const font = WORD_FONTS[look.font];
+  const body = POINT_SIZES[look.size] * 2;
+  const heading = (scale: number, before: number) => ({
+    run: { font, size: Math.round(body * scale), color: hex(colors.ink), bold: false },
+    paragraph: { spacing: { before, after: 120 }, keepNext: true },
+  });
+  return {
+    background: { color: hex(colors.bg) },
+    styles: {
+      default: {
+        document: {
+          run: { font, size: body, color: hex(colors.ink) },
+          paragraph: { spacing: { after: 160, line: look.font === "serif" ? 324 : 300 } },
+        },
+        title: heading(1.9, 0),
+        heading1: heading(1.7, 360),
+        heading2: heading(1.3, 320),
+        heading3: heading(1.1, 280),
+        heading4: { ...heading(1, 240), run: { font, size: body, bold: true } },
+        hyperlink: {
+          run: {
+            color: hex(look.link ?? colors.ink),
+            underline: { type: docx.UnderlineType.SINGLE },
+          },
+        },
+      },
+    },
+  };
+}
+
+export async function markdownToDocx(markdown: string, look?: PageLook): Promise<Blob> {
   const [docx, { marked }] = await Promise.all([import("docx"), import("marked")]);
   const tokens = marked.lexer(markdown, { gfm: true });
   const levels = Array.from({ length: 9 }, (_unused, level) => ({
@@ -243,6 +281,7 @@ export async function markdownToDocx(markdown: string): Promise<Blob> {
     style: { paragraph: { indent: { left: 720 * (level + 1), hanging: 360 } } },
   }));
   const document = new docx.Document({
+    ...(look ? lookStyles(docx, look) : {}),
     numbering: { config: [{ reference: "numbered", levels }] },
     sections: [{ children: blocks(docx, tokens) }],
   });

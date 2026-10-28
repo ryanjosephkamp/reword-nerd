@@ -14,8 +14,11 @@
     <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
     <script>
       try {
+        var root = document.documentElement;
         var theme = localStorage.getItem("reword-nerd:theme");
-        if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+        var palette = localStorage.getItem("reword-nerd:palette");
+        if (theme === "light" || theme === "dark") root.dataset.theme = theme;
+        if (palette && /^[a-z]+$/.test(palette)) root.dataset.palette = palette;
       } catch (error) {}
     </script>
   </head>

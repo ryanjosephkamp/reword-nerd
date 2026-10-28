@@ -32,15 +32,9 @@ main {
   text-decoration: none;
 }
 .mark {
-  display: grid;
-  place-items: center;
   width: 2rem;
   height: 2rem;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  font-family: var(--serif);
-  font-style: italic;
-  color: var(--accent);
+  object-fit: contain;
 }
 .accent {
   color: var(--accent);
@@ -116,4 +110,9 @@ h2 {
 }
 .foot a {
   color: var(--muted);
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }

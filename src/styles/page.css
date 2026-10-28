@@ -1,0 +1,166 @@
+/* The page: how a document looks while you read and edit it, and in the files you export.
+   Exports embed this file, so it stands on its own: every value has a fallback. */
+
+.page {
+  --page-bg: #f6f4ec;
+  --page-ink: #26333c;
+  --page-muted: #5f6c74;
+  --page-line: #dcd9cb;
+  --page-code: rgb(38 51 60 / 0.06);
+  --page-link: var(--l-accent, #1e6784);
+  --page-font: "Newsreader Variable", "Iowan Old Style", Georgia, serif;
+  --page-size: 1.125rem;
+  --page-leading: 1.7;
+  background: var(--page-bg);
+  color: var(--page-ink);
+  font-family: var(--page-font);
+  font-size: var(--page-size);
+  line-height: var(--page-leading);
+}
+
+.page[data-style="white"] {
+  --page-bg: #ffffff;
+  --page-ink: #1d252b;
+  --page-muted: #59646c;
+  --page-line: #e1e5e8;
+  --page-code: rgb(29 37 43 / 0.05);
+}
+
+.page[data-style="sepia"] {
+  --page-bg: #f1e7d3;
+  --page-ink: #44362a;
+  --page-muted: #6d5b49;
+  --page-line: #d9c9ad;
+  --page-code: rgb(68 54 42 / 0.07);
+}
+
+.page[data-style="night"] {
+  --page-bg: #1b252c;
+  --page-ink: #e3e9ec;
+  --page-muted: #a3b1b9;
+  --page-line: #33424c;
+  --page-code: rgb(227 233 236 / 0.07);
+  --page-link: var(--d-accent, #9bd7ed);
+}
+
+.page[data-font="sans"] {
+  --page-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --page-leading: 1.6;
+}
+
+.page[data-size="small"] {
+  --page-size: 1rem;
+}
+
+.page[data-size="large"] {
+  --page-size: 1.3125rem;
+}
+
+.prose > * + * {
+  margin-top: 0.9em;
+}
+
+.prose > :first-child {
+  margin-top: 0;
+}
+
+.prose :where(h1, h2, h3, h4, h5, h6) {
+  margin: 1.4em 0 0;
+  font-weight: 500;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+.prose h1 {
+  font-size: 1.7em;
+}
+
+.prose h2 {
+  font-size: 1.3em;
+}
+
+.prose h3 {
+  font-size: 1.1em;
+}
+
+.prose :where(h4, h5, h6) {
+  font-size: 1em;
+  font-weight: 650;
+}
+
+.prose :where(p, ul, ol, blockquote, pre, table) {
+  margin-bottom: 0;
+}
+
+.prose :where(ul, ol) {
+  padding-left: 1.4em;
+}
+
+.prose li + li {
+  margin-top: 0.25em;
+}
+
+.prose a {
+  color: var(--page-link);
+  text-underline-offset: 0.15em;
+}
+
+.prose table {
+  border-collapse: collapse;
+  font-size: 0.85em;
+  line-height: 1.5;
+}
+
+.prose th,
+.prose td {
+  padding: 0.3em 0.6em;
+  border: 1px solid var(--page-line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.prose blockquote {
+  margin-left: 1.4em;
+  margin-right: 1.4em;
+  color: var(--page-muted);
+  font-style: italic;
+}
+
+.prose code {
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+  background: var(--page-code);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.82em;
+}
+
+.prose pre {
+  padding: 0.8em 1em;
+  overflow-x: auto;
+  border-radius: 6px;
+  background: var(--page-code);
+  line-height: 1.5;
+}
+
+.prose pre code {
+  padding: 0;
+  background: none;
+}
+
+.prose hr {
+  margin: 1.6em 0;
+  border: 0;
+  border-top: 1px solid var(--page-line);
+}
+
+.prose .figure-ref {
+  color: var(--page-muted);
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  font-size: 0.8em;
+  font-style: italic;
+}

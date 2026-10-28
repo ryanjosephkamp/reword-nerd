@@ -27,6 +27,39 @@ for (const theme of ["dark", "light"] as const) {
       await page.getByRole("button", { name: "Try a sample document" }).click();
       await expect(page.getByRole("heading", { name: "urban-gardens.md" })).toBeVisible();
       expect(await violations(page)).toEqual([]);
+      const editor = page.getByRole("textbox", { name: "Page: urban-gardens.md" });
+      await editor.locator("p").first().click();
+      await page.keyboard.type(" Edited.");
+      await editor.blur();
+      await page.getByRole("button", { name: /^Changes/ }).click();
+      await expect(page.locator(".diff-table")).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+    });
+
+    test("every color palette has no accessibility violations", async ({ page }) => {
+      for (const palette of ["harbor", "moss", "ember", "plum", "graphite"]) {
+        await page.addInitScript((value) => {
+          localStorage.setItem("reword-nerd:palette", value);
+        }, palette);
+        await page.goto("/app/");
+        await page.getByRole("button", { name: "Try a sample document" }).click();
+        await expect(page.getByRole("heading", { name: "urban-gardens.md" })).toBeVisible();
+        expect(await violations(page), palette).toEqual([]);
+      }
+    });
+
+    test("the menus have no accessibility violations", async ({ page, isMobile }) => {
+      test.skip(isMobile, "The phone header keeps these in the workspace menu.");
+      await page.goto("/app/");
+      await page.getByRole("button", { name: "Try a sample document" }).click();
+      await page.getByRole("button", { name: "Appearance" }).click();
+      expect(await violations(page)).toEqual([]);
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Page style" }).click();
+      expect(await violations(page)).toEqual([]);
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Download", exact: true }).click();
+      expect(await violations(page)).toEqual([]);
     });
 
     test("the images workspace has no accessibility violations", async ({ page }) => {

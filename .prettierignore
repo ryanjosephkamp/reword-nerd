@@ -7,3 +7,5 @@ preview-app
 claude-handoff-*
 public/media
 content/updates/*.json
+src/styles/palettes.css
+src/shared/palettes.ts
