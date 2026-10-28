@@ -1,3 +1,0 @@
-# Preserve intentional Markdown hard breaks in canonical product prompts.
-prompts/02_rewrite.md whitespace=-blank-at-eol
-prompts/04_final.md whitespace=-blank-at-eol

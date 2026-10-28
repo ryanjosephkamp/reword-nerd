@@ -5,33 +5,26 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["preview-app", "outputs", "output", "dist", "coverage", "playwright-report", "test-results"] },
+  {
+    ignores: [
+      "dist",
+      "coverage",
+      "playwright-report",
+      "test-results",
+      "preview-app",
+      "claude-handoff-*",
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
     files: ["scripts/**/*.mjs"],
-    languageOptions: {
-      ecmaVersion: 2022,
-      globals: globals.node,
-    },
-  },
-  {
-    files: ["public/updates/**/*.js"],
-    languageOptions: {
-      ecmaVersion: 2022,
-      globals: globals.browser,
-    },
+    languageOptions: { globals: globals.node },
   },
   {
     files: ["**/*.{ts,tsx}"],
-    languageOptions: {
-      ecmaVersion: 2022,
-      globals: globals.browser,
-    },
-    plugins: {
-      "react-hooks": reactHooks,
-      "react-refresh": reactRefresh,
-    },
+    languageOptions: { globals: globals.browser },
+    plugins: { "react-hooks": reactHooks, "react-refresh": reactRefresh },
     rules: {
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],

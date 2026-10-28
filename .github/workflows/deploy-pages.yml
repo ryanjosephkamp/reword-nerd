@@ -1,4 +1,4 @@
-name: Deploy reword-nerd to GitHub Pages
+name: Check and deploy
 
 on:
   push:
@@ -15,9 +15,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
+  check:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -28,45 +28,64 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install FFmpeg tools
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint, format, and typecheck
+        run: |
+          npm run lint
+          npm run format:check
+          npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Browser tests
+        run: |
+          npx playwright install --with-deps chromium
+          npm run e2e
+
+      - name: Keep the browser test report when tests fail
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 3
+
+      # Until the new site replaces it, the classic site keeps serving the root URL, built
+      # unchanged from its release tag. The new site is published under /preview/.
+      - name: Build the classic site from its release tag
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends --yes ffmpeg
-          ffprobe -version
-
-      - name: Install dependencies
-        run: |
+          git fetch --depth 1 origin tag classic-v0.8.0
+          git worktree add ../classic classic-v0.8.0
+          cd ../classic
           npm ci
-          npm --prefix preview-app ci
+          VITE_BASE_PATH=/reword-nerd/ npm run build
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Test
-        run: npm test -- --run
-
-      - name: Verify the separate preview
-        working-directory: preview-app
-        run: |
-          npm run lint
-          npm run typecheck
-          npm test -- --run
-          node node_modules/vitest/vitest.mjs run --configLoader native --config companion/vitest.config.ts
-          node node_modules/vitest/vitest.mjs run --configLoader native --config image-companion/vitest.config.ts
-          node node_modules/vitest/vitest.mjs run --configLoader native --config local-companion/collections/vitest.config.ts
-          node --test local-companion/host.test.mjs local-companion/server.test.mjs
-
-      - name: Build for the repository URL
-        run: node scripts/build-preview.mjs
+      - name: Build the new site
+        run: npm run build
         env:
-          VITE_BASE_PATH: /reword-nerd/
+          VITE_BASE_PATH: /reword-nerd/preview/
+
+      - name: Assemble the published site
+        run: |
+          mkdir site
+          cp -R ../classic/dist/. site/
+          mkdir site/preview
+          cp -R dist/. site/preview/
+
+      - name: Upload the site
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
+        with:
+          path: site
 
   deploy:
     if: github.event_name != 'pull_request'
-    needs: verify
+    needs: check
     permissions:
       contents: read
       pages: write
@@ -75,40 +94,10 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
-      - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install FFmpeg tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends --yes ffmpeg
-          ffprobe -version
-
-      - name: Install dependencies
-        run: |
-          npm ci
-          npm --prefix preview-app ci
-
-      - name: Build for the repository URL
-        run: node scripts/build-preview.mjs
-        env:
-          VITE_BASE_PATH: /reword-nerd/
-
       - name: Configure GitHub Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
-
-      - name: Upload site artifact
-        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
-        with:
-          path: dist
 
       - name: Deploy to GitHub Pages
         id: deployment

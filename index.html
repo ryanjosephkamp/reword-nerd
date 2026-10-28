@@ -1,19 +1,185 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>reword_nerd: rewrite anything with the model you already use</title>
     <meta
       name="description"
-      content="A browser-only document review and package-building workbench."
+      content="reword_nerd turns documents, projects, and images into a one-paste hand-off for Claude Code, Codex, ChatGPT, Grok Imagine, or any model. Your files never leave your browser."
     />
-    <link rel="icon" href="%BASE_URL%brand/favicon.ico" sizes="any" />
-    <link rel="icon" href="%BASE_URL%brand/favicon-32.png" type="image/png" sizes="32x32" />
-    <link rel="apple-touch-icon" href="%BASE_URL%brand/apple-touch-icon.png" />
-    <title>reword_nerd</title>
+    <meta name="color-scheme" content="dark light" />
+    <link rel="icon" href="/brand/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
+    <link
+      rel="alternate"
+      type="application/rss+xml"
+      title="reword_nerd updates"
+      href="updates/feed.xml"
+    />
+    <script>
+      try {
+        var theme = localStorage.getItem("reword-nerd:theme");
+        if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+      } catch (error) {}
+    </script>
+    <script type="module" src="/src/landing/main.ts"></script>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <a class="skip-link" href="#content">Skip to the content</a>
+    <header class="site-header">
+      <a class="brand" href="./" aria-label="reword_nerd home">
+        <span class="brand-mark" aria-hidden="true">rn</span>
+        <span class="brand-name">reword<span class="brand-underscore">_</span>nerd</span>
+      </a>
+      <nav class="site-nav" aria-label="Site">
+        <a href="#how">How it works</a>
+        <a href="#privacy">Privacy</a>
+        <a href="updates/">Updates</a>
+      </nav>
+      <a class="btn btn-primary" href="app/">Open the app</a>
+    </header>
+
+    <main id="content">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Same meaning. Better words.</p>
+          <h1>Rewrite anything <em>with the model you already use.</em></h1>
+          <p class="lede">
+            reword_nerd reads your documents, projects, and images, then hands the job to Claude
+            Code, Codex, ChatGPT, Grok Imagine, or any model you like, in one paste. No account, no
+            upload: your files never leave your browser.
+          </p>
+          <div class="button-row">
+            <a class="btn btn-primary btn-large" href="app/">Rewrite text</a>
+            <a class="btn btn-large" href="app/?mode=images">Regenerate images</a>
+          </div>
+        </div>
+        <figure class="specimen" aria-label="An example rewrite">
+          <p class="specimen-label">Before</p>
+          <p class="specimen-before">
+            At this point in time, we are in the process of considering a number of different
+            options.
+          </p>
+          <p class="specimen-label">After · Make it clear</p>
+          <p class="specimen-after">We're weighing our options.</p>
+          <figcaption>A written example, not a live model call.</figcaption>
+        </figure>
+      </section>
+
+      <section id="how" class="section">
+        <p class="eyebrow">How it works</p>
+        <h2>Four steps, and the last one is a paste.</h2>
+        <ol class="how-steps">
+          <li>
+            <h3>Add</h3>
+            <p>
+              Word, PDF, Markdown, HTML, LaTeX, code, whole folders and ZIP projects, or images.
+              Scanned pages are read with OCR.
+            </p>
+          </li>
+          <li>
+            <h3>Check</h3>
+            <p>
+              See exactly what was read, fix it, and choose which files take part. Credentials and
+              build folders are left out on their own.
+            </p>
+          </li>
+          <li>
+            <h3>Set</h3>
+            <p>
+              Pick a goal, tone, length, and language. For images, say what should change and what
+              must stay.
+            </p>
+          </li>
+          <li>
+            <h3>Hand off</h3>
+            <p>
+              Copy one prompt, or download a task folder and paste one command. Bring the result
+              back to compare and export, if you like.
+            </p>
+          </li>
+        </ol>
+      </section>
+
+      <section class="section">
+        <p class="eyebrow">Wherever you work</p>
+        <h2>One hand-off for every kind of model.</h2>
+        <div class="paths">
+          <article class="path">
+            <h3>Coding agents</h3>
+            <p class="path-who">Claude Code, Codex, Gemini CLI</p>
+            <p>
+              Download a task folder and paste one command. The agent works through every stage,
+              saves its notes, and writes the results in the original format, Word files included.
+            </p>
+            <p class="path-count"><span>1</span> paste</p>
+          </article>
+          <article class="path">
+            <h3>Chat apps</h3>
+            <p class="path-who">ChatGPT, Claude, Gemini, Grok</p>
+            <p>
+              Copy one prompt and the chat opens in a new tab. For long or delicate documents, go
+              step by step with four prompts instead.
+            </p>
+            <p class="path-count"><span>1</span> paste</p>
+          </article>
+          <article class="path">
+            <h3>Image tools</h3>
+            <p class="path-who">Grok Imagine, ChatGPT, Gemini, Midjourney</p>
+            <p>
+              Attach the image and paste its prompt. An agent that makes images, like Codex, can do
+              a whole folder from one command.
+            </p>
+            <p class="path-count"><span>1</span> paste per image</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section method">
+        <p class="eyebrow">The method</p>
+        <h2>Decompose. Rewrite. Verify. Final.</h2>
+        <div class="method-grid">
+          <div>
+            <h3>Decompose</h3>
+            <p>List every claim, fact, name, and constraint the rewrite must keep.</p>
+          </div>
+          <div>
+            <h3>Rewrite</h3>
+            <p>Write a new version in genuinely different words and structure.</p>
+          </div>
+          <div>
+            <h3>Verify</h3>
+            <p>Check for anything lost, added, or changed in meaning.</p>
+          </div>
+          <div>
+            <h3>Final</h3>
+            <p>Fix what the check found and finish the document.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="privacy" class="section privacy">
+        <p class="eyebrow">Privacy</p>
+        <h2>No server. No account. No upload.</h2>
+        <div class="privacy-grid">
+          <p>
+            reword_nerd is a web page that runs entirely in your browser. Files are read on your
+            device, and nothing is sent anywhere unless you copy it or download it.
+          </p>
+          <p>
+            Your model only sees what you paste or hand to your agent. Saving between visits is off
+            until you turn it on, and then it stays in this browser.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>reword_nerd</span>
+      <a href="updates/">Updates</a>
+      <a href="https://github.com/ryanjosephkamp/reword-nerd">Source on GitHub</a>
+    </footer>
   </body>
 </html>

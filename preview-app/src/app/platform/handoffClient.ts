@@ -1,1 +1,0 @@
-export { handoffRequest } from "./localClient";

@@ -1,0 +1,106 @@
+/* One set of design tokens for the landing page and the app. Dark is the graphite look;
+   light mirrors it. The user's choice sets data-theme; otherwise the system decides. */
+:root {
+  color-scheme: dark;
+  --bg: #131b23;
+  --panel: #18232b;
+  --raised: #20303a;
+  --line: #2c3e49;
+  --line-strong: #3d5664;
+  --text: #eaf0f3;
+  --muted: #a6b7c1;
+  --faint: #7f929d;
+  --accent: #9bd7ed;
+  --accent-strong: #c2e8f5;
+  --accent-ink: #10242e;
+  --accent-soft: rgb(155 215 237 / 0.12);
+  --paper: #f0efe5;
+  --paper-line: #dcd9cb;
+  --ink: #26333c;
+  --ink-muted: #5f6c74;
+  --ink-accent: #24607a;
+  --ok: #9fd8ac;
+  --warn: #e7bd82;
+  --danger: #efa69d;
+  --diff-add: rgb(98 186 120 / 0.28);
+  --diff-remove: rgb(226 112 100 / 0.24);
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.25);
+  --focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+
+  --serif: "Newsreader Variable", "Iowan Old Style", Georgia, serif;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1.0625rem;
+  --text-reading: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.875rem;
+  --text-3xl: 2.625rem;
+  --text-4xl: clamp(2.5rem, 6vw, 4.25rem);
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4.5rem;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f2f4f5;
+  --panel: #ffffff;
+  --raised: #eaeff2;
+  --line: #d6dee3;
+  --line-strong: #b9c7cf;
+  --text: #17232b;
+  --muted: #4f616c;
+  --faint: #5f707a;
+  --accent: #1e6784;
+  --accent-strong: #154d64;
+  --accent-ink: #ffffff;
+  --accent-soft: rgb(30 103 132 / 0.1);
+  --paper: #fbfaf5;
+  --paper-line: #e3e0d3;
+  --ok: #2e7a45;
+  --warn: #8c5a0d;
+  --danger: #b03a2e;
+  --diff-add: rgb(46 140 70 / 0.18);
+  --diff-remove: rgb(196 64 52 / 0.16);
+  --shadow: 0 1px 2px rgb(16 32 40 / 0.08), 0 8px 24px rgb(16 32 40 / 0.08);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #f2f4f5;
+    --panel: #ffffff;
+    --raised: #eaeff2;
+    --line: #d6dee3;
+    --line-strong: #b9c7cf;
+    --text: #17232b;
+    --muted: #4f616c;
+    --faint: #5f707a;
+    --accent: #1e6784;
+    --accent-strong: #154d64;
+    --accent-ink: #ffffff;
+    --accent-soft: rgb(30 103 132 / 0.1);
+    --paper: #fbfaf5;
+    --paper-line: #e3e0d3;
+    --ok: #2e7a45;
+    --warn: #8c5a0d;
+    --danger: #b03a2e;
+    --diff-add: rgb(46 140 70 / 0.18);
+    --diff-remove: rgb(196 64 52 / 0.16);
+    --shadow: 0 1px 2px rgb(16 32 40 / 0.08), 0 8px 24px rgb(16 32 40 / 0.08);
+  }
+}
