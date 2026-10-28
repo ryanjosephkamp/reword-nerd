@@ -29,6 +29,12 @@ export function HelpDialog({ open, onClose }: { open: boolean; onClose: () => vo
         The rewrite follows four stages: Decompose the meaning, Rewrite it in new words, Verify
         nothing was lost or added, and produce the Final version.
       </p>
+      <p className="small">
+        <a href="../updates/">What's new</a> ·{" "}
+        <a href="https://github.com/ryanjosephkamp/reword-nerd/issues/new/choose">
+          Report a problem or suggest an idea
+        </a>
+      </p>
     </Dialog>
   );
 }

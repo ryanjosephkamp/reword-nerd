@@ -107,3 +107,21 @@ test("the page never scrolls sideways", async ({ page }) => {
   );
   expect(overflow).toBeLessThanOrEqual(0);
 });
+
+test("a workspace can be exported and imported", async ({ page, isMobile }) => {
+  test.skip(isMobile, "Same flow on phones.");
+  await page.getByRole("button", { name: "Try a sample document" }).click();
+  await expect(page.getByRole("heading", { name: "urban-gardens.md" })).toBeVisible();
+  await page.getByRole("button", { name: /Workspace options/ }).click();
+  const downloading = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export workspace" }).click();
+  const exported = await (await downloading).path();
+
+  await page.getByRole("button", { name: "Start over" }).click();
+  await page.getByRole("button", { name: "Remove everything" }).click();
+  await expect(page.getByRole("button", { name: "Try a sample document" })).toBeVisible();
+
+  await page.getByRole("button", { name: /Workspace options/ }).click();
+  await page.locator('dialog input[type="file"]').setInputFiles(exported);
+  await expect(page.getByRole("heading", { name: "urban-gardens.md" })).toBeVisible();
+});

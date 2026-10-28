@@ -10,6 +10,7 @@ import type { ImageSource } from "../../engine/types";
 import { CopyButton } from "../../ui/CopyButton";
 import { DestinationPicker } from "../shared/DestinationPicker";
 import { TaskSteps } from "../shared/TaskSteps";
+import { ImageBringBack } from "./ImageBringBack";
 import { useWorkspace } from "../store";
 
 const IMAGE_DESTINATIONS = DESTINATIONS.filter((candidate) => candidate.forImages);
@@ -116,12 +117,15 @@ export function ImageHandoff({ selected }: { selected: ImageSource | null }) {
       {included.length === 0 ? (
         <p className="muted">Include at least one image to hand off.</p>
       ) : target.kind === "agent" ? (
-        <TaskSteps
-          target={target}
-          title={included.length === 1 ? included[0].name : "images"}
-          build={(slug) => buildImageTaskZip(included, defaults, target.id, slug)}
-          what={`It holds ${included.length === 1 ? "the image" : `all ${included.length} images`}, a prompt for each, and an output folder. Your agent makes every new version in one go.`}
-        />
+        <>
+          <TaskSteps
+            target={target}
+            title={included.length === 1 ? included[0].name : "images"}
+            build={(slug) => buildImageTaskZip(included, defaults, target.id, slug)}
+            what={`It holds ${included.length === 1 ? "the image" : `all ${included.length} images`}, a prompt for each, and an output folder. Your agent makes every new version in one go.`}
+          />
+          <ImageBringBack images={included} />
+        </>
       ) : (
         <ul className="prompt-list">
           {(selected && selected.included

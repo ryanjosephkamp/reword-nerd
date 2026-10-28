@@ -36,3 +36,12 @@ test("Codex gets an image task folder", async ({ page, isMobile }) => {
   expect(files.has(`${folder}/source/garden-poster.png`)).toBe(true);
   expect(files.get(`${folder}/prompts/garden-poster.md`)).toContain("faithful new rendering");
 });
+
+test("a new version can be compared with the original", async ({ page, isMobile }) => {
+  test.skip(isMobile, "Same flow on phones.");
+  await page
+    .locator('input[type="file"][accept="image/*"]')
+    .setInputFiles("e2e/fixtures/new-version.png");
+  await expect(page.getByRole("img", { name: "The new version" })).toBeVisible();
+  await expect(page.locator(".thumb")).toContainText("new version added");
+});
