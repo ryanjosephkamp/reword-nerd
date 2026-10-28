@@ -1,12 +1,21 @@
 import { DownloadSimple, Trash, UploadSimple } from "@phosphor-icons/react";
 import { useRef, useState } from "react";
 import { Dialog } from "../../ui/Dialog";
+import { Segmented } from "../../ui/Segmented";
 import { downloadBlob } from "../../ui/download";
 import { exportWorkspace, importWorkspace } from "../persist";
 import { hasWork, useWorkspace, workspaceData } from "../store";
+import type { ThemeChoice } from "../theme";
 import { setRemember, useSaveState } from "../useAutosave";
 
-export function WorkspacePanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+interface WorkspacePanelProps {
+  open: boolean;
+  onClose: () => void;
+  theme: ThemeChoice;
+  onTheme: (theme: ThemeChoice) => void;
+}
+
+export function WorkspacePanel({ open, onClose, theme, onTheme }: WorkspacePanelProps) {
   const { remember, error, changedElsewhere } = useSaveState();
   const replace = useWorkspace((state) => state.replace);
   const notify = useWorkspace((state) => state.notify);
@@ -89,6 +98,17 @@ export function WorkspacePanel({ open, onClose }: { open: boolean; onClose: () =
         <p className="muted small">
           An exported workspace is a ZIP you can keep, move to another computer, or import later.
         </p>
+
+        <Segmented
+          label="Appearance"
+          value={theme}
+          options={[
+            { value: "system", label: "Match my device" },
+            { value: "light", label: "Light" },
+            { value: "dark", label: "Dark" },
+          ]}
+          onChange={onTheme}
+        />
 
         <hr className="divider" />
 

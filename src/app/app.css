@@ -1478,6 +1478,30 @@ input[type="radio"] {
   white-space: nowrap;
 }
 
+/* The narrowest phones: compact mode buttons, and the theme choice lives in the workspace menu. */
+@media (max-width: 420px) {
+  .app-header {
+    gap: var(--space-1);
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+  }
+
+  .mode-switch button {
+    gap: var(--space-1);
+    padding: 0 var(--space-2);
+  }
+
+  .theme-toggle {
+    display: none;
+  }
+}
+
+@media (max-width: 360px) {
+  .mode-switch .count {
+    display: none;
+  }
+}
+
 /* Phones and tablets can't pick folders from a file dialog. */
 @media (pointer: coarse) {
   .btn-folder {

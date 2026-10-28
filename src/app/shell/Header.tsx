@@ -94,7 +94,7 @@ export function Header() {
         </button>
         <button
           type="button"
-          className="btn-icon"
+          className="btn-icon theme-toggle"
           aria-label={dark ? "Use light theme" : "Use dark theme"}
           onClick={() => {
             const next: ThemeChoice = dark ? "light" : "dark";
@@ -114,7 +114,15 @@ export function Header() {
         </button>
       </div>
 
-      <WorkspacePanel open={panelOpen} onClose={() => setPanelOpen(false)} />
+      <WorkspacePanel
+        open={panelOpen}
+        onClose={() => setPanelOpen(false)}
+        theme={theme}
+        onTheme={(next) => {
+          applyTheme(next);
+          setTheme(next);
+        }}
+      />
       <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
     </header>
   );

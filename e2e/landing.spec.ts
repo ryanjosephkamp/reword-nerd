@@ -13,3 +13,12 @@ test("the updates page lists releases", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Updates" })).toBeVisible();
   await expect(page.getByText("Earlier releases")).toBeVisible();
 });
+
+test("the landing page fits the narrowest phones", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto("/");
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(0);
+});
