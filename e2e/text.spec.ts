@@ -126,3 +126,22 @@ test("a workspace can be exported and imported", async ({ page, isMobile }) => {
   await page.locator('dialog input[type="file"]').setInputFiles(exported);
   await expect(page.getByRole("heading", { name: "urban-gardens.md" })).toBeVisible();
 });
+
+test("the narrowest phones don't scroll sideways", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.getByRole("button", { name: "Try a sample document" }).click();
+  await expect(page.getByRole("heading", { name: "urban-gardens.md" })).toBeVisible();
+  for (const tab of ["Files", "Document", "Hand off"]) {
+    await page.getByRole("button", { name: tab, exact: true }).click();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    const wide = await page.evaluate(() =>
+      [...document.querySelectorAll("body *")]
+        .filter((element) => element.getBoundingClientRect().right > window.innerWidth + 0.5)
+        .map((element) => `${element.tagName}.${element.className}`)
+        .slice(0, 5),
+    );
+    expect(overflow, `${tab} at 320 px: ${wide.join(", ")}`).toBeLessThanOrEqual(0);
+  }
+});
