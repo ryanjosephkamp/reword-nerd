@@ -8,6 +8,11 @@ import { applyTheme, readTheme } from "./theme";
 
 applyTheme(readTheme());
 
+// Phones have no terminal for a coding agent, so they start with a chat app instead.
+if (window.matchMedia("(pointer: coarse) and (max-width: 860px)").matches) {
+  useWorkspace.getState().setTextDestination("chatgpt");
+}
+
 const requested = new URLSearchParams(window.location.search).get("mode");
 if (requested === "images" || requested === "text") useWorkspace.getState().setMode(requested);
 

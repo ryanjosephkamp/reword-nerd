@@ -1411,6 +1411,13 @@ input[type="radio"] {
   white-space: nowrap;
 }
 
+/* Phones and tablets can't pick folders from a file dialog. */
+@media (pointer: coarse) {
+  .btn-folder {
+    display: none;
+  }
+}
+
 /* Tablets: a narrower files column. */
 @media (max-width: 1180px) {
   .workspace {

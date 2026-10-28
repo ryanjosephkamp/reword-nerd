@@ -20,7 +20,7 @@ export function AddButtons({ compact = false }: { compact?: boolean }) {
         <FilePlus aria-hidden />
         <span>Add files</span>
       </button>
-      <button type="button" className="btn" onClick={() => folder.current?.click()}>
+      <button type="button" className="btn btn-folder" onClick={() => folder.current?.click()}>
         <FolderPlus aria-hidden />
         <span>Add folder</span>
       </button>
