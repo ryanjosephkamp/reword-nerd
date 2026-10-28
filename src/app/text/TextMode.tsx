@@ -1,6 +1,7 @@
 import { Files, PaperPlaneTilt, TextAa } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { DropZone } from "../../ui/DropZone";
+import { WorkspaceLayout } from "../shared/WorkspaceLayout";
 import { useWorkspace } from "../store";
 import { AddButtons } from "./AddButtons";
 import { DocumentView } from "./DocumentView";
@@ -24,7 +25,8 @@ function EmptyState() {
       </h1>
       <p className="empty-lede">
         Add a document, a folder of files, or a project. Check what reword_nerd read, choose how it
-        should sound, then hand it to Claude Code, Codex, ChatGPT, or any model in one paste.
+        should sound, then hand it to Claude Code, Codex, ChatGPT, or any model in one paste. Or
+        edit it yourself and download it as Word, PDF, or a web page.
       </p>
       <AddButtons />
       <p className="muted small">
@@ -71,24 +73,28 @@ export default function TextMode() {
 
   return (
     <DropZone onPick={(picked) => void add(picked)} label="Drop files to add them" className="mode">
-      <div className="workspace" data-pane={pane}>
-        <div className="workspace-files">
-          <FileList />
-        </div>
-        <div className="workspace-center">
-          {textResult ? (
+      <WorkspaceLayout
+        name="text"
+        pane={pane}
+        filesLabel="files"
+        sideLabel="rewrite settings and hand-off"
+        files={<FileList />}
+        center={
+          textResult ? (
             <ResultView result={textResult} />
           ) : selected ? (
             <DocumentView key={selected.id} source={selected} />
           ) : (
             <p className="pane-pad muted">Choose a file on the left to see its text.</p>
-          )}
-        </div>
-        <aside className="workspace-side" aria-label="Rewrite settings and hand-off">
-          <JobPanel />
-          <HandoffPanel />
-        </aside>
-      </div>
+          )
+        }
+        side={
+          <>
+            <JobPanel />
+            <HandoffPanel />
+          </>
+        }
+      />
       <nav className="mobile-tabs" aria-label="Sections">
         {(
           [

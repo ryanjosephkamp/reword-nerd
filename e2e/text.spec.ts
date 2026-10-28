@@ -71,11 +71,19 @@ test("a pasted reply is compared and exported", async ({ page, isMobile }) => {
   if (isMobile) await page.getByRole("button", { name: "Result", exact: true }).click();
   await expect(page.getByRole("heading", { name: "The rewrite", exact: true })).toBeVisible();
   await expect(page.getByText("The model flagged something to review.")).toBeVisible();
-  await page.getByRole("radio", { name: "Word changes" }).check();
-  await expect(page.locator(".diff ins").first()).toBeVisible();
+  await page.getByRole("radio", { name: "Changes", exact: true }).check();
+  await expect(page.locator(".diff-table tr.diff-add").first()).toBeVisible();
+  await expect(page.locator(".diff-table tr.diff-del").first()).toBeVisible();
   const downloading = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download", exact: true }).click();
+  await page.getByRole("button", { name: /Same type as the original/ }).click();
   expect((await downloading).suggestedFilename()).toBe("urban-gardens.md");
+
+  await page.getByRole("button", { name: "Edit it yourself" }).click();
+  if (isMobile) await page.getByRole("button", { name: "Document", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Page: urban-gardens.md" })).toContainText(
+    "Behind the library sits an empty lot.",
+  );
 });
 
 test("step by step unlocks each stage after the previous reply", async ({ page, isMobile }) => {

@@ -2,14 +2,13 @@ import {
   Article,
   CloudCheck,
   ImageSquare,
-  Moon,
+  Palette,
   Question,
-  Sun,
   Warning,
 } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { mountAppearanceMenu } from "../../shared/appearance";
 import { useWorkspace, type Mode } from "../store";
-import { applyTheme, effectiveTheme, readTheme, type ThemeChoice } from "../theme";
 import { useSaveState } from "../useAutosave";
 import { HelpDialog } from "./HelpDialog";
 import { WorkspacePanel } from "./WorkspacePanel";
@@ -41,8 +40,8 @@ export function Header() {
   const { remember, saving, savedAt, error } = useSaveState();
   const [panelOpen, setPanelOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [theme, setTheme] = useState<ThemeChoice>(readTheme);
-  const dark = effectiveTheme(theme) === "dark";
+  const appearanceButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => mountAppearanceMenu(appearanceButton.current!), []);
   const status = saveLabel(remember, saving, savedAt, error);
 
   const modes: { id: Mode; label: string; count: number; icon: typeof Article }[] = [
@@ -53,9 +52,13 @@ export function Header() {
   return (
     <header className="app-header">
       <a className="brand" href="../" aria-label="reword_nerd home">
-        <span className="brand-mark" aria-hidden>
-          rn
-        </span>
+        <img
+          className="brand-mark"
+          src={`${import.meta.env.BASE_URL}brand/quill-96.webp`}
+          alt=""
+          width={32}
+          height={32}
+        />
         <span className="brand-name">
           reword<span className="brand-underscore">_</span>nerd
         </span>
@@ -93,16 +96,13 @@ export function Header() {
           <span aria-hidden>{status}</span>
         </button>
         <button
+          ref={appearanceButton}
           type="button"
           className="btn-icon theme-toggle"
-          aria-label={dark ? "Use light theme" : "Use dark theme"}
-          onClick={() => {
-            const next: ThemeChoice = dark ? "light" : "dark";
-            applyTheme(next);
-            setTheme(next);
-          }}
+          aria-label="Appearance"
+          title="Appearance"
         >
-          {dark ? <Sun aria-hidden /> : <Moon aria-hidden />}
+          <Palette aria-hidden />
         </button>
         <button
           type="button"
@@ -114,15 +114,7 @@ export function Header() {
         </button>
       </div>
 
-      <WorkspacePanel
-        open={panelOpen}
-        onClose={() => setPanelOpen(false)}
-        theme={theme}
-        onTheme={(next) => {
-          applyTheme(next);
-          setTheme(next);
-        }}
-      />
+      <WorkspacePanel open={panelOpen} onClose={() => setPanelOpen(false)} />
       <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
     </header>
   );

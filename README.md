@@ -2,6 +2,8 @@
 
 Rewrite documents and regenerate images with the AI model you already use.
 
+![A Word document is handed to a coding agent with one command, and the rewrite comes back for comparison and download. A scripted demo: the agent's run is simulated.](public/media/demo.gif)
+
 reword_nerd reads your files in the browser, lets you check what it read, and then hands the
 job to Claude Code, Codex, ChatGPT, Grok Imagine, or any other model in as few pastes as
 possible. There is no server and no account; your files never leave your browser.
@@ -25,8 +27,12 @@ possible. There is no server and no account; your files never leave your browser
      four prompts is there for long or delicate documents.
    - **Image tools** (Grok Imagine, ChatGPT, Gemini, Midjourney): attach the image and paste its
      prompt, or give Codex a folder of images to do in one go.
-5. **Bring it back** if you like: paste the reply or drop the agent's finished folder to see a
-   word-by-word comparison, the model's own check, and a download in the original format.
+5. **Bring it back** if you like: paste the reply or drop the agent's finished folder to see the
+   changes line by line, the model's own check, and a download in the original format.
+
+You can also skip the model. Edit the document right on the page, see every change in red and
+green, and download it as Word, PDF, a web page, Markdown, or plain text in the paper style you
+choose.
 
 Every rewrite follows four stages: **Decompose** the meaning, **Rewrite** it in new words,
 **Verify** that nothing was lost or added, and produce the **Final** version.
@@ -52,6 +58,9 @@ npm run dev
 | `npm test`      | Unit tests                                           |
 | `npm run e2e`   | Browser tests on desktop and phone sizes             |
 | `npm run build` | Builds the landing page, the app, and Updates        |
+
+`node scripts/themes.mjs` regenerates the color palettes and checks their contrast.
+`node scripts/demo/record.mjs` re-records the demo after a build; it needs ffmpeg and cwebp.
 
 The landing page is `index.html`, the app is `app/index.html` (`src/app/`), and everything that
 reads files, writes prompts, and builds task folders lives in `src/engine/`.

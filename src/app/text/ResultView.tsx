@@ -1,17 +1,21 @@
-import { ArrowLeft, DownloadSimple } from "@phosphor-icons/react";
+import { ArrowLeft, DownloadSimple, PencilSimpleLine } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { makeZip } from "../../engine/handoff/zip";
-import { compareTexts, overlapShare, wordCount, type DiffPart } from "../../engine/results/compare";
+import { compareTexts, overlapShare, wordCount } from "../../engine/results/compare";
 import { exportRewrite, type ExportFile } from "../../engine/results/export";
 import { auditVerdict, parseReply } from "../../engine/results/parse";
 import { readTextFiles } from "../../engine/text";
 import type { TextSource } from "../../engine/types";
 import { CopyButton } from "../../ui/CopyButton";
+import { LineDiff } from "../../ui/LineDiff";
 import { MarkdownView } from "../../ui/MarkdownView";
 import { downloadBlob } from "../../ui/download";
 import { Segmented } from "../../ui/Segmented";
 import { baseName, buildTaskInput } from "../batch";
+import { pageAttributes, usePageStyle } from "../pageStyle";
 import { useWorkspace, type TextResult } from "../store";
+import { DownloadMenu } from "./DocumentTools";
+import { isPageText } from "./exportDocument";
 
 interface ResultItem {
   source: TextSource;
@@ -68,41 +72,28 @@ async function resolveItems(
   );
 }
 
-function Diff({ parts }: { parts: DiffPart[] }) {
-  return (
-    <div className="diff">
-      {parts.map((part, index) =>
-        part.kind === "same" ? (
-          <span key={index}>{part.value}</span>
-        ) : part.kind === "added" ? (
-          <ins key={index}>{part.value}</ins>
-        ) : (
-          <del key={index}>{part.value}</del>
-        ),
-      )}
-    </div>
-  );
+type ShowAs = "markdown" | "plain" | "code";
+
+function showAs(source: TextSource): ShowAs {
+  if (!isPageText(source)) return "code";
+  return source.previewKind === "plain-text" ? "plain" : "markdown";
 }
 
-function isProse(source: TextSource): boolean {
-  return (
-    source.previewKind === "markdown" ||
-    source.previewKind === "plain-text" ||
-    source.format === "docx" ||
-    source.format === "pdf"
-  );
-}
-
-function SideBySide({ before, after, prose }: { before: string; after: string; prose: boolean }) {
+function SideBySide({ before, after, kind }: { before: string; after: string; kind: ShowAs }) {
+  const style = usePageStyle();
   const show = (text: string, label: string) =>
-    prose ? (
-      <div className="paper">
-        <MarkdownView markdown={text} />
-      </div>
-    ) : (
+    kind === "code" ? (
       <pre className="code-view code-view-wrap" tabIndex={0} aria-label={label}>
         {text}
       </pre>
+    ) : (
+      <div className="paper page" {...pageAttributes(style)}>
+        {kind === "markdown" ? (
+          <MarkdownView markdown={text} />
+        ) : (
+          <div className="page-plain-view">{text}</div>
+        )}
+      </div>
     );
   return (
     <div className="side-by-side">
@@ -171,7 +162,9 @@ export function ResultView({ result }: { result: TextResult }) {
   const [items, setItems] = useState<ResultItem[] | null>(null);
   const [active, setActive] = useState(0);
   const [view, setView] = useState<"side" | "changes">("side");
-  const [diff, setDiff] = useState<{ item: ResultItem; parts: DiffPart[] } | null>(null);
+  const [overlap, setOverlap] = useState<{ item: ResultItem; share: number } | null>(null);
+  const updateSource = useWorkspace((state) => state.updateSource);
+  const selectSource = useWorkspace((state) => state.selectSource);
 
   const scoped = useMemo(
     () =>
@@ -204,14 +197,22 @@ export function ResultView({ result }: { result: TextResult }) {
     if (item?.after != null) {
       const shown = item;
       compareTexts(shown.source.text, shown.after ?? "").then((parts) => {
-        if (current) setDiff({ item: shown, parts });
+        if (current) setOverlap({ item: shown, share: overlapShare(parts) });
       });
     }
     return () => {
       current = false;
     };
   }, [item]);
-  const parts = diff && diff.item === item ? diff.parts : null;
+  const share = overlap && overlap.item === item ? overlap.share : null;
+
+  function editYourself(target: ResultItem) {
+    if (target.after === null) return;
+    updateSource(target.source.id, { text: target.after });
+    selectSource(target.source.id);
+    setTextResult(null);
+    notify("The rewrite is now your text. Change anything, then download it.");
+  }
 
   async function downloadOne(target: ResultItem) {
     const file = await exportItem(target);
@@ -299,25 +300,36 @@ export function ResultView({ result }: { result: TextResult }) {
                 value={view}
                 options={[
                   { value: "side", label: "Side by side" },
-                  { value: "changes", label: "Word changes" },
+                  { value: "changes", label: "Changes" },
                 ]}
                 onChange={setView}
               />
               <span className="muted small">
                 {wordCount(item.source.text).toLocaleString("en-US")} →{" "}
                 {wordCount(item.after ?? "").toLocaleString("en-US")} words
-                {parts && ` · ${Math.round(overlapShare(parts) * 100)}% of words unchanged`}
+                {share !== null && ` · ${Math.round(share * 100)}% of words unchanged`}
               </span>
               <div className="button-row">
                 <CopyButton text={item.after ?? ""} label="Copy" />
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => void downloadOne(item)}
-                >
-                  <DownloadSimple aria-hidden />
-                  <span>Download</span>
+                <button type="button" className="btn" onClick={() => editYourself(item)}>
+                  <PencilSimpleLine aria-hidden />
+                  <span>Edit it yourself</span>
                 </button>
+                <DownloadMenu
+                  source={item.source}
+                  text={item.after ?? ""}
+                  first={
+                    isPageText(item.source)
+                      ? {
+                          label: "Same type as the original",
+                          detail: item.agentFile
+                            ? `${baseName(item.agentFile.path)}, as your agent wrote it`
+                            : "Word for Word and PDF files",
+                          run: () => downloadOne(item),
+                        }
+                      : undefined
+                  }
+                />
               </div>
             </div>
             <div className="document-body">
@@ -325,12 +337,15 @@ export function ResultView({ result }: { result: TextResult }) {
                 <SideBySide
                   before={item.source.text}
                   after={item.after ?? ""}
-                  prose={isProse(item.source)}
+                  kind={showAs(item.source)}
                 />
-              ) : parts ? (
-                <Diff parts={parts} />
               ) : (
-                <p className="loading">Comparing…</p>
+                <LineDiff
+                  before={item.source.text}
+                  after={item.after ?? ""}
+                  beforeLabel="Original"
+                  afterLabel="Rewrite"
+                />
               )}
             </div>
           </>

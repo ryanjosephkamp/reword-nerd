@@ -1,6 +1,7 @@
 import { ImageSquare, PaperPlaneTilt, Images } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { DropZone } from "../../ui/DropZone";
+import { WorkspaceLayout } from "../shared/WorkspaceLayout";
 import { useWorkspace } from "../store";
 import { AddImageButtons, ImageList } from "./ImageList";
 import { ImageHandoff } from "./ImageHandoff";
@@ -68,25 +69,26 @@ export default function ImagesMode() {
       label="Drop images to add them"
       className="mode"
     >
-      <div
-        className="workspace"
-        data-pane={pane === "images" ? "files" : pane === "preview" ? "document" : "handoff"}
-      >
-        <div className="workspace-files">
-          <ImageList />
-        </div>
-        <div className="workspace-center">
-          {selected ? (
+      <WorkspaceLayout
+        name="images"
+        pane={pane === "images" ? "files" : pane === "preview" ? "document" : "handoff"}
+        filesLabel="images"
+        sideLabel="image settings and hand-off"
+        files={<ImageList />}
+        center={
+          selected ? (
             <ImagePreview key={selected.id} image={selected} />
           ) : (
             <p className="pane-pad muted">Choose an image on the left.</p>
-          )}
-        </div>
-        <aside className="workspace-side" aria-label="Image settings and hand-off">
-          <ImageSettingsPanel image={selected} />
-          <ImageHandoff selected={selected} />
-        </aside>
-      </div>
+          )
+        }
+        side={
+          <>
+            <ImageSettingsPanel image={selected} />
+            <ImageHandoff selected={selected} />
+          </>
+        }
+      />
       <nav className="mobile-tabs" aria-label="Sections">
         {(
           [

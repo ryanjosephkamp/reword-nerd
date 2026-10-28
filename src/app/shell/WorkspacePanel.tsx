@@ -1,21 +1,24 @@
 import { DownloadSimple, Trash, UploadSimple } from "@phosphor-icons/react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { mountAppearanceControls } from "../../shared/appearance";
 import { Dialog } from "../../ui/Dialog";
-import { Segmented } from "../../ui/Segmented";
 import { downloadBlob } from "../../ui/download";
 import { exportWorkspace, importWorkspace } from "../persist";
 import { hasWork, useWorkspace, workspaceData } from "../store";
-import type { ThemeChoice } from "../theme";
 import { setRemember, useSaveState } from "../useAutosave";
 
 interface WorkspacePanelProps {
   open: boolean;
   onClose: () => void;
-  theme: ThemeChoice;
-  onTheme: (theme: ThemeChoice) => void;
 }
 
-export function WorkspacePanel({ open, onClose, theme, onTheme }: WorkspacePanelProps) {
+function AppearanceControls() {
+  const container = useRef<HTMLDivElement>(null);
+  useEffect(() => mountAppearanceControls(container.current!), []);
+  return <div ref={container} />;
+}
+
+export function WorkspacePanel({ open, onClose }: WorkspacePanelProps) {
   const { remember, error, changedElsewhere } = useSaveState();
   const replace = useWorkspace((state) => state.replace);
   const notify = useWorkspace((state) => state.notify);
@@ -99,16 +102,12 @@ export function WorkspacePanel({ open, onClose, theme, onTheme }: WorkspacePanel
           An exported workspace is a ZIP you can keep, move to another computer, or import later.
         </p>
 
-        <Segmented
-          label="Appearance"
-          value={theme}
-          options={[
-            { value: "system", label: "Match my device" },
-            { value: "light", label: "Light" },
-            { value: "dark", label: "Dark" },
-          ]}
-          onChange={onTheme}
-        />
+        <section className="stack-tight" aria-labelledby="appearance-heading">
+          <h3 id="appearance-heading" className="field-label">
+            Appearance
+          </h3>
+          {open && <AppearanceControls />}
+        </section>
 
         <hr className="divider" />
 

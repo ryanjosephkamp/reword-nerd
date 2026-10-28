@@ -5,6 +5,7 @@ import { createZipBudget, listZip, ZipReadError, type ZipOpener } from "../zip";
 import { hasZipSignature } from "./formats";
 import { AssetCollector, assetReference } from "./assets";
 import { plural, ReadProblem } from "./util";
+import { addStrikethroughRule, addTableRule } from "../markdownRules";
 
 export interface DocxPicture {
   contentType: string;
@@ -68,32 +69,8 @@ export async function htmlToMarkdown(html: string): Promise<string> {
       return `![${alt}](${source})`;
     },
   });
-  // Word tables have no header row, which the GFM plugin needs, so it would keep them as raw
-  // HTML. Every table becomes a Markdown table here, with its first row as the header.
-  service.addRule("tables", {
-    filter: "table",
-    replacement: (_content, node) => {
-      const rows = [...(node as HTMLTableElement).rows].map((row) =>
-        [...row.cells].map((cell) =>
-          service
-            .turndown(cell.innerHTML)
-            .replace(/\s*\n+\s*/g, " ")
-            .replaceAll("|", "\\|")
-            .trim(),
-        ),
-      );
-      if (rows.length === 0) return "";
-      const width = Math.max(...rows.map((row) => row.length));
-      const line = (cells: string[]) =>
-        `| ${[...cells, ...Array(width - cells.length).fill("")].join(" | ")} |`;
-      const divider = line(Array(width).fill("---"));
-      return `\n\n${[line(rows[0]), divider, ...rows.slice(1).map(line)].join("\n")}\n\n`;
-    },
-  });
-  service.addRule("strikethrough", {
-    filter: (node) => ["DEL", "S", "STRIKE"].includes(node.nodeName),
-    replacement: (content) => `~~${content}~~`,
-  });
+  addTableRule(service);
+  addStrikethroughRule(service);
   return service.turndown(html).trim();
 }
 

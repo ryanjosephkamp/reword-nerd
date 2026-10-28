@@ -4,9 +4,6 @@ import "../styles/base.css";
 import "./app.css";
 import { App } from "./App";
 import { useWorkspace } from "./store";
-import { applyTheme, readTheme } from "./theme";
-
-applyTheme(readTheme());
 
 // Phones have no terminal for a coding agent, so they start with a chat app instead.
 if (window.matchMedia("(pointer: coarse) and (max-width: 860px)").matches) {
