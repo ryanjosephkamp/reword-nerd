@@ -49,7 +49,9 @@ function PromptCard({
         <li>Attach the image in {target.label}: drag it from the preview, or save it first.</li>
         <li>Paste this prompt and send.</li>
       </ol>
-      <pre className="prompt-preview prompt-preview-short">{prompt}</pre>
+      <pre className="prompt-preview prompt-preview-short" tabIndex={0} aria-label="Prompt">
+        {prompt}
+      </pre>
       <div className="button-row">
         {target.url ? (
           <>

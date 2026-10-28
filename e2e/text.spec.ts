@@ -90,7 +90,7 @@ test("step by step unlocks each stage after the previous reply", async ({ page, 
 test("saving on this device survives a reload", async ({ page, isMobile }) => {
   await page.getByRole("button", { name: "Try a sample document" }).click();
   await expect(page.getByRole("heading", { name: "urban-gardens.md" })).toBeVisible();
-  await page.locator(".save-status").click();
+  await page.getByRole("button", { name: /Workspace options/ }).click();
   await page.getByText("Save on this device").click();
   await page.getByRole("button", { name: "Close" }).click();
   if (!isMobile) await expect(page.locator(".save-status")).toContainText("Saved");

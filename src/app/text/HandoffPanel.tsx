@@ -129,7 +129,9 @@ function ChatSteps({ target }: { target: Destination }) {
       <Dialog open={preview} title="The prompt" onClose={() => setPreview(false)} wide>
         <div className="stack">
           <CopyButton text={prompt} label="Copy prompt" className="btn btn-primary" />
-          <pre className="prompt-preview">{prompt}</pre>
+          <pre className="prompt-preview" tabIndex={0} aria-label="Prompt">
+            {prompt}
+          </pre>
         </div>
       </Dialog>
     </div>

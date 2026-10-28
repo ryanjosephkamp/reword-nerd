@@ -43,6 +43,7 @@ export function Header() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeChoice>(readTheme);
   const dark = effectiveTheme(theme) === "dark";
+  const status = saveLabel(remember, saving, savedAt, error);
 
   const modes: { id: Mode; label: string; count: number; icon: typeof Article }[] = [
     { id: "text", label: "Text", count: textCount, icon: Article },
@@ -85,9 +86,11 @@ export function Header() {
           type="button"
           className={`save-status ${error ? "save-status-error" : remember ? "save-status-on" : ""}`}
           onClick={() => setPanelOpen(true)}
+          aria-label={`${status}. Workspace options`}
+          title={status}
         >
           {error ? <Warning aria-hidden /> : <CloudCheck aria-hidden />}
-          <span>{saveLabel(remember, saving, savedAt, error)}</span>
+          <span aria-hidden>{status}</span>
         </button>
         <button
           type="button"

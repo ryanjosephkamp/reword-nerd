@@ -145,7 +145,11 @@ export function DocumentView({ source }: { source: TextSource }) {
               <MarkdownView markdown={source.text} />
             </div>
           ) : (
-            <pre className={`code-view ${source.previewKind === "code" ? "" : "code-view-wrap"}`}>
+            <pre
+              className={`code-view ${source.previewKind === "code" ? "" : "code-view-wrap"}`}
+              tabIndex={0}
+              aria-label="File text"
+            >
               {source.text}
             </pre>
           ))}

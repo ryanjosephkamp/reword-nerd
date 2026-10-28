@@ -254,7 +254,9 @@ export function ResultView({ result }: { result: TextResult }) {
                   <p className="loading">Comparing…</p>
                 )
               ) : (
-                <pre className="code-view code-view-wrap">{item.after}</pre>
+                <pre className="code-view code-view-wrap" tabIndex={0} aria-label="Rewritten text">
+                  {item.after}
+                </pre>
               )}
             </div>
           </>
