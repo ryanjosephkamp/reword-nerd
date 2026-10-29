@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && node scripts/updates.mjs",
+    "build": "tsc -b && vite build && node scripts/updates.mjs && node scripts/redirects.mjs",
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",

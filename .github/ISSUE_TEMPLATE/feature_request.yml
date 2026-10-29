@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        GitHub Issues are public. Do not attach or paste source documents, prompt packages, prompts, credentials, session content, or confidential material. Use synthetic-only examples.
+        GitHub Issues are public. Do not attach or paste source documents, task folders, prompts, credentials, session content, or confidential material. Use synthetic-only examples.
   - type: checkboxes
     id: searched
     attributes:
@@ -19,7 +19,7 @@ body:
     attributes:
       label: Privacy confirmation
       options:
-        - label: I used synthetic-only evidence and included no source document, package, prompt, credential, session content, or confidential material.
+        - label: I used synthetic-only evidence and included no source document, task folder, prompt, credential, session content, or confidential material.
           required: true
   - type: textarea
     id: problem
