@@ -42,6 +42,30 @@ test("the footer links to Ryan Kamp's sites and sponsorship", async ({ page }) =
   }
 });
 
+for (const path of ["/", "/app/", "/updates/"]) {
+  test(`menus on ${path} start closed and the button opens and closes them`, async ({
+    page,
+    isMobile,
+  }) => {
+    await page.goto(path);
+    for (const menu of await page.locator("[popover]").all()) await expect(menu).toBeHidden();
+    // The app's phone header keeps this choice in the workspace menu instead.
+    if (isMobile && path === "/app/") return;
+    const button = page.getByRole("button", { name: "Appearance" });
+    const menu = page.getByRole("dialog", { name: "Appearance" });
+    await button.click();
+    await expect(menu).toBeVisible();
+    await button.click();
+    await expect(menu).toBeHidden();
+    await button.click();
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await button.click();
+    await page.mouse.click(5, 300);
+    await expect(menu).toBeHidden();
+  });
+}
+
 test("the appearance choice carries across every page", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Appearance" }).click();
