@@ -12,6 +12,28 @@ test("the updates page lists releases", async ({ page }) => {
   await page.goto("/updates/");
   await expect(page.getByRole("heading", { name: "Updates" })).toBeVisible();
   await expect(page.getByText("Earlier releases")).toBeVisible();
+  await page.getByText("Release 0.9").click();
+  await expect(page.getByRole("heading", { name: "Release 0.9" })).toBeVisible();
+});
+
+test("old addresses lead to their new pages", async ({ page, baseURL }) => {
+  for (const [from, to] of [
+    ["/preview/", "/"],
+    ["/preview/app/?mode=images", "/app/?mode=images"],
+    ["/preview/image/", "/app/?mode=images"],
+    ["/image/", "/app/?mode=images"],
+    ["/updates/v0-8-0/", "/updates/earlier-releases/"],
+  ]) {
+    await page.goto(from);
+    await expect(page).toHaveURL(new URL(to, baseURL).href);
+  }
+});
+
+test("the not-found page offers a way back", async ({ page }) => {
+  await page.goto("/404.html");
+  await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
+  await page.getByRole("link", { name: "home page" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Rewrite anything");
 });
 
 test("the landing page fits the narrowest phones", async ({ page }) => {

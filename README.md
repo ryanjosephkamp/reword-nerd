@@ -1,14 +1,22 @@
-# reword_nerd
+<p align="center"><img src="public/brand/logo-512.png" alt="" width="88"></p>
 
-Rewrite documents and regenerate images with the AI model you already use.
+<h1 align="center">reword_nerd</h1>
 
-![A Word document is handed to a coding agent with one command, and the rewrite comes back for comparison and download. A scripted demo: the agent's run is simulated.](public/media/demo.gif)
+<p align="center">Rewrite documents and regenerate images with the AI model you already use.</p>
+
+<p align="center">
+  <a href="https://ryanjosephkamp.github.io/reword-nerd/"><strong>Open reword_nerd</strong></a> ·
+  <a href="https://ryanjosephkamp.github.io/reword-nerd/updates/">Updates</a> ·
+  <a href="https://github.com/ryanjosephkamp/reword-nerd/issues/new/choose">Report a problem</a>
+</p>
+
+![A Word document is handed to a coding agent with one command, and the rewrite comes back for comparison and download.](public/media/demo.gif)
+
+<sub>A scripted demo on the real app. The agent's run is simulated; no model was called.</sub>
 
 reword_nerd reads your files in the browser, lets you check what it read, and then hands the
 job to Claude Code, Codex, ChatGPT, Grok Imagine, or any other model in as few pastes as
 possible. There is no server and no account; your files never leave your browser.
-
-**Try it:** <https://ryanjosephkamp.github.io/reword-nerd/preview/>
 
 ## How it works
 
@@ -21,8 +29,7 @@ possible. There is no server and no account; your files never leave your browser
    must stay.
 4. **Hand off** to where the work will run:
    - **Coding agents** (Claude Code, Codex, Gemini CLI): download a task folder and paste one
-     command. The agent works through all four stages and writes the results in the original
-     format, Word files included.
+     command. The agent writes the results in the original format, Word files included.
    - **Chat apps** (ChatGPT, Claude, Gemini, Grok): copy one prompt. A step-by-step mode with
      four prompts is there for long or delicate documents.
    - **Image tools** (Grok Imagine, ChatGPT, Gemini, Midjourney): attach the image and paste its
@@ -30,12 +37,15 @@ possible. There is no server and no account; your files never leave your browser
 5. **Bring it back** if you like: paste the reply or drop the agent's finished folder to see the
    changes line by line, the model's own check, and a download in the original format.
 
-You can also skip the model. Edit the document right on the page, see every change in red and
-green, and download it as Word, PDF, a web page, Markdown, or plain text in the paper style you
-choose.
-
 Every rewrite follows four stages: **Decompose** the meaning, **Rewrite** it in new words,
 **Verify** that nothing was lost or added, and produce the **Final** version.
+
+## Without a model
+
+You can also do the rewording yourself. Edit the document right on the page, see every change in
+red and green, and download it as Word, PDF, a web page, Markdown, or plain text. Pick a paper
+style (Paper, White, Sepia, or Night), a typeface, and a size, and the download uses the same
+look.
 
 ## Privacy
 
@@ -52,18 +62,25 @@ npm install
 npm run dev
 ```
 
-| Command         | What it does                                         |
-| --------------- | ---------------------------------------------------- |
-| `npm run check` | Lint, format check, typecheck, unit tests, and build |
-| `npm test`      | Unit tests                                           |
-| `npm run e2e`   | Browser tests on desktop and phone sizes             |
-| `npm run build` | Builds the landing page, the app, and Updates        |
+| Command         | What it does                                                   |
+| --------------- | -------------------------------------------------------------- |
+| `npm run check` | Lint, format check, typecheck, unit tests, and build           |
+| `npm test`      | Unit tests                                                     |
+| `npm run e2e`   | Browser tests on desktop and phone sizes, with axe-core checks |
+| `npm run build` | Builds the landing page, the app, Updates, and redirects       |
 
-`node scripts/themes.mjs` regenerates the color palettes and checks their contrast.
-`node scripts/demo/record.mjs` re-records the demo after a build; it needs ffmpeg and cwebp.
+| Where                        | What                                                           |
+| ---------------------------- | -------------------------------------------------------------- |
+| `index.html`, `src/landing/` | The landing page                                               |
+| `app/index.html`, `src/app/` | The app                                                        |
+| `src/engine/`                | Reading files, writing prompts, building task folders, exports |
+| `content/updates/`           | Updates posts, one Markdown file each                          |
+| `scripts/themes.mjs`         | Generates the color palettes and checks their contrast         |
+| `scripts/demo/record.mjs`    | Re-records the demo after a build (needs ffmpeg and cwebp)     |
+| `.github/workflows/`         | Checks every pull request and deploys `main` to GitHub Pages   |
 
-The landing page is `index.html`, the app is `app/index.html` (`src/app/`), and everything that
-reads files, writes prompts, and builds task folders lives in `src/engine/`.
+See [Contributing](CONTRIBUTING.md) to help, and the [security policy](SECURITY.md) to report a
+vulnerability privately.
 
 ## License
 

@@ -1,13 +1,17 @@
 # Security policy
 
-## Report vulnerabilities privately
+## Reporting a vulnerability
 
-Please use GitHub's [private vulnerability reporting flow](https://github.com/ryanjosephkamp/reword-nerd/security/advisories/new) for security concerns. Do not open a public Issue for a vulnerability.
+Please report security problems privately through GitHub's
+[vulnerability reporting form](https://github.com/ryanjosephkamp/reword-nerd/security/advisories/new),
+not in a public issue.
 
-Submit the smallest synthetic reproduction that lets the report be understood. Do not attach or paste source documents, prompt packages, prompts, credentials, session content, personal data, or confidential material. Remove identifiers, replace content with synthetic stand-ins, and describe any withheld detail at a high level.
+Include the smallest example that shows the problem, made with synthetic files. Don't attach real
+documents, task folders, prompts, credentials, personal data, or anything confidential.
 
-This project is browser-only: security reports should not include user documents or browser storage exports. A maintainer will acknowledge and assess a private report through the advisory flow.
+## Scope
 
-## Scope and coordination
-
-Report suspected vulnerabilities in the published application, release artifacts, documentation, or repository configuration. Please allow time for review and coordinated remediation before public disclosure. General product defects and feature ideas belong in the public Issue forms; participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md), and contribution expectations are in [Contributing](CONTRIBUTING.md).
+reword_nerd runs entirely in the browser, so reports usually concern the published site, the
+files it builds, or this repository's configuration. Please allow time for a fix before
+disclosing a problem publicly. Bugs and ideas that aren't security issues belong in the public
+issue forms, and everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).

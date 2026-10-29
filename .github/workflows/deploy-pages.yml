@@ -53,35 +53,16 @@ jobs:
           path: playwright-report
           retention-days: 3
 
-      # Until the new site replaces it, the classic site keeps serving the root URL, built
-      # unchanged from its release tag. The new site is published under /preview/.
-      - name: Build the classic site from its release tag
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends --yes ffmpeg
-          git fetch --depth 1 origin tag classic-v0.8.0
-          git worktree add ../classic classic-v0.8.0
-          cd ../classic
-          npm ci
-          VITE_BASE_PATH=/reword-nerd/ npm run build
-
-      - name: Build the new site
+      - name: Build the site
         run: npm run build
         env:
-          VITE_BASE_PATH: /reword-nerd/preview/
-
-      - name: Assemble the published site
-        run: |
-          mkdir site
-          cp -R ../classic/dist/. site/
-          mkdir site/preview
-          cp -R dist/. site/preview/
+          VITE_BASE_PATH: /reword-nerd/
 
       - name: Upload the site
         if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
-          path: site
+          path: dist
 
   deploy:
     if: github.event_name != 'pull_request'

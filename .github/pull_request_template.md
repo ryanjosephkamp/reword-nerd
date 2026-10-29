@@ -11,7 +11,7 @@
 ## Privacy and safety
 
 - [ ] This change preserves browser-only processing and adds no provider call, telemetry, remote asset, or storage key.
-- [ ] I used synthetic fixtures only and did not include source documents, prompt packages, prompts, credentials, session content, or confidential material.
+- [ ] I used synthetic fixtures only and did not include source documents, task folders, prompts, credentials, session content, or confidential material.
 
 ## Community agreement
 
