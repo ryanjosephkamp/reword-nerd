@@ -125,6 +125,12 @@
   box-shadow: var(--shadow);
 }
 
+/* The menu is also an .appearance grid, which would override the browser's rule that hides a
+   closed popover. */
+.appearance-menu[popover]:not(:popover-open) {
+  display: none;
+}
+
 .appearance-button {
   display: inline-grid;
   place-items: center;
