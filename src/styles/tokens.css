@@ -1,0 +1,115 @@
+/* One set of design tokens for every page. The palette (data-palette) supplies a dark and a
+   light version of each color in palettes.css; the mode (data-theme, or the system setting
+   when it's absent) picks which one is used. */
+@import "./palettes.css";
+
+:root {
+  color-scheme: dark;
+  --bg: var(--d-bg);
+  --panel: var(--d-panel);
+  --raised: var(--d-raised);
+  --line: var(--d-line);
+  --line-strong: var(--d-line-strong);
+  --text: var(--d-text);
+  --muted: var(--d-muted);
+  --faint: var(--d-faint);
+  --accent: var(--d-accent);
+  --accent-strong: var(--d-accent-strong);
+  --accent-ink: var(--d-accent-ink);
+  --accent-soft: color-mix(in srgb, var(--d-accent) 12%, transparent);
+  --ok: #9fd8ac;
+  --warn: #e7bd82;
+  --danger: #efa69d;
+  --diff-add-bg: rgb(46 160 67 / 0.15);
+  --diff-add-word: rgb(46 160 67 / 0.4);
+  --diff-add-num: rgb(63 185 80 / 0.3);
+  --diff-del-bg: rgb(248 81 73 / 0.1);
+  --diff-del-word: rgb(248 81 73 / 0.4);
+  --diff-del-num: rgb(248 81 73 / 0.3);
+  --diff-hunk-bg: color-mix(in srgb, var(--d-accent) 10%, transparent);
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.25);
+  --focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+
+  --serif: "Newsreader Variable", "Iowan Old Style", Georgia, serif;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1.0625rem;
+  --text-reading: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.875rem;
+  --text-3xl: 2.625rem;
+  --text-4xl: clamp(2.5rem, 6vw, 4.25rem);
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4.5rem;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: var(--l-bg);
+  --panel: var(--l-panel);
+  --raised: var(--l-raised);
+  --line: var(--l-line);
+  --line-strong: var(--l-line-strong);
+  --text: var(--l-text);
+  --muted: var(--l-muted);
+  --faint: var(--l-faint);
+  --accent: var(--l-accent);
+  --accent-strong: var(--l-accent-strong);
+  --accent-ink: var(--l-accent-ink);
+  --accent-soft: color-mix(in srgb, var(--l-accent) 10%, transparent);
+  --ok: #2e7a45;
+  --warn: #8c5a0d;
+  --danger: #b03a2e;
+  --diff-add-bg: #e6ffec;
+  --diff-add-word: #abf2bc;
+  --diff-add-num: #ccffd8;
+  --diff-del-bg: #ffebe9;
+  --diff-del-word: #ffcecb;
+  --diff-del-num: #ffd7d5;
+  --diff-hunk-bg: color-mix(in srgb, var(--l-accent) 8%, white);
+  --shadow: 0 1px 2px rgb(16 32 40 / 0.08), 0 8px 24px rgb(16 32 40 / 0.08);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: var(--l-bg);
+    --panel: var(--l-panel);
+    --raised: var(--l-raised);
+    --line: var(--l-line);
+    --line-strong: var(--l-line-strong);
+    --text: var(--l-text);
+    --muted: var(--l-muted);
+    --faint: var(--l-faint);
+    --accent: var(--l-accent);
+    --accent-strong: var(--l-accent-strong);
+    --accent-ink: var(--l-accent-ink);
+    --accent-soft: color-mix(in srgb, var(--l-accent) 10%, transparent);
+    --ok: #2e7a45;
+    --warn: #8c5a0d;
+    --danger: #b03a2e;
+    --diff-add-bg: #e6ffec;
+    --diff-add-word: #abf2bc;
+    --diff-add-num: #ccffd8;
+    --diff-del-bg: #ffebe9;
+    --diff-del-word: #ffcecb;
+    --diff-del-num: #ffd7d5;
+    --diff-hunk-bg: color-mix(in srgb, var(--l-accent) 8%, white);
+    --shadow: 0 1px 2px rgb(16 32 40 / 0.08), 0 8px 24px rgb(16 32 40 / 0.08);
+  }
+}
