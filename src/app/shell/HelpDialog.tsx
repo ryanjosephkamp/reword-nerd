@@ -6,7 +6,8 @@ export function HelpDialog({ open, onClose }: { open: boolean; onClose: () => vo
       <ol className="help-steps">
         <li>
           <strong>Add</strong> documents, code, a project folder or ZIP, or images. Word, PDF,
-          Markdown, HTML, LaTeX, plain text, and most code files work.
+          Markdown, HTML, LaTeX, plain text, and most code files work. Scans are read with OCR, in
+          English. You can add up to 20 files at a time.
         </li>
         <li>
           <strong>Check</strong> the text reword_nerd read. Fix anything it got wrong, accept text
@@ -27,7 +28,8 @@ export function HelpDialog({ open, onClose }: { open: boolean; onClose: () => vo
       </ol>
       <p className="muted">
         The rewrite follows four stages: Decompose the meaning, Rewrite it in new words, Verify
-        nothing was lost or added, and produce the Final version.
+        nothing was lost or added, and produce the Final version. A coding agent saves each stage to
+        its own file; a chat prompt runs all four in one reply.
       </p>
       <p className="small">
         <a href="../updates/">What's new</a> ·{" "}
