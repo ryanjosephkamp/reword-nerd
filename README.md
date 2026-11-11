@@ -106,4 +106,6 @@ vulnerability privately.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). The font, libraries, and OCR data that reword_nerd includes keep their own
+licenses, listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). The site serves the full
+license texts at `third-party-licenses.txt`.

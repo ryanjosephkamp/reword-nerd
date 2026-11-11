@@ -2,6 +2,7 @@
   "name": "reword-nerd",
   "version": "0.9.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
